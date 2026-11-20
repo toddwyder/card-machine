@@ -116,6 +116,8 @@ test('start.mjs readState succeeds and direct resumeCard rejects lock while anot
     TEST_DIR: dir,
     TEST_RUN_ID: run.runId,
     CMD_API_KEY: 'unused-in-tests',
+    FLOW_PROJECT_REPO: dir,
+    FLOW_PROJECT_GITHUB_REPO: 'example/throwaway-start-test',
   });
 
   const resultLine = result.stdout.split(/\r?\n/).find(line => line.startsWith('RESULT:'));
@@ -271,3 +273,79 @@ test('run.mjs status and resume through Studio API write spans to trace.duckdb w
   instance.closeSync?.();
   assert.ok(rows.length > 0, 'expected resumed step spans in trace.duckdb');
 });
+
+for (const setting of ['FLOW_PROJECT_REPO', 'FLOW_PROJECT_GITHUB_REPO']) {
+  test(`start.mjs stops before any paid work when ${setting} is unset or empty`, async t => {
+    const dir = tempDir(t);
+    const workflow = createWorkflow({
+      id: CARD_PATH,
+      inputSchema: z.object({ card: z.string() }),
+      outputSchema: z.object({ card: z.string() }),
+      options: { autoRestartActiveRuns: false },
+    })
+      .then(createStep({
+        id: 'wait-todd',
+        inputSchema: z.object({ card: z.string() }),
+        outputSchema: z.object({ card: z.string() }),
+        suspendSchema: z.object({ request: z.string() }),
+        resumeSchema: z.object({ request: z.string().optional(), answer: z.enum(['yes', 'no']) }),
+        execute: async ({ inputData, resumeData, suspend }) => {
+          if (!resumeData) return suspend({ request: 'ship?' });
+          return { card: inputData.card };
+        },
+      }))
+      .commit();
+
+    const mastra = await openMastra({
+      card: 'JUL-999',
+      agents: {},
+      workflow,
+      stateDb: join(dir, 'state.db'),
+      traceDb: join(dir, 'trace.duckdb'),
+    });
+    await mastra.getStorage().init();
+    const run = await mastra.getWorkflow(CARD_PATH).createRun();
+    await run.start({ inputData: { card: 'JUL-999' } });
+    const store = new LibSQLStore({ id: 'flow-state-seed-missing', url: `file:${join(dir, 'state.db')}` });
+    await store.init();
+    const workflowsStore = await store.getStore('workflows');
+    const saved = await workflowsStore.getWorkflowRunById({ runId: run.runId, workflowName: CARD_PATH });
+    const snapshot = typeof saved.snapshot === 'string' ? JSON.parse(saved.snapshot) : saved.snapshot;
+    snapshot.value = { ...(snapshot.value ?? {}), card: 'JUL-999' };
+    await workflowsStore.persistWorkflowSnapshot({ workflowName: CARD_PATH, runId: run.runId, snapshot });
+    await store.close();
+    await mastra.shutdown();
+
+    const startUrl = pathToFileURL(resolve('machine/flow/start.mjs')).href;
+    for (const bad of [undefined, '']) {
+      const env = {
+        ...process.env,
+        CMD_API_KEY: 'unused-in-tests',
+        FLOW_PROJECT_REPO: dir,
+        FLOW_PROJECT_GITHUB_REPO: 'example/throwaway-start-test',
+      };
+      if (bad === undefined) delete env[setting];
+      else env[setting] = bad;
+      const childScript = `
+        import { resumeCard, closeFlow } from ${JSON.stringify(startUrl)};
+        try {
+          await resumeCard({ dir: ${JSON.stringify(dir)}, runId: ${JSON.stringify(run.runId)}, answer: 'yes', agents: {}, studioUrl: null });
+        } finally {
+          await closeFlow();
+        }
+      `;
+      const res = await new Promise((resolvePromise, reject) => {
+        const child = spawn(process.execPath, ['--input-type=module', '-e', childScript], {
+          env,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', reject);
+        child.on('exit', code => resolvePromise({ code, stderr }));
+      });
+      assert.notEqual(res.code, 0, `expected non-zero exit when ${setting} is ${JSON.stringify(bad)}`);
+      assert.match(res.stderr, new RegExp(setting));
+    }
+  });
+}

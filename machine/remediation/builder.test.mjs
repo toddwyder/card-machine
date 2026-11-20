@@ -7,6 +7,7 @@ import {
   findBuilderThread,
   freshBuilderOrder,
   investigationOrder,
+  pullRequestUrl,
   remediationOrder,
   rootCauseFrom,
 } from './builder.mjs';
@@ -134,7 +135,34 @@ test('threads are read newest first, because the newest is the one a boot would 
   assert.match(store.asked[0].sql, /order by updatedAt desc/);
 });
 
-test('the remediation order quotes the FAIL, names the playbook, and stops before the review', () => {
+function withGithubRepo(t, slug = 'example/throwaway-remediation') {
+  const prev = process.env.FLOW_PROJECT_GITHUB_REPO;
+  t.after(() => {
+    if (prev === undefined) delete process.env.FLOW_PROJECT_GITHUB_REPO;
+    else process.env.FLOW_PROJECT_GITHUB_REPO = prev;
+  });
+  process.env.FLOW_PROJECT_GITHUB_REPO = slug;
+}
+
+test('pullRequestUrl uses FLOW_PROJECT_GITHUB_REPO and stops with its name when unset or empty', t => {
+  const prev = process.env.FLOW_PROJECT_GITHUB_REPO;
+  t.after(() => {
+    if (prev === undefined) delete process.env.FLOW_PROJECT_GITHUB_REPO;
+    else process.env.FLOW_PROJECT_GITHUB_REPO = prev;
+  });
+
+  delete process.env.FLOW_PROJECT_GITHUB_REPO;
+  assert.throws(() => pullRequestUrl(42), /FLOW_PROJECT_GITHUB_REPO/);
+
+  process.env.FLOW_PROJECT_GITHUB_REPO = '   ';
+  assert.throws(() => pullRequestUrl(42), /FLOW_PROJECT_GITHUB_REPO/);
+
+  process.env.FLOW_PROJECT_GITHUB_REPO = 'example/throwaway-remediation';
+  assert.equal(pullRequestUrl(42), 'https://github.com/example/throwaway-remediation/pull/42');
+});
+
+test('the remediation order quotes the FAIL, names the playbook, and stops before the review', t => {
+  withGithubRepo(t);
   const order = remediationOrder({
     card: CARD,
     pr: 42,
@@ -144,7 +172,7 @@ test('the remediation order quotes the FAIL, names the playbook, and stops befor
     playbook: '.agents/skills/poteto-mode/playbooks/bug-fix.md',
   });
 
-  assert.match(order, /https:\/\/github\.com\/toddwyder\/card-machine\/pull\/42/);
+  assert.match(order, /https:\/\/github\.com\/example\/throwaway-remediation\/pull\/42/);
   assert.match(order, /JUL-307 Remediation: a FAIL goes back to the builder/);
   assert.match(order, /abc123/);
   assert.match(order, /CRITERION 1: FAIL — the loading state never appeared/);
@@ -154,7 +182,8 @@ test('the remediation order quotes the FAIL, names the playbook, and stops befor
   assert.match(order, /do not start the Shipping agent/i);
 });
 
-test('a fresh builder is given the card, its criteria and the same determination', () => {
+test('a fresh builder is given the card, its criteria and the same determination', t => {
+  withGithubRepo(t);
   const order = freshBuilderOrder({
     card: CARD,
     pr: 42,
@@ -177,7 +206,8 @@ test('a fresh builder is given the card, its criteria and the same determination
   assert.doesNotMatch(order, /gh pr checkout/);
 });
 
-test('the investigation is told both determinations, both causes, and what not to touch', () => {
+test('the investigation is told both determinations, both causes, and what not to touch', t => {
+  withGithubRepo(t);
   const order = investigationOrder({
     card: CARD,
     pr: 42,
@@ -198,7 +228,8 @@ test('the investigation is told both determinations, both causes, and what not t
   assert.match(order, /Do not fix anything/);
 });
 
-test('an investigation asked not to post says so plainly', () => {
+test('an investigation asked not to post says so plainly', t => {
+  withGithubRepo(t);
   const order = investigationOrder({
     card: CARD,
     pr: 42,

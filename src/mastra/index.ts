@@ -7,7 +7,7 @@ process.env.CMD_API_KEY ??= process.env.COMMANDCODE_API_KEY;
 
 import { resolve } from 'node:path';
 
-import { createAgents, projectRepoRoot, repoRoot } from '../../machine/flow/agents.mjs';
+import { createAgents, projectGithubRepo, projectRepoRoot, repoRoot } from '../../machine/flow/agents.mjs';
 import { graphifyTools } from '../../machine/flow/graphify.mjs';
 import { openMastra } from '../../machine/flow/mastra.mjs';
 import { CARD_PATH } from '../../machine/flow/schema.mjs';
@@ -16,6 +16,7 @@ import { buildCardPath } from '../../machine/flow/workflow.mjs';
 
 const repo = repoRoot();
 const projectRepo = projectRepoRoot();
+projectGithubRepo();
 const dir = resolve(repo, process.env.FLOW_DIR ?? '.artifacts/flow/studio');
 
 openScratch(dir);
