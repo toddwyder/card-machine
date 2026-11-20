@@ -15,10 +15,10 @@ import { sendCardCostRecord } from './cost-record.mjs';
 import { pruneTrace } from './mastra.mjs';
 import { acceptanceWaitMessage, notifyCard, reportText, tripwireStop } from './report.mjs';
 import { stopIfResourcesShort } from './resources.mjs';
-import { REVIEW_TIME_LIMIT_MS, criteriaFromCard, parseVerdict, realReview, reviewTask, verdictComment } from './review.mjs';
+import { REVIEW_TIME_LIMIT_MS, parseVerdict, realReview, reviewTask, verdictComment } from './review.mjs';
 import { cardState, flowData, runInput } from './schema.mjs';
 import { nextVerdict, openRun, readArtifact, sweepBuild, writeArtifact, writeLanding, writeReport, writeRetro } from './scratch.mjs';
-import { taskFromCard } from './task.mjs';
+import { criteriaFromCard, taskFromCard } from './task.mjs';
 
 const step = (id, execute, extra = {}) =>
   createStep({ id, inputSchema: flowData, outputSchema: flowData, ...extra, execute });

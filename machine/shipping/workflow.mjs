@@ -6,7 +6,8 @@
 
 import { getIssue } from '../../scripts/linear-cli.mjs';
 import { bootHarness, loadMastra, stopHarness } from './harness.mjs';
-import { criteriaFromCard, parseVerdict } from './determination.mjs';
+import { criteriaFromCard, withoutChecked } from '../flow/task.mjs';
+import { parseVerdict } from './determination.mjs';
 
 export const WORKFLOW_ID = 'shipping';
 export const PLAYBOOK = '.agents/skills/poteto-mode/playbooks/shipping.md';
@@ -69,7 +70,7 @@ export function reviewTask({ pr, sha, checkout, card, criteria }) {
     '--- card ---',
     `# ${card.title}`,
     '',
-    card.description ?? '',
+    withoutChecked(card.description),
     '--- end card ---',
     '',
     'For each criterion, run the command it names, exactly as written, inside this checkout. Decide from what the command printed and the exit code it gave. You may also run read-only commands to look around (cat, ls, git show, git diff, git log). Dependencies are already installed in the root and in dashboard/. Do not run npm ci, npm install, or any installer, and do not edit, commit, push, or otherwise change the checkout.',

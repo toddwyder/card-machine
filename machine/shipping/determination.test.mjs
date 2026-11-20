@@ -4,11 +4,11 @@ import test from 'node:test';
 import {
   commandsFromSpans,
   describeReturn,
-  criteriaFromCard,
   determinationComment,
   parseVerdict,
   playbookSteps,
 } from './determination.mjs';
+import { criteriaFromCard } from '../flow/task.mjs';
 
 const CARD = `One letter, so a machine can tell whether the check ran.
 

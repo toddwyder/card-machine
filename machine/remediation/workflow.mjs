@@ -4,7 +4,7 @@
 // it was given. The limit of two reviews lives in MAX_REVIEWS and nowhere else.
 
 import { loadMastra } from '../shipping/harness.mjs';
-import { criteriaFromCard } from '../shipping/determination.mjs';
+import { criteriaFromCard } from '../flow/task.mjs';
 import { pullRequestUrl } from './builder.mjs';
 import { BUG_FIX_PLAYBOOK, INVESTIGATION_PLAYBOOK, rootCauseFrom } from './builder.mjs';
 
