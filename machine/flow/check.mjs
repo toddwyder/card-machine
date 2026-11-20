@@ -40,14 +40,23 @@ export function evaluateBuildCheck({ tasks = [], steps = [], playbook = '' } = {
   return reasons.length === 0 ? { ok: true } : { ok: false, reasons, reason: reasons.join('; ') };
 }
 
-const selfScript = () => {
-  const here = dirname(fileURLToPath(import.meta.url));
+export const selfScript = ({
+  env = process.env,
+  cwd = process.cwd(),
+  moduleUrl = import.meta.url,
+} = {}) => {
+  const here = dirname(fileURLToPath(moduleUrl));
   const candidates = [
-    process.env.MASTRA_PROJECT_ROOT && resolve(process.env.MASTRA_PROJECT_ROOT, 'machine/flow/check.mjs'),
-    resolve(process.cwd(), 'machine/flow/check.mjs'),
+    env.FLOW_REPO && resolve(env.FLOW_REPO, 'machine/flow/check.mjs'),
+    env.MASTRA_PROJECT_ROOT && resolve(env.MASTRA_PROJECT_ROOT, 'machine/flow/check.mjs'),
+    resolve(cwd, 'machine/flow/check.mjs'),
     resolve(here, '../../machine/flow/check.mjs'),
   ].filter(Boolean);
-  return candidates.find(existsSync) ?? fileURLToPath(import.meta.url);
+  const found = candidates.find(existsSync);
+  if (!found) {
+    throw new Error(`machine/flow/check.mjs not found; tried: ${candidates.join(', ')}`);
+  }
+  return found;
 };
 
 const crashCause = (error, stderr) => {

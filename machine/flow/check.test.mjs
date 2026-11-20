@@ -3,13 +3,14 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 process.env.CMD_API_KEY ??= 'unused-in-tests';
 
 const { Agent } = await import('@mastra/core/agent');
 const { createMockModel } = await import('@mastra/core/test-utils/llm-mock');
-const { evaluateBuildCheck, realCheck } = await import('./check.mjs');
+const { evaluateBuildCheck, realCheck, selfScript } = await import('./check.mjs');
 const { buildCardPath } = await import('./workflow.mjs');
 const { openMastra } = await import('./mastra.mjs');
 const { openScratch } = await import('./scratch.mjs');
@@ -276,4 +277,63 @@ test('a fatal check failure stops the card immediately with a report naming the 
   assert.match(reportText, /JavaScript heap out of memory/);
   await mastra.shutdown();
   try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('selfScript returns FLOW_REPO check.mjs when MASTRA_PROJECT_ROOT points at .mastra and the bundle lives under FLOW_DIR', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'flow-selfscript-'));
+  t.after(() => { try { rmSync(dir, { recursive: true, force: true }); } catch {} });
+
+  const flowRepo = join(dir, 'repo');
+  const expected = join(flowRepo, 'machine/flow/check.mjs');
+  mkdirSync(join(flowRepo, 'machine/flow'), { recursive: true });
+  writeFileSync(expected, '// check\n');
+
+  const flowDir = join(dir, 'flow-dir');
+  const mastraDir = join(flowDir, '.mastra');
+  const bundle = join(mastraDir, 'output/index.mjs');
+  mkdirSync(join(mastraDir, 'output'), { recursive: true });
+  writeFileSync(bundle, '// bundle\n');
+
+  const cwd = join(dir, 'public');
+  mkdirSync(cwd, { recursive: true });
+
+  const resolved = selfScript({
+    env: { FLOW_REPO: flowRepo, MASTRA_PROJECT_ROOT: mastraDir },
+    cwd,
+    moduleUrl: pathToFileURL(bundle).href,
+  });
+  assert.equal(resolved, expected);
+});
+
+test('selfScript throws a clear error naming all tried paths when no candidate exists', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'flow-selfscript-missing-'));
+  t.after(() => { try { rmSync(dir, { recursive: true, force: true }); } catch {} });
+
+  const flowRepo = join(dir, 'missing-repo');
+  const mastraDir = join(dir, 'flow-dir/.mastra');
+  const bundle = join(mastraDir, 'output/index.mjs');
+  mkdirSync(join(mastraDir, 'output'), { recursive: true });
+  writeFileSync(bundle, '// bundle\n');
+  const cwd = join(dir, 'public');
+  mkdirSync(cwd, { recursive: true });
+
+  assert.throws(
+    () => selfScript({
+      env: { FLOW_REPO: flowRepo, MASTRA_PROJECT_ROOT: mastraDir },
+      cwd,
+      moduleUrl: pathToFileURL(bundle).href,
+    }),
+    err => {
+      assert.match(err.message, /machine\/flow\/check\.mjs not found/);
+      for (const candidate of [
+        join(flowRepo, 'machine/flow/check.mjs'),
+        join(mastraDir, 'machine/flow/check.mjs'),
+        join(cwd, 'machine/flow/check.mjs'),
+        join(dir, 'flow-dir/machine/flow/check.mjs'),
+      ]) {
+        assert.ok(err.message.includes(candidate), `missing candidate in error: ${candidate}`);
+      }
+      return true;
+    },
+  );
 });

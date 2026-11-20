@@ -12,7 +12,7 @@ of any size, not only a change to the sentence beside it.
 | `src/mastra/index.ts` | The Studio entry. Registers the card workflow so the run form can start a card. | `7b067668eb00748fb4ac9f8f757d8568898e8edc27bf938c2523a279f5eba7b6` |
 | `machine/flow/workflow.mjs` | The order of the stages, the loops and the one place a card waits. | `78a2ce3a4175ceacbde3a472595337adc5d66cb16665a8f42cd1ad4506aee476` |
 | `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `4ff3e6a2339b27d9af191ba04b276a28452d2f637a0c123f506b1b39b2b1874f` |
-| `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `698b9481a66e2d533c5c9603d9fec6b8797030efebb410d95519c80cb0754cf8` |
+| `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `d901ebec78c181644defcbdd4a4eafe48c28e8fd7c91afa820ef7d874ec4c4d0` |
 | `machine/flow/task.mjs` | The task the Lead is given, taken word for word from the card. | `21aca1ef4c2b964d729b93317061b1a23f0e38773b26e8aa1c9f951581fa62e7` |
 | `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `99e6175d940acc2064010b7e8e63a0a3e1a5aaf99d5797395c6f96ef0730baaf` |
 | `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `90531eb2366f1c5bb03ac23014363ff8b2498c7da931d59a6a29981e276f2a31` |
