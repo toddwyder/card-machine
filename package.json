@@ -1,0 +1,47 @@
+{
+  "name": "card-machine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint:framework": "eslint machine/flow --max-warnings 0",
+    "guard:flow": "npm run lint:framework && depcruise --config .dependency-cruiser.mjs machine/flow machine/flow/run.mjs",
+    "guard:boundaries": "depcruise --config .dependency-cruiser.mjs machine src/mastra",
+    "test:mutation": "stryker run stryker.config.mjs",
+    "test:mutation:changed": "node scripts/mutation-changed.mjs",
+    "check:programs": "node scripts/machine-programs.mjs --check",
+    "check:server": "node scripts/check-server-in-use.mjs",
+    "check:studio": "node scripts/check-studio-start.mjs",
+    "check:lead": "node scripts/check-lead.mjs",
+    "check:model-picker": "node scripts/check-model-picker.mjs",
+    "check:julia-reach": "node scripts/check-no-julia-reach.mjs"
+  },
+  "dependencies": {
+    "@sentry/node": "^11.0.0",
+    "firebase": "13.4.0",
+    "firebase-admin": "14.5.1",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@duckdb/node-api": "1.5.2-r.2",
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
+    "@firebase/rules-unit-testing": "6.0.0",
+    "@mastra/code-sdk": "1.20.0",
+    "@mastra/core": "1.85.0",
+    "@mastra/duckdb": "1.19.1",
+    "@mastra/libsql": "1.31.1",
+    "@mastra/mcp": "2.10.0",
+    "@mastra/memory": "1.41.2",
+    "@mastra/observability": "1.24.2",
+    "@playwright/test": "1.65.1",
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/tap-runner": "10.1.1",
+    "dependency-cruiser": "18.8.0",
+    "eslint": "10.15.0",
+    "firebase-tools": "15.37.0",
+    "mastra": "1.38.0",
+    "zod": "4.6.7"
+  }
+}

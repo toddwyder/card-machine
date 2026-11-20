@@ -1,0 +1,51 @@
+---
+name: "tighten"
+description: "Tighten a plan, brief, card, slice or agent prompt before it goes to Todd or an agent. Use when creating or editing any of them."
+---
+
+# Tighten
+
+Seven steps, in order. Each step ends when its completion criterion holds.
+
+## 1. Cut to what blocks (YAGNI)
+
+List every item in the draft. Keep an item only if the next step cannot start without it. Move housekeeping to one cleanup card. Read the neighbouring slices, the plan and AGENTS.md, and delete whatever is already enforced elsewhere, repeated in another slice, or untestable before the next step exists.
+
+Done when every item names what it unblocks and appears once.
+
+## 2. Move it up the pyramid (code, not prose)
+
+Take each rule, instruction or hope in the draft and climb docs/principles/inverse-pyramid.md from the top: first a change to the code itself (types, structure, a boundary that makes the right thing the easy thing), then a lint rule, test, CI check or verification, then prose. Write a rule as prose only when no code can hold it.
+
+Done when every prose rule names the rungs above it and why none could hold it.
+
+## 3. Sharpen
+
+Run the sharpen skill on what is left.
+
+Done when the sharpen skill's rewrite is applied to the draft.
+
+## 4. Make it verifiable
+
+Ask: how do we make this change fully verifiable? For each criterion, name the evidence that proves it where Todd would look, and the check that someone other than the author runs on it. Rewrite any criterion that lacks one.
+
+Done when every criterion names its evidence and its outside check.
+
+## 5. Map the path
+
+List every dependency the agent will meet: credentials, permissions, access, a human click, a vault it cannot see. Settle each one in the draft. Reduce a human action to one atomic approval, and design a secret out of the path instead of passing it to Todd.
+
+
+Done when the agent holds every answer it needs.
+
+## 6. Write for agents
+
+Apply the writing-for-agents skill: positive phrasing, one source of truth per meaning, a completion criterion per step, plain words, and only lines that change what the agent does. Write each criterion as a command plus a condition that stays true while the code changes, and leave counts out: "runs 7 tests" fails the day an eighth test is added. For a card, run `node scripts/check-agent-brief.mjs <file>`.
+
+Done when the checker exits 0 and every criterion is something Todd can see.
+
+## 7. Hand over
+
+Present with the advisor skill: one copyable block, a plain line on what it does and why, every link in the same message. Julia prompts also pass julia-route-check.
+
+Done when Todd can send it unchanged.
