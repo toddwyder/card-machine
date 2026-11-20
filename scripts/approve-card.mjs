@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 import { withoutChecked } from '../machine/flow/task.mjs';
+import { PASSED_VERDICT } from './check-agent-brief.mjs';
 import { createIssue, setIssueState, updateIssue } from './linear-cli.mjs';
 
 const headingLine = /^#{1,6}[ \t]+\S/;
@@ -28,14 +29,14 @@ export function checkedLines(text) {
   return heading === -1 ? null : lines.slice(heading + 1);
 }
 
-// The checker writes this section, and its exact all-passed wording is not
-// settled yet, so the rule is the narrow one both sides agree on today: a line
-// that starts "Failed:" is a failure, and a section with no lines says nothing.
+// A section passes when it ends on the checker's all-passed verdict. Lines the
+// checker could not check (an unreachable link) still pass, because Todd judges
+// those at approval.
 export function checkedPassed(text) {
   const lines = checkedLines(text);
   if (lines === null) return false;
   const said = lines.map(line => line.trim()).filter(Boolean);
-  return said.length > 0 && !said.some(line => line.startsWith('Failed:'));
+  return said.length > 0 && PASSED_VERDICT.test(said.at(-1));
 }
 
 export function approvedCard(draftText) {

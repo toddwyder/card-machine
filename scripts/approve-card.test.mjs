@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { approve, approvedCard, checkedPassed, parseArgs } from './approve-card.mjs';
+import { renderChecked } from './check-agent-brief.mjs';
 
 // Trailing spaces are written as a constant so the character-for-character
 // comparison below can see them.
@@ -24,7 +25,9 @@ const body = [
   '- One line.',
   '- Another line.',
 ];
-const checked = ['', '## Checked', '', 'Passed: the done means are read', 'Passed: one proof per line', 'All checks passed.'];
+const result = (title, status, details = []) => ({ title, status, details });
+const passing = [result('The done means are read', 'passed'), result('One proof per line', 'passed')];
+const checked = ['', ...renderChecked(passing).split('\n')];
 const draft = ['# The card checker writes its result on the card', ...body, ...checked, ''].join('\n');
 const description = body.join('\n');
 
@@ -66,10 +69,16 @@ test('a Checked section with a failed line is refused, and Linear is untouched',
     createIssue: async () => { calls.push('createIssue'); return { identifier: 'JUL-501', url: 'u' }; },
     setIssueState: async () => { calls.push('setIssueState'); },
   };
-  const failed = `${draft}Failed: one proof per done-means line`;
+  const failing = renderChecked([passing[0], result('One proof per line', 'failed', ['line 9 has no proof'])]);
+  const failed = `${draft.slice(0, draft.indexOf('## Checked'))}${failing}\n`;
   assert.equal(checkedPassed(failed), false);
   await assert.rejects(approve(failed, { kind: 'card', value: 'JUL-407' }, deps), /no Checked section that passed/);
   assert.deepEqual(calls, []);
+});
+
+test('a link the checker could not reach still lets the card through for Todd to judge', () => {
+  const section = renderChecked([passing[0], result('Every link resolves', 'not checked', ['https://example.com timed out'])]);
+  assert.equal(checkedPassed(`${draft.slice(0, draft.indexOf('## Checked'))}${section}\n`), true);
 });
 
 function recorder(identifier) {

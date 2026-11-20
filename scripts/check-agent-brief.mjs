@@ -494,6 +494,10 @@ export async function checkDraft(draft, ctx) {
 
 const sentence = text => (/[.!?]$/.test(text) ? text : `${text}.`);
 
+// The verdict line renderChecked ends on when nothing failed. approve-card reads
+// it, so the wording lives here once.
+export const PASSED_VERDICT = /^All \d+ checks passed/;
+
 export function renderChecked(results) {
   const failures = results.filter(result => result.status === 'failed').length;
   const pending = results.filter(result => result.status === 'not checked').length;
