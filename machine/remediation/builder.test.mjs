@@ -11,7 +11,7 @@ import {
   rootCauseFrom,
 } from './builder.mjs';
 
-const ROOT = '/home/ubuntu/julia-builder';
+const ROOT = '/home/ubuntu/card-machine';
 const CARD = { identifier: 'JUL-307', title: 'Remediation: a FAIL goes back to the builder', description: 'The outcome.' };
 
 function userTurn(text) {
@@ -144,7 +144,7 @@ test('the remediation order quotes the FAIL, names the playbook, and stops befor
     playbook: '.agents/skills/poteto-mode/playbooks/bug-fix.md',
   });
 
-  assert.match(order, /https:\/\/github\.com\/toddwyder\/julia-next\/pull\/42/);
+  assert.match(order, /https:\/\/github\.com\/toddwyder\/card-machine\/pull\/42/);
   assert.match(order, /JUL-307 Remediation: a FAIL goes back to the builder/);
   assert.match(order, /abc123/);
   assert.match(order, /CRITERION 1: FAIL — the loading state never appeared/);

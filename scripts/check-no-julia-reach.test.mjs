@@ -15,12 +15,22 @@ test('repository has no reach into Julia repository', () => {
 test('planted reach into Julia repository fails and names the reach', t => {
   const dir = mkdtempSync(join(tmpdir(), 'no-julia-reach-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  mkdirSync(join(dir, 'machine', 'flow'), { recursive: true });
-  const planted = `import { read } from '../../${'julia'}-next/lib/recipes.js';\n`;
-  writeFileSync(join(dir, 'machine', 'flow', 'planted.mjs'), planted);
+  for (const rel of [
+    'machine/flow/planted.mjs',
+    'machine/merge/planted.mjs',
+    'machine/remediation/planted.mjs',
+    'machine/shipping/planted.mjs',
+    'scripts/planted.test.mjs',
+  ]) {
+    mkdirSync(join(dir, rel, '..'), { recursive: true });
+    writeFileSync(join(dir, rel), `import { read } from '../../${'julia'}-next/lib/recipes.js';\n`);
+  }
 
   const failures = checkNoJuliaReach(dir);
-  assert.equal(failures.length > 0, true);
   assert.match(failures.join('\n'), /machine\/flow\/planted\.mjs:1:/);
+  assert.match(failures.join('\n'), /machine\/merge\/planted\.mjs:1:/);
+  assert.match(failures.join('\n'), /machine\/remediation\/planted\.mjs:1:/);
+  assert.match(failures.join('\n'), /machine\/shipping\/planted\.mjs:1:/);
+  assert.match(failures.join('\n'), /scripts\/planted\.test\.mjs:1:/);
   assert.match(failures.join('\n'), new RegExp(`${'julia'}-next`));
 });

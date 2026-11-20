@@ -212,7 +212,7 @@ test('two FAILs in a row run the investigation once and stop with a ping that na
 
   assert.equal(calls.pings.length, 1, 'Todd is pinged once');
   const ping = calls.pings[0];
-  assert.match(ping.message, /https:\/\/github\.com\/toddwyder\/julia-next\/pull\/42/);
+  assert.match(ping.message, /https:\/\/github\.com\/toddwyder\/card-machine\/pull\/42/);
   assert.match(ping.message, /Root cause: Shipping is the first thing that opens the page\./);
   assert.match(ping.message, /Review 1 on commit-shipping-judged: FAIL/);
   assert.equal(record.stop.ping.posted, true);

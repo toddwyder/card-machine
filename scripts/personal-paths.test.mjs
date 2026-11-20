@@ -48,8 +48,8 @@ test('findPersonalPaths finds multiple paths in text', () => {
 
 test('findPersonalPaths returns empty array when no personal-machine paths exist', () => {
   assert.deepEqual(findPersonalPaths(''), []);
-  assert.deepEqual(findPersonalPaths('C:\\Dev\\julia-next'), []);
-  assert.deepEqual(findPersonalPaths('/home/runner/julia-next'), []);
+  assert.deepEqual(findPersonalPaths('C:\\Dev\\card-machine'), []);
+  assert.deepEqual(findPersonalPaths('/home/runner/card-machine'), []);
   assert.deepEqual(findPersonalPaths('/opt/Orca/orca-ide'), []);
   assert.deepEqual(findPersonalPaths('const x = 42;'), []);
 });

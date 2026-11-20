@@ -31,12 +31,12 @@ import {
 
 test('reportLinkTarget prefers the PR comment URL and falls back to the PR URL', () => {
   assert.equal(
-    reportLinkTarget({ prUrl: 'https://github.com/toddwyder/julia-next/pull/564', commentUrl: 'https://github.com/toddwyder/julia-next/pull/564#issuecomment-1' }),
-    'https://github.com/toddwyder/julia-next/pull/564#issuecomment-1',
+    reportLinkTarget({ prUrl: 'https://github.com/toddwyder/card-machine/pull/564', commentUrl: 'https://github.com/toddwyder/card-machine/pull/564#issuecomment-1' }),
+    'https://github.com/toddwyder/card-machine/pull/564#issuecomment-1',
   );
   assert.equal(
-    reportLinkTarget({ prUrl: 'https://github.com/toddwyder/julia-next/pull/564', commentUrl: null }),
-    'https://github.com/toddwyder/julia-next/pull/564',
+    reportLinkTarget({ prUrl: 'https://github.com/toddwyder/card-machine/pull/564', commentUrl: null }),
+    'https://github.com/toddwyder/card-machine/pull/564',
   );
 });
 
@@ -162,7 +162,7 @@ test('every candidate model failing sends one high-priority ntfy notification ac
     const pr = {
       number: 570,
       title: 'chore(deps): update dependency eslint to v10.16.0',
-      html_url: 'https://github.com/toddwyder/julia-next/pull/570',
+      html_url: 'https://github.com/toddwyder/card-machine/pull/570',
       state: 'closed',
       merged_at: '2026-11-19T06:00:00Z',
       merge_commit_sha: 'deadbeef1234',
@@ -237,7 +237,7 @@ test('every candidate model failing sends one high-priority ntfy notification ac
     assert.equal(ntfyPosts[0].headers.Click, pr.html_url);
     assert.match(ntfyPosts[0].body, /eslint 10\.15\.0->10\.16\.0/);
     assert.match(ntfyPosts[0].body, /rate limit/i);
-    assert.match(ntfyPosts[0].body, /https:\/\/github\.com\/toddwyder\/julia-next\/pull\/570/);
+    assert.match(ntfyPosts[0].body, /https:\/\/github\.com\/toddwyder\/card-machine\/pull\/570/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -42,7 +42,7 @@ test('a rerun picks up the rounds that already posted, and the builder it woke',
   const saved = {
     pr: 42,
     card: { identifier: CARD },
-    reviews: [{ round: 1, verdict: 'FAIL', postedUrl: 'https://github.com/toddwyder/julia-next/pull/42#x' }],
+    reviews: [{ round: 1, verdict: 'FAIL', postedUrl: 'https://github.com/toddwyder/card-machine/pull/42#x' }],
     builder: { threadId: 'thread-of-the-builder', resumed: true },
   };
   assert.deepEqual(seedFrom(saved, { pr: 42, card: CARD }), { reviews: saved.reviews, builder: saved.builder });

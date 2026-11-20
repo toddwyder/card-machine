@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { branchesWithoutOpenPullRequests } from './check-branch-pr.mjs';
 
-const repository = 'toddwyder/julia-next';
+const repository = 'toddwyder/card-machine';
 
 test('non-main branches without an open pull request fail', () => {
   const branches = [{ name: 'main' }, { name: 'build/jul-253' }, { name: 'orphan' }];
