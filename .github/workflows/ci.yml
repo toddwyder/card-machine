@@ -1,0 +1,141 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-22.04
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Find out whether only documents changed
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          docs_only=false
+          if [[ "$EVENT" == pull_request ]]; then
+            files=$(git diff --name-only "$BASE" "$HEAD")
+            if [[ -n "$files" ]] && ! grep -qv '\.md$' <<< "$files"; then
+              docs_only=true
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
+  repository-hygiene:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Validate Renovate configuration
+        run: npx --yes --package renovate@44.251.0 -- renovate-config-validator --strict
+      - name: Check skill names are unique
+        run: node scripts/check-skill-names.mjs
+      - name: Check skill version records agree
+        run: node scripts/check-skill-versions.mjs
+      - name: Check installed pstack matches its pinned commit
+        run: node scripts/check-pstack-pin.mjs
+      - name: Check agent-read files point at paths that exist
+        run: node scripts/check-agent-links.mjs
+      - name: Check the ADR folder stays retired
+        run: node scripts/check-no-adr-folder.mjs
+      - name: Check agent-facing docs name kinds of model only
+        run: node scripts/check-doc-models.mjs
+      - name: Check the knowledge graph answers only from tracked paths
+        run: node scripts/check-graph-sources.mjs
+      - name: Check the machine program list is up to date
+        run: node scripts/machine-programs.mjs --check
+      - name: Check no reach into Julia repository outside the project setting
+        run: node scripts/check-no-julia-reach.mjs
+      - name: Check every branch has an open pull request
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-branch-pr.mjs
+
+  package-tests:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            dashboard/package-lock.json
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - name: Plan the test owners
+        run: node scripts/test-owners.mjs --plan
+      - name: Install each local owner's locked dependencies
+        run: node scripts/test-owners.mjs --install local
+      - name: Run local owners' tests
+        run: node scripts/test-owners.mjs --run local
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Install the application's locked dependencies
+        run: npm ci
+      - name: Guard the workflow folder
+        run: npm run guard:flow
+      - name: Guard the machine boundaries
+        run: npm run guard:boundaries
+
+  checks:
+    needs: [changes, repository-hygiene, package-tests, web]
+    if: always()
+    runs-on: ubuntu-22.04
+    env:
+      CHANGES: ${{ needs.changes.result }}
+      DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+      REPOSITORY_HYGIENE: ${{ needs.repository-hygiene.result }}
+      PACKAGE_TESTS: ${{ needs.package-tests.result }}
+      WEB: ${{ needs.web.result }}
+    steps:
+      - name: Require every job to pass
+        run: |
+          set -euo pipefail
+          [[ "$CHANGES" == success ]]
+          [[ "$REPOSITORY_HYGIENE" == success ]]
+          if [[ "$DOCS_ONLY" == true ]]; then
+            [[ "$PACKAGE_TESTS" == skipped ]]
+            [[ "$WEB" == skipped ]]
+          else
+            [[ "$PACKAGE_TESTS" == success ]]
+            [[ "$WEB" == success ]]
+          fi
