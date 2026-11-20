@@ -1,0 +1,69 @@
+# AGENTS.md — Julia
+
+Julia uses pstack (adopted 22 October 2026). pstack builds and proves. This file is the whole rulebook.
+
+## Work
+- Build with the poteto-mode skill and follow it as written.
+- Before planning a card, read [docs/plans/path-forward.md](docs/plans/path-forward.md) for Todd's delivery flow and decisions.
+- When pstack slices a card, each slice is a Linear sub-issue of that card, in order, carrying that slice's done-means from the plan. The parent completes only when its last sub-issue does.
+- Fix every correction as high in [the inverse pyramid](docs/principles/inverse-pyramid.md) as it will go; a written rule is the last resort.
+- A build run stops at Mastra's $4 cost guard and the card's own dollar ledger; [docs/agents/cost-guard.md](docs/agents/cost-guard.md) says what the guard cannot count.
+- Framework facts come from the installed packages and their version-matched official docs.
+- A rule, agent-facing doc, or acceptance criterion names a kind of model, a free model or a paid model. A specific model lives in the pstack models file or settings (`dashboard/config/roles.json`), never in docs; `node scripts/check-agent-brief.mjs` flags a criterion that names one.
+- A card begins in Mastra Studio's run form and nowhere else; no script starts one. [docs/agents/machine-programs.md](docs/agents/machine-programs.md) names every program that begins a card or carries a stage.
+- Commit and push as you go, and open the pull request in the same step: `check-branch-pr` fails any branch that is pushed without one. Publish with gh using the ordinary signed-in GitHub access.
+
+## Graphify
+This repository has two knowledge graphs built with [Graphify](https://docs.graphify.com).
+- Julia code, Julia docs and the pstack skills are in `graphify-out/graph.json`. Ask it with `graphify query "<question>"` before grepping or reading files.
+- The Mastra documentation installed here is in `graphify-out/mastra/graph.json`. Ask it with `graphify query "<question>" --graph graphify-out/mastra/graph.json`.
+- For one symbol, use `graphify explain "<symbol>"`. For what depends on it, use `graphify affected "<symbol>"`.
+- Code rebuilds after each commit through the installed git hooks. Markdown changes and Mastra upgrades need the commands in [docs/agents/graphify.md](docs/agents/graphify.md).
+
+## Todd
+Todd decides what Julia does for the household and gives UAT. Everything else is yours: decide it and record it in the decision log. When a step truly needs his own account, show that nothing else can do it, reduce it to one approval he clicks, and keep working while it is pending.
+Todd gives every builder session pstack's full-autonomy grant. It pre-approves deleting server files and folders from finished or closed work, changing server configuration and schedulers, and merging to main once required checks pass. Bring Todd only decisions about what Julia does for the household, UAT, steps requiring his own account, and deletion of household data.
+
+- A turn ends finished or blocked on a named decision he can answer from the message; never on a progress line.
+- An approval with conditions is one open item per condition, quoted as he wrote it, closed only with evidence.
+- Telling him means a channel that reaches him; a tracker comment notifies nobody until you read back what his end shows.
+
+## Server
+- Agents run as ubuntu with admin rights; Todd accepts the risks.
+- Put disposable checkouts, copies, and run artifacts under `~/.local/state/julia-scratch`, including when a skill suggests a different temporary path. Keep Studio run state in `.artifacts/flow`.
+- Commands needing Julia keys: `node scripts/julia-agents.mjs -- <command>`.
+- Before changing the server, read `docs/agents/server-runbook.md`. When a card uses a Julia word you don't know, read [GLOSSARY.md](GLOSSARY.md).
+- Linear holds cards and requirements. GitHub holds code.
+
+## Done means a record
+A build is done when a run produced a record, not when the builder says it passed. The builder never runs the machine that judges the work. When the build is ready the builder asks the runner for a run and reads the record, and that ends the build. A failed verdict is a result on the card, the same as a passing one: it is written down, it is not the builder's failure, and the builder does not go hunting for a PASS.
+
+## Finish
+A card is finished when its PR is merged to main (after Todd's UAT yes when the card changes something he uses), main CI is green on the merge commit, and the card is Complete in Linear with that commit in a comment.
+
+After a slice merges, run the retro skill on that slice's session and put its fixes in one PR, with a plain-English list of each fix for Todd to approve: the mistake it came from, what the check does, and what it would now block. Mastra's storage retention prunes old trace rows at the end of every card. The next slice does not wait for that PR.
+
+## Enforced rules
+
+| Rule | Enforcement |
+| --- | --- |
+| Skill names are unique across the installed catalogs. | `node scripts/check-skill-names.mjs` rejects duplicate frontmatter names. |
+| Current agent-read files point only at paths that exist. | `node scripts/check-agent-links.mjs` checks the entry points, pstack skills, and `ask-matt`. |
+| The ADR folder stays retired; no document may be added to `docs/adr`. | `node scripts/check-no-adr-folder.mjs` runs in the `repository-hygiene` CI job. `scripts/check-no-adr-folder.test.mjs` plants a document in `docs/adr` and fails if the check stops catching it. |
+| Agent-facing docs name kinds of model only (free or paid), never specific models. | `node scripts/check-doc-models.mjs` runs in the `repository-hygiene` CI job. `scripts/check-doc-models.test.mjs` plants a specific model name in an agent-facing doc and fails if the check stops catching it. |
+| The committed knowledge graph answers only from paths the repository carries or installed packages. | `node scripts/check-graph-sources.mjs` runs in the `repository-hygiene` CI job. `scripts/check-graph-sources.test.mjs` plants an outside-repo source in the graph and fails if the check stops catching it. |
+| Every branch except `main` has an open pull request to `main`. | `node scripts/check-branch-pr.mjs` audits GitHub branches and open pull requests in CI. |
+| The machine program list names every program that begins a card or carries a stage, and stays current. | `node scripts/machine-programs.mjs --check` fails when a listed program's file changed, when a listed program is gone, or when `machine/flow` holds a program the list never names. CI runs it in the hygiene job, and the failure names the program and the `--write` command. |
+| The workflow folder keeps the stock shape: no old stage, no library outside the allowed set, no piece the entry cannot reach, no timer or retry loop, no hand-built progress file, no comment that switches a guard off. | `npm run guard:flow` runs ESLint and dependency-cruiser on `machine/flow` as the one CI guard check. `machine/guards/guard.test.mjs` plants one violation per kind and fails if a rule stops catching it. |
+| Renovate configuration is valid and strict-checked. | `npx --yes --package renovate@44.251.0 -- renovate-config-validator --strict` runs in the `repository-hygiene` CI job. |
+| Every workflow `uses:` reference is pinned to a full commit SHA, no workflow sets a literal `node-version`, and `renovate.json` preserves minor/patch grouping. | `scripts/renovate-config.test.mjs` runs with the local package tests and plants one violation per rule to prove each check catches it. |
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

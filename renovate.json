@@ -1,0 +1,39 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    "schedule:weekly"
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    ".agents/skills/**"
+  ],
+  "automergeType": "pr",
+  "platformAutomerge": false,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "automerge": false
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "minor and patch updates"
+    },
+    {
+      "matchPackageNames": ["mastra", "@mastra/**"],
+      "groupName": "mastra packages"
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    }
+  ]
+}

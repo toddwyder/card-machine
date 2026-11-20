@@ -1,0 +1,411 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { linearGraphQL, getIssue, postComment, postCommentToIssueId, checkForToddGuard, findStateId, setIssueState, commentBodyFromArgs } from './linear-cli.mjs';
+
+function fakeFetch(responses) {
+  let call = 0;
+  return async (url, opts) => {
+    const response = responses[call];
+    call += 1;
+    return {
+      ok: response.ok ?? true,
+      status: response.status ?? 200,
+      json: async () => response.body,
+    };
+  };
+}
+
+// 1 November 2026: the Shipping machine read `getIssue('JUL-305')` with no options, and the
+// refusal it would hit says "pass LINEAR_API_KEY" while the variable was set all along. The key
+// came only from the `apiKey` field, so a run with a working key died in 28 ms. The client now
+// reads the variable too, which means these tests must not inherit one.
+async function withoutKey(run) {
+  const before = process.env.LINEAR_API_KEY;
+  delete process.env.LINEAR_API_KEY;
+  try {
+    return await run();
+  } finally {
+    if (before === undefined) delete process.env.LINEAR_API_KEY;
+    else process.env.LINEAR_API_KEY = before;
+  }
+}
+
+test('linearGraphQL refuses to run without an API key', async () => {
+  await withoutKey(() => assert.rejects(() => linearGraphQL('query {}', {}, {}), /apiKey is required/));
+});
+
+test('linearGraphQL reads the key from LINEAR_API_KEY when the caller passes none', async () => {
+  let capturedHeaders;
+  const fetchImpl = async (url, opts) => {
+    capturedHeaders = opts.headers;
+    return { ok: true, status: 200, json: async () => ({ data: {} }) };
+  };
+  await withoutKey(async () => {
+    process.env.LINEAR_API_KEY = 'lin_api_from_the_variable';
+    await linearGraphQL('query {}', {}, { fetchImpl });
+  });
+  assert.equal(capturedHeaders.Authorization, 'lin_api_from_the_variable');
+});
+
+test('a key the caller passes wins over the variable', async () => {
+  let capturedHeaders;
+  const fetchImpl = async (url, opts) => {
+    capturedHeaders = opts.headers;
+    return { ok: true, status: 200, json: async () => ({ data: {} }) };
+  };
+  await withoutKey(async () => {
+    process.env.LINEAR_API_KEY = 'lin_api_from_the_variable';
+    await linearGraphQL('query {}', {}, { apiKey: 'lin_api_from_the_caller', fetchImpl });
+  });
+  assert.equal(capturedHeaders.Authorization, 'lin_api_from_the_caller');
+});
+
+test('getIssue works with no key argument, which is how the Shipping machine calls it', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { data: { viewer: { id: 'actor-1', name: 'Julia' }, issue: { id: 'uuid-301', identifier: 'JUL-301', title: 'Ship it', url: 'https://linear.app/x' } } } },
+  ]);
+  const issue = await withoutKey(async () => {
+    process.env.LINEAR_API_KEY = 'lin_api_from_the_variable';
+    return getIssue('JUL-301', { fetchImpl });
+  });
+  assert.equal(issue.identifier, 'JUL-301');
+});
+
+test('linearGraphQL sends the key as the Authorization header, not a Bearer-prefixed one -- Linear expects the raw key', async () => {
+  let capturedHeaders;
+  const fetchImpl = async (url, opts) => {
+    capturedHeaders = opts.headers;
+    return { ok: true, status: 200, json: async () => ({ data: {} }) };
+  };
+  await linearGraphQL('query {}', {}, { apiKey: 'lin_api_test123', fetchImpl });
+  assert.equal(capturedHeaders.Authorization, 'lin_api_test123');
+});
+
+test('linearGraphQL throws with the response errors on a non-ok or errored response', async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ errors: [{ message: 'nope' }] }) });
+  await assert.rejects(() => linearGraphQL('query {}', {}, { apiKey: 'k', fetchImpl }), /nope/);
+});
+
+test('getIssue reads back the issue fields', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { data: { viewer: { id: 'actor-1', name: 'Julia' }, issue: { id: 'uuid-1', identifier: 'JUL-77', title: 'Seat table', url: 'https://linear.app/x' } } } },
+  ]);
+  const issue = await getIssue('JUL-77', { apiKey: 'k', fetchImpl });
+  assert.equal(issue.identifier, 'JUL-77');
+  assert.equal(issue.title, 'Seat table');
+  assert.deepEqual(issue.linearActor, { id: 'actor-1', name: 'Julia' });
+});
+
+test('getIssue asks Linear for the issue labels (and its state), so the coordinator can resolve the seats', async () => {
+  let query;
+  const fetchImpl = async (url, opts) => {
+    query = JSON.parse(opts.body).query;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          issue: {
+            id: 'uuid-1',
+            identifier: 'JUL-79',
+            labels: { nodes: [{ name: 'builder-claude-opus' }, { name: 'reviewer-codex' }] },
+            state: { name: 'Ready', type: 'unstarted' },
+          },
+        },
+      }),
+    };
+  };
+  const issue = await getIssue('JUL-79', { apiKey: 'k', fetchImpl });
+  assert.match(query, /labels\s*\{\s*nodes\s*\{\s*name\s*\}\s*\}/);
+  assert.match(query, /state\s*\{\s*name\s+type\s*\}/);
+  assert.deepEqual(issue.labels.nodes.map((node) => node.name), ['builder-claude-opus', 'reviewer-codex']);
+});
+
+test('postComment resolves the identifier to a UUID first, then creates the comment against it', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { data: { issue: { id: 'uuid-77' } } } },
+    { body: { data: { commentCreate: { success: true, comment: { id: 'c1', url: 'https://linear.app/c1' } } } } },
+  ]);
+  const comment = await postComment('JUL-77', 'hello from the Linear command', { apiKey: 'k', fetchImpl });
+  assert.equal(comment.id, 'c1');
+});
+
+test('postCommentToIssueId uses the already-read UUID without another card lookup', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { data: { commentCreate: { success: true, comment: { id: 'c1', url: 'https://linear.app/c1' } } } } },
+  ]);
+  const comment = await postCommentToIssueId('uuid-77', 'hello from the Linear command', { apiKey: 'k', fetchImpl });
+  assert.equal(comment.id, 'c1');
+});
+
+test('postComment throws when Linear reports success: false', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { data: { issue: { id: 'uuid-77' } } } },
+    { body: { data: { commentCreate: { success: false, comment: null } } } },
+  ]);
+  await assert.rejects(() => postComment('JUL-77', 'x', { apiKey: 'k', fetchImpl }), /did not report success/);
+});
+
+test('setIssueState moves the card to the state named on the board', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { data: { issue: { id: 'uuid-283', team: { states: { nodes: [
+      { id: 's-backlog', name: 'Backlog', type: 'backlog' },
+      { id: 's-done', name: 'Complete', type: 'completed' },
+    ] } } } } } },
+    { body: { data: { issueUpdate: { success: true, issue: { id: 'uuid-283', identifier: 'JUL-283', state: { name: 'Complete', type: 'completed' } } } } } },
+  ]);
+  const issue = await setIssueState('JUL-283', 'Complete', { apiKey: 'k', fetchImpl });
+  assert.equal(issue.state.name, 'Complete');
+});
+
+test('setIssueState matches the state name whatever its case', () => {
+  assert.equal(findStateId([{ id: 's-done', name: 'Complete' }], 'complete'), 's-done');
+});
+
+test('setIssueState refuses a name the team does not have, and names the ones it does', () => {
+  assert.throws(
+    () => findStateId([{ id: 's-backlog', name: 'Backlog' }, { id: 's-done', name: 'Complete' }], 'Done'),
+    /no state named "Done"; it has "Backlog", "Complete"/,
+  );
+});
+
+test('setIssueState never writes when the name is unknown', async () => {
+  const seen = [];
+  const fetchImpl = async (url, opts) => {
+    seen.push(JSON.parse(opts.body).query);
+    return { ok: true, status: 200, json: async () => ({ data: { issue: { id: 'uuid-283', team: { states: { nodes: [{ id: 's-backlog', name: 'Backlog' }] } } } } }) };
+  };
+  await assert.rejects(() => setIssueState('JUL-283', 'Complete', { apiKey: 'k', fetchImpl }), /no state named "Complete"/);
+  assert.equal(seen.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// The For-Todd guard (JUL-79 step 4)
+// ---------------------------------------------------------------------------
+
+test('checkForToddGuard: a bare WAITING ON YOU with no category is refused (rule: category)', () => {
+  const result = checkForToddGuard('Status: blocked on the App Store listing.\n\nWAITING ON YOU');
+  assert.equal(result.ok, false);
+  assert.equal(result.rule, 'category');
+  assert.match(result.reason, /\(a\)|\(b\)|\(c\)/);
+});
+
+test('checkForToddGuard: WAITING ON YOU is matched case-insensitively', () => {
+  assert.equal(checkForToddGuard('waiting on you').ok, false);
+  assert.equal(checkForToddGuard('Waiting On You').ok, false);
+});
+
+test('checkForToddGuard: WAITING ON YOU accepts each of the three markers', () => {
+  for (const marker of ['(a)', '(b)', '(c)']) {
+    assert.deepEqual(checkForToddGuard(`WAITING ON YOU -- see ${marker}`), { ok: true });
+  }
+});
+
+test('checkForToddGuard: WAITING ON YOU accepts each category vocabulary word', () => {
+  const words = [
+    'sign-in', 'login', 'payment',
+    'money', 'cost', 'spend', 'budget', 'billing', 'subscription', 'purchase', 'price',
+    'product', 'decision', 'accept', 'approve', 'spec', 'scope',
+  ];
+  for (const word of words) {
+    assert.deepEqual(
+      checkForToddGuard(`WAITING ON YOU -- this needs a ${word} call`),
+      { ok: true },
+      `expected "${word}" to satisfy the category rule`,
+    );
+  }
+});
+
+test('checkForToddGuard: "waiting on yourself" is not the WAITING ON YOU marker', () => {
+  assert.deepEqual(checkForToddGuard('you are waiting on yourself here'), { ok: true });
+});
+
+test('checkForToddGuard: each forbidden word alone in a For Todd line is refused (rule: git-vocabulary)', () => {
+  for (const word of ['merge', 'push', 'branch', 'PR', 'commit', 'rebase']) {
+    const result = checkForToddGuard(`The step is done.\n\nFor Todd: please ${word} this`);
+    assert.equal(result.ok, false, `expected "${word}" to be refused`);
+    assert.equal(result.rule, 'git-vocabulary');
+  }
+});
+
+test('checkForToddGuard: common inflections in a For Todd line are refused', () => {
+  const forms = [
+    'merged', 'merges', 'merging',
+    'pushes', 'pushed', 'pushing',
+    'branches',
+    'PRs',
+    'commits', 'committed', 'committing',
+    'rebased', 'rebasing', 'rebases',
+  ];
+  for (const form of forms) {
+    const result = checkForToddGuard(`For Todd: the step ${form} cleanly`);
+    assert.equal(result.ok, false, `expected "${form}" to be refused`);
+    assert.equal(result.rule, 'git-vocabulary');
+  }
+});
+
+test('checkForToddGuard: the same words OUTSIDE a For Todd line are accepted -- the rule is about For Todd lines', () => {
+  const body = 'We merged the PR, pushed the branch, committed, and rebased it.\n\nFor Todd: nothing';
+  assert.deepEqual(checkForToddGuard(body), { ok: true });
+});
+
+test('checkForToddGuard: word-boundary near-misses inside a For Todd line are accepted (commitment, approach, imprint, PRint)', () => {
+  const body = 'Our commitment to this approach left an imprint on the PRint.\n\nFor Todd: nothing';
+  assert.deepEqual(checkForToddGuard(body), { ok: true });
+});
+
+test('checkForToddGuard: a git word on the content line after the For Todd: header is refused', () => {
+  const result = checkForToddGuard('For Todd:\nThe PR is merged.');
+  assert.equal(result.ok, false);
+  assert.equal(result.rule, 'git-vocabulary');
+});
+
+test('checkForToddGuard: the plain progress comment and "For Todd: nothing" pass untouched', () => {
+  assert.deepEqual(checkForToddGuard('Progress only.'), { ok: true });
+  assert.deepEqual(checkForToddGuard('Progress only.\n\nFor Todd: nothing'), { ok: true });
+});
+
+test('checkForToddGuard: never throws on a missing or non-string body', () => {
+  assert.deepEqual(checkForToddGuard(), { ok: true });
+  assert.deepEqual(checkForToddGuard(null), { ok: true });
+  assert.deepEqual(checkForToddGuard(42), { ok: true });
+});
+
+test('JUL-79 acceptance: asking Todd to merge is rejected', () => {
+  const result = checkForToddGuard('Everything is verified.\n\nFor Todd: please merge PR #42 for me');
+  assert.equal(result.ok, false);
+  assert.equal(result.rule, 'git-vocabulary');
+});
+
+test('JUL-79 acceptance: WAITING ON YOU with no category is rejected', () => {
+  const result = checkForToddGuard('The build is stuck.\n\nWAITING ON YOU');
+  assert.equal(result.ok, false);
+  assert.equal(result.rule, 'category');
+});
+
+test('JUL-79 acceptance: a valid categorized park is accepted', () => {
+  const body = 'The Apple sign-in needs Todd.\n\nWAITING ON YOU -- this needs an action only Todd\'s account can take (a): sign in to App Store Connect.';
+  assert.deepEqual(checkForToddGuard(body), { ok: true });
+});
+
+test('postComment refuses a For Todd git request before any Linear API call, naming the rule and the acting instruction', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return { ok: true, status: 200, json: async () => ({ data: {} }) };
+  };
+  await assert.rejects(
+    () => postComment('JUL-77', 'For Todd: merge the PR', { apiKey: 'k', fetchImpl }),
+    (error) => /git-vocabulary/.test(error.message) && /Act instead of asking/.test(error.message),
+  );
+  assert.equal(calls, 0, 'the guard must run before the first network call');
+});
+
+test('postComment refuses an uncategorized WAITING ON YOU before any Linear API call', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return { ok: true, status: 200, json: async () => ({ data: {} }) };
+  };
+  await assert.rejects(() => postComment('JUL-77', 'WAITING ON YOU', { apiKey: 'k', fetchImpl }), /category/);
+  assert.equal(calls, 0);
+});
+
+test('postComment still posts a body that passes the guard', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { data: { issue: { id: 'uuid-77' } } } },
+    { body: { data: { commentCreate: { success: true, comment: { id: 'c1' } } } } },
+  ]);
+  const comment = await postComment('JUL-77', 'Progress.\n\nFor Todd: nothing', { apiKey: 'k', fetchImpl });
+  assert.equal(comment.id, 'c1');
+});
+
+// ---------------------------------------------------------------------------
+// JUL-98 step 2, item 1: a refused call must be recognisable as an EXPIRED
+// TOKEN rather than as any other failure, so the controller can renew and retry
+// exactly once. A thrown Error whose
+// only content is a message string cannot carry that, so linearGraphQL attaches
+// the HTTP status and the parsed body to the error it throws.
+// ---------------------------------------------------------------------------
+
+test('a Linear failure carries its HTTP status and parsed body on the thrown error', async () => {
+  const body = {
+    errors: [{
+      message: 'Authentication required, but not passed',
+      extensions: { type: 'authentication', code: 'AUTHENTICATION_ERROR' },
+    }],
+  };
+  const fetchImpl = async () => ({ ok: false, status: 401, json: async () => body });
+  await assert.rejects(
+    () => linearGraphQL('query { viewer { id } }', {}, { apiKey: 'k', fetchImpl }),
+    (error) => {
+      assert.equal(error.status, 401);
+      assert.deepEqual(error.body, body);
+      assert.match(error.message, /Linear API error: 401/);
+      return true;
+    },
+  );
+});
+
+test('a 200 response carrying GraphQL errors also throws with its status and body attached', async () => {
+  const body = { errors: [{ message: 'Entity not found', extensions: { type: 'invalid_input' } }] };
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => body });
+  await assert.rejects(
+    () => linearGraphQL('query { issue { id } }', {}, { apiKey: 'k', fetchImpl }),
+    (error) => {
+      assert.equal(error.status, 200);
+      assert.deepEqual(error.body, body);
+      return true;
+    },
+  );
+});
+
+test('delivery specification fetch includes complete comment evidence and refuses partial discussion', async () => {
+  let query;
+  const fetchImpl = async (_url, opts) => {
+    query = JSON.parse(opts.body).query;
+    return { ok: true, status: 200, json: async () => ({ data: { issue: { identifier: 'JUL-202', comments: { nodes: [{ body: 'PM-approved clarification' }], pageInfo: { hasNextPage: false } } } } }) };
+  };
+  const issue = await getIssue('JUL-202', { apiKey: 'fixture', fetchImpl, includeComments: true });
+  assert.match(query, /comments\(first: 250\)/);
+  assert.equal(issue.comments.nodes[0].body, 'PM-approved clarification');
+  await assert.rejects(getIssue('JUL-202', { apiKey: 'fixture', includeComments: true, fetchImpl: fakeFetch([{ body: { data: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: true } } } } } }]) }), /incomplete/);
+});
+
+// JUL-284 retro: two merge comments arrived as the literal text of a file path
+// (`/tmp/c276.md`, `/tmp/c284.md`). These pin the three ways that now fails
+// loudly instead of posting eleven characters.
+test('comment --file posts the file contents, not the path', () => {
+  const body = commentBodyFromArgs(['--file', '/tmp/c276.md'], { readFileImpl: () => '# real body\nsecond line' });
+  assert.equal(body, '# real body\nsecond line');
+});
+
+test('comment - reads the body from stdin', () => {
+  let fdRead;
+  const body = commentBodyFromArgs(['-'], { readFileImpl: (fd) => { fdRead = fd; return 'from stdin'; } });
+  assert.equal(body, 'from stdin');
+  assert.equal(fdRead, 0);
+});
+
+test('comment refuses a body that is the path of an existing file, and says what to run instead', () => {
+  assert.throws(() => commentBodyFromArgs(['/tmp/c284.md'], { fileExists: () => true }), /that is the path of an existing file.*--file \/tmp\/c284\.md/s);
+});
+
+test('comment refuses a real existing path on this machine, and still posts a plain body', () => {
+  const path = join(tmpdir(), `linear-cli-body-${process.pid}.md`);
+  writeFileSync(path, 'written first, posted second');
+  try {
+    assert.throws(() => commentBodyFromArgs([path]), /refusing to post/);
+    assert.equal(commentBodyFromArgs([path, 'is', 'a', 'sentence']), `${path} is a sentence`);
+  } finally {
+    rmSync(path, { force: true });
+  }
+});
+
+test('comment --file without a path is a usage error', () => {
+  assert.throws(() => commentBodyFromArgs(['--file']), /usage: linear-cli\.mjs comment <ID> --file <path>/);
+});

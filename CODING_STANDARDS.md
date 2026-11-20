@@ -1,0 +1,49 @@
+# Coding standards
+
+Post-build reviewer guidance. The reviewer checks the completed change and records evidence tied
+to the change, or explains why a check does not apply; missing evidence is not a pass.
+
+For a user-facing change, independently inspect the behavior artifacts from the applicable
+verification recipe. The launch and Doctor records must identify the
+reviewed candidate (commit and dirty-tree SHA-256), and the artifacts must show the actions,
+observed results, command exit codes, console outcome, and post-cleanup readback. A source change
+after proof makes it stale. Missing, failed, unavailable, stale, or candidate-mismatched proof
+fails the review closed; do not infer success from a builder summary or label unavailable evidence
+not applicable. Mark not applicable only when the change has no relevant user-facing behavior, and
+give the reason.
+
+## Build
+
+Build test-first with `.agents/skills/tdd/SKILL.md`.
+
+## Reviewer checks
+
+1. **unit tests** — meaningful behavior and regression coverage for affected code through appropriate interfaces. Check the assertions actually detect the relevant failure; mocked provider responses alone cannot prove provider behavior.
+2. **integration tests at affected boundaries** — when a connection between two services is built or changed, test it against the real service; do not substitute a fake or stand-in for that test. Proof decides done; tests guard; live alarms catch the rest.
+   - A change is done only when an agent has driven the journeys it touches on the real app and saved evidence of actions, results and side effects. Passing tests alone never count.
+   - The every-change CI gate has a 10-minute limit: logic checks, real-service seam checks against the free Firebase test project, and deterministic checks on sample inputs. Over 10 minutes, cut or move checks; don’t add machines.
+   - Paid AI-model checks run only when the code that calls the model changes.
+   - Physical-phone and browser-extension checks run on Todd’s laptop as builder proof, only when that code changes.
+   - Every preview gets a two-minute smoke check of the core journeys.
+   - Prove only the journeys a change touches. No permanent all-journey browser suite.
+   - Every test must be able to fail and must catch something no other test catches. Delete the rest.
+3. **end-to-end for the changed journey** — when the change has a user-facing surface, inspect the actual behavior evidence for the affected journey end to end, including relevant failure paths, tied to the reviewed candidate identity. Confirm the launch/Doctor commit and dirty-tree digest match the reviewed tree and that the saved commands and results passed. Missing, failed, unavailable, stale, or mismatched proof fails closed; Todd's live UAT and a builder's unverified “tests pass” statement do not substitute. A change with no user-facing surface is marked not applicable with a reason.
+4. **a clean browser console** — during the affected journey, no unexpected console errors or unhandled failures. Changes with no browser surface may be marked not applicable with a reason.
+5. **logging good enough to find a root cause** — lasting logs/measurements identify the failing operation and useful context, connect related events, and expose no secrets. Inspect failure-path evidence; temporary debugging or a silent non-zero exit is insufficient. Each connection between services records its own trace; a connection whose trace shows errors or calls to the wrong account fails.
+
+## Tool and design documentation (reviewer checks)
+
+- Read the applicable official docs matched to the installed version before coding and post a framework map (need → tool or framework feature → exact documentation page) on the card. This check covers every tool used by the change, not only application frameworks.
+- Fail the change when any framework-map job lacks a cited applicable documentation page. A top-level site, search result, `llms.txt`, or `llms-full.txt` is not the cited job page; `llms.txt` is only the index used to find that page.
+- Start from the tool or framework's own example and change as little as possible.
+- Run `npm run guard:flow` (it runs `npm run lint:framework` first). In the workflow folder, hand-built progress files, retry or wait loops, and controller code over 400 lines are refused, and no comment can switch a guard off, because the guard run sets `noInlineConfig` and allows no warnings. `machine/guards/guard.test.mjs` holds one planted violation per rule so a weakened rule fails its own test.
+- Use the built-in feature of the applicable tool before building a workaround; if one is missing, state the gap, the exact docs page checked, and the consequence.
+
+## Integrity (reviewer checks that protect approval and merge)
+
+- A classification or verdict reads the whole record, never a filtered view built for display. A review verdict accounts for every changed file; a skipped reviewable file fails the verdict closed.
+- A verdict or approval over a mutable revision re-reads the revision after the deciding agent finishes, so a change landed mid-decision cannot be approved under a stale result.
+- A bounded prompt batch checks each individual item against the batch budget; an oversized item fails the verdict closed with evidence.
+- A production check measures the real artifact, never an injected fake; an unknown measurement is not reported as zero.
+- A scheduled operational action runs the real supported feature, not a read-only check behind a flag that claims the feature is configured.
+- The install file list carries every app source module the entry point imports, and a clean-install check proves no unresolved local import before `check`/`build`.

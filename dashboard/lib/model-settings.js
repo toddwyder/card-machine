@@ -1,0 +1,165 @@
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { initialChoice, picksEqual, roleModelIds, sharedModel } from './roles.js';
+import ROLES from '../config/roles.json' with { type: 'json' };
+
+export const ROLE_GROUPS = ROLES.groups;
+const EFFORT = { unlimited: 'max', large: 'xhigh', medium: 'high', small: 'medium' };
+
+// The model a Lead run uses before anyone saves a pick: what scripts/install-lead-model.mjs
+// writes into the Lead setting file on a fresh machine.
+export const LEAD_DEFAULT_MODEL = 'openai/gpt-6.1-sol';
+
+export function settingsPaths(home = homedir()) {
+  return {
+    pstack: join(home, '.config', 'julia', 'lead-role-models.md'),
+    lead: join(home, '.config', 'julia', 'lead-model'),
+  };
+}
+
+function readSetting(file) {
+  try { return readFileSync(file, 'utf8'); }
+  catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+export function parsePstack(text = '') {
+  const roles = new Map();
+  for (const line of text.split('\n')) {
+    const at = line.indexOf(':');
+    if (at < 0 || line.startsWith('#')) continue;
+    roles.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
+  }
+  const budget = text.match(/^# budget: (unlimited|large|medium|small)\b/m)?.[1] ?? 'medium';
+  return { budget, roles };
+}
+
+export function readSettings({ paths = settingsPaths(), modelIds = [] } = {}) {
+  const parsed = parsePstack(readSetting(paths.pstack) ?? '');
+  const choice = initialChoice({ groups: ROLE_GROUPS, modelIds, effort: parsed.budget });
+  for (const group of ROLE_GROUPS) {
+    const target = choice.groups[group.id];
+    for (const role of group.roles) {
+      const stored = parsed.roles.get(role.name);
+      if (!stored) continue;
+      const ids = roleModelIds(role, stored, modelIds);
+      target.roles[role.id] = group.panel ? ids : ids[0];
+    }
+    if (group.panel) target.models = [...new Set(Object.values(target.roles).flat())];
+    else target.model = sharedModel(Object.values(target.roles));
+  }
+  choice.lead = readSetting(paths.lead)?.trim() || LEAD_DEFAULT_MODEL;
+  // The Shipping stage's pick is the same saved line the picker shows. The machine reads
+  // stageModels() instead, which requires the line and never falls back to this default.
+  choice.shipping = choice.groups.machine?.roles?.shipping ?? '';
+  return choice;
+}
+
+const ACCOUNT_MODEL = /^[a-z][a-z0-9-]*\/[a-zA-Z0-9][a-zA-Z0-9/._:-]*$/;
+
+// The machine's stage models come from the same saved file as the picker rows. A stage with
+// no saved line stops here and names itself, so no built-in model can answer for it. A program
+// passes the stage ids it runs, so a missing pick for another stage cannot stop it or be named.
+export function stageModels(file = settingsPaths().pstack, only = null) {
+  let text = '';
+  try { text = readFileSync(file, 'utf8'); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const saved = parsePstack(text).roles;
+  const stages = ROLE_GROUPS.filter(group => group.machine).flatMap(group => group.roles)
+    .filter(role => !only || only.includes(role.id));
+  return Object.fromEntries(stages.map(role => {
+    const stored = saved.get(role.name);
+    if (!stored) throw new Error(`Missing ${role.name} pick in ${file}.`);
+    const id = stored.split(',')[0].trim();
+    if (!ACCOUNT_MODEL.test(id)) throw new Error(`Invalid ${role.name} model in ${file}.`);
+    return [role.id, id];
+  }));
+}
+
+export function leadModels(models) {
+  return models.filter(model => ['openai', 'anthropic', 'commandcode'].includes(model.provider));
+}
+
+export function formatSettings(choice, models) {
+  const offered = new Set(models.map(model => model.id));
+  const known = new Map(ROLE_GROUPS.map(group => [group.id, group]));
+  const check = (id, role) => {
+    if (typeof id !== 'string' || !offered.has(id) || /[\r\n,]/.test(id)) {
+      throw new Error(`Choose an available account model for ${role}.`);
+    }
+    return id;
+  };
+  // Save takes the whole screen from the browser, so a row the config does not name is refused
+  // before either file is written.
+  for (const [groupId, rows] of Object.entries(choice?.groups ?? {})) {
+    const group = known.get(groupId);
+    if (!group) throw new Error(`Unknown group ${groupId}.`);
+    for (const roleId of Object.keys(rows?.roles ?? {})) {
+      if (!group.roles.some(role => role.id === roleId)) throw new Error(`Unknown role ${roleId} in group ${groupId}.`);
+    }
+  }
+  if (!Object.hasOwn(EFFORT, choice?.effort)) throw new Error('Choose a valid effort.');
+  if (!leadModels(models).some(model => model.id === choice.lead)) {
+    throw new Error('Choose an available account model for Lead.');
+  }
+  const lines = [`# budget: ${choice.effort} (${EFFORT[choice.effort]})`];
+  for (const group of ROLE_GROUPS) {
+    for (const role of group.roles) {
+      const value = choice.groups?.[group.id]?.roles?.[role.id];
+      if (group.panel) {
+        if (!Array.isArray(value) || !value.length) throw new Error(`Choose at least one model for ${role.name}.`);
+        lines.push(`${role.name}: ${[...new Set(value.map(id => check(id, role.name)))].join(', ')}`);
+      } else lines.push(`${role.name}: ${check(value, role.name)}`);
+    }
+  }
+  return { pstack: `${lines.join('\n')}\n`, lead: `${choice.lead}\n` };
+}
+
+export function saveSettings(choice, { models, paths = settingsPaths() }) {
+  const contents = formatSettings(choice, models);
+  const files = Object.entries(paths).map(([key, file]) => ({
+    file, text: contents[key], before: readSetting(file), temporary: `${file}.${randomUUID()}.tmp`,
+  }));
+  const replaced = [];
+  try {
+    for (const item of files) {
+      mkdirSync(dirname(item.file), { recursive: true });
+      writeFileSync(item.temporary, item.text, { mode: 0o600, flag: 'wx' });
+    }
+    for (const item of files) {
+      renameSync(item.temporary, item.file);
+      replaced.push(item);
+    }
+  } catch (error) {
+    for (const item of replaced.reverse()) {
+      try {
+        if (item.before === null) rmSync(item.file);
+        else {
+          writeFileSync(item.temporary, item.before, { mode: 0o600 });
+          renameSync(item.temporary, item.file);
+        }
+      } catch (rollback) {
+        throw new AggregateError([error, rollback], 'Settings could not be saved or restored. Check both settings files before restarting Studio.');
+      }
+    }
+    throw error;
+  } finally {
+    for (const item of files) rmSync(item.temporary, { force: true });
+  }
+  return { updatedAt: new Date().toISOString() };
+}
+
+// A Save is the whole screen every time: it writes both files, reads them back, and fails
+// unless the read-back is the choice it was given. Nothing is skipped for looking unchanged,
+// because a Save that writes nothing leaves the operator with no record of the press.
+export function saveSettingsChoice(choice, { models, paths = settingsPaths(), read = readSettings }) {
+  const modelIds = models.map(model => model.id);
+  const { updatedAt } = saveSettings(choice, { models, paths });
+  const saved = read({ paths, modelIds });
+  if (!picksEqual(saved, choice)) throw new Error('The models did not read back as written. Check both settings files before the next run.');
+  return { choice: saved, updatedAt, wrote: true };
+}

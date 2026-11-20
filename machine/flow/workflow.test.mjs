@@ -1,0 +1,737 @@
+// The flow's outcomes, driven through the real workflow with real agent steps
+// on a mock model, so the order, the shared failure count, the wait and the
+// stop are the workflow's own settings rather than a stub of them. The run is
+// started the way Studio's run button starts one: a card and its kind, and no
+// saved state.
+
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+process.env.CMD_API_KEY ??= 'unused-in-tests';
+
+const { Agent } = await import('@mastra/core/agent');
+const { createMockModel } = await import('@mastra/core/test-utils/llm-mock');
+const { buildCardPath } = await import('./workflow.mjs');
+const { taskFromCard } = await import('./task.mjs');
+const { openMastra } = await import('./mastra.mjs');
+const { openScratch } = await import('./scratch.mjs');
+const { copiesRoot } = await import('./copy.mjs');
+const { createWorkflowStateReader } = await import('@mastra/core/workflows');
+const { LocalFilesystem, LocalSandbox, Workspace } = await import('@mastra/core/workspace');
+
+const CARD = 'JUL-336-STANDIN';
+const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8' });
+
+function studioRepo(dir) {
+  const repo = join(dir, 'studio');
+  mkdirSync(repo);
+  writeFileSync(join(repo, 'README.md'), 'studio\n');
+  git(repo, ['init', '--quiet', '--initial-branch=main']);
+  git(repo, ['add', '-A']);
+  git(repo, ['-c', 'user.email=flow@test', '-c', 'user.name=flow', 'commit', '--quiet', '-m', 'main']);
+  return repo;
+}
+
+const contents = repo => readdirSync(repo, { recursive: true })
+  .filter(entry => !String(entry).startsWith('.git'))
+  .sort();
+
+const TASK_TOOL_STUBS = {
+  task_write: { id: 'task_write' },
+  task_update: { id: 'task_update' },
+  task_complete: { id: 'task_complete' },
+  task_check: { id: 'task_check' },
+};
+
+const buildOn = model =>
+  new Agent({ id: 'flow-build', name: 'Flow build', instructions: 'Reply with one line.', model, tools: TASK_TOOL_STUBS });
+
+// The Codex route answers only a streamed request, so a stage agent that is asked to generate fails the way
+// it does there: HTTP 400 "Stream must be set to true".
+const stub = text => ({
+  generate: async () => { throw new Error('Bad Request: Stream must be set to true'); },
+  stream: async () => ({ text: Promise.resolve(text) }),
+});
+const agents = {
+  build: buildOn(createMockModel({ mockText: 'built line' })),
+  remediation: stub('fixed line'),
+  retro: stub('retro line'),
+};
+
+const answerFor = verdict => (verdict.startsWith('text:') ? verdict.slice(5) : `VERDICT: ${verdict}\nCRITERION 1: ${verdict} — ran the command\nNOTES: none`);
+
+function fakeReview(queue, { pulls = { pr: 498 }, postFails = false, cardMissing = false } = {}) {
+  const posted = [];
+  const asked = [];
+  const moved = [];
+  const shipping = {
+    stream: async (task, options) => {
+      asked.push({ task, checkout: options.requestContext?.get?.('cardCheckout') });
+      const next = queue.shift() ?? 'PASS';
+      return { text: Promise.resolve(answerFor(next)) };
+    },
+  };
+  const review = {
+    findPr: () => pulls,
+    readCard: async identifier => (cardMissing ? null : { identifier, title: 'A card', description: '## Acceptance criteria\n- it works' }),
+    moveCard: async (identifier, state) => { moved.push({ identifier, state }); },
+    headCommit: () => 'abc123',
+    postPrComment: (repo, pr, body) => {
+      if (postFails) throw new Error('gh: not signed in');
+      posted.push({ pr, body });
+    },
+  };
+  return { shipping, review, posted, asked, moved };
+}
+
+async function openCase({
+  card = CARD,
+  kind = 'product',
+  dir: givenDir,
+  repo: givenRepo,
+  review: queue = ['PASS'],
+  reviewOptions,
+  smoke = ['PASS'],
+  answers = ['yes'],
+  build,
+  check = { run: async () => ({ ok: true }) },
+  untilFirstWait = false,
+}) {
+  const dir = givenDir ?? mkdtempSync(join(tmpdir(), 'flow-case-'));
+  mkdirSync(dir, { recursive: true });
+  process.env.FLOW_SCRATCH = join(dir, 'scratch');
+  const repo = givenRepo ?? studioRepo(dir);
+  openScratch(dir);
+  const caseDir = join(dir, card);
+  mkdirSync(caseDir, { recursive: true });
+  writeFileSync(join(caseDir, 'verdicts.json'), JSON.stringify({ smoke }));
+  writeFileSync(join(caseDir, 'cursors.json'), '{}');
+
+  const fake = fakeReview([...queue], reviewOptions);
+  const workflow = buildCardPath({
+    agents: { ...agents, ...(build ? { build } : {}), shipping: fake.shipping },
+    dir,
+    repo,
+    review: fake.review,
+    check: typeof check === 'function' ? { run: check } : check,
+  });
+  const mastra = await openMastra({
+    card,
+    stateDb: join(dir, 'state.db'),
+    traceDb: join(dir, 'trace.duckdb'),
+    workflow,
+  });
+  const wf = mastra.getWorkflow(workflow.id);
+  const run = await wf.createRun();
+  const trail = [];
+  let result = await run.start({ inputData: { card, kind } });
+
+  while (result.status === 'suspended') {
+    const state = await wf.getWorkflowRunById(run.runId);
+    const open = createWorkflowStateReader(state).getSuspendedStep();
+    trail.push({ path: open.path, request: open.suspendPayload.request });
+    if (untilFirstWait) break;
+    const answer = answers.shift() ?? 'yes';
+    result = await run.resume({
+      step: open.stepId,
+      resumeData: { request: open.suspendPayload.request, answer },
+    });
+    assert.ok(trail.length < 8, 'the run should not need more than a few answers');
+  }
+
+  const report = join(caseDir, 'reports', `${card}.md`);
+  return { result, trail, dir, caseDir, report, workflow, fake, repo, card, run, wf, mastra };
+}
+
+test('a passing card waits for Todd two levels deep, then lands, retros and cleans up', async () => {
+  const { result, trail, dir, caseDir, report } = await openCase({});
+
+  assert.equal(trail.length, 1);
+  assert.deepEqual(trail[0].path, ['attempt', 'acceptance']);
+  assert.equal(trail[0].request, `${CARD}/build-1`);
+  assert.equal(result.status, 'success');
+  assert.equal(result.result.accepted, true);
+  assert.equal(result.result.landed, true);
+  assert.equal(result.result.finished, true);
+  assert.equal(existsSync(join(caseDir, 'retro', `${CARD}.md`)), true);
+  assert.equal(existsSync(join(caseDir, 'build')), false, 'cleanup sweeps the build folder');
+  assert.equal(existsSync(report), true, 'cleanup leaves the card report behind');
+  assert.match(readFileSync(report, 'utf8'), /# JUL-336-STANDIN stopped/);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('the Lead is given the card\'s own words and nothing about how to work', () => {
+  const card = {
+    identifier: 'JUL-900',
+    title: 'Builds run stock pstack',
+    description: [
+      '## Goal',
+      'A card runs on stock pstack.',
+      '',
+      '### Why',
+      'The hand-built agent drifts from the skill.',
+      '',
+      '## Acceptance criteria',
+      '- the Lead holds a task list',
+      '- every helper reads the skill',
+      '',
+      '## Proof',
+      'A CI test reads the built agents.',
+      '',
+      '## What we know',
+      'The Lead is hand built today.',
+      '',
+      '## Constraints',
+      'No new dependency.',
+      '',
+      '## Pull request',
+      'Not part of the task.',
+    ].join('\n'),
+  };
+
+  assert.equal(taskFromCard(card), [
+    'Linear card JUL-900: Builds run stock pstack',
+    '## Goal\nA card runs on stock pstack.\n\n### Why\nThe hand-built agent drifts from the skill.',
+    '## Done check\n- the Lead holds a task list\n- every helper reads the skill',
+    '## Proof\nA CI test reads the built agents.',
+    '## What is already known\nThe Lead is hand built today.',
+    '## Constraints\nNo new dependency.',
+  ].join('\n\n'));
+});
+
+test('a card missing some headings keeps the parts it has, and an unheaded card is passed through', () => {
+  assert.equal(
+    taskFromCard({ identifier: 'JUL-901', title: 'One part', description: '## Outcome\nIt works.\n\n## Outside check\nSomeone else looks.' }),
+    'Linear card JUL-901: One part\n\n## Goal\nIt works.',
+  );
+  assert.equal(
+    taskFromCard({ identifier: 'JUL-902', title: 'Plain', description: 'A card with no headings.' }),
+    'Linear card JUL-902: Plain\n\nA card with no headings.',
+  );
+});
+
+test('the build stage runs a real agent step and keeps what the agent wrote', async () => {
+  const asked = [];
+  const build = buildOn(
+    createMockModel({ mockText: 'built line', spyStream: props => asked.push(props) }),
+  );
+  const { trail, dir, caseDir } = await openCase({ build, untilFirstWait: true });
+
+  assert.equal(trail.length, 1, 'the card reaches Todd, so the build finished before the wait');
+  assert.equal(asked.length, 1, 'the build stage makes one model call');
+  assert.match(JSON.stringify(asked[0]), new RegExp(CARD), 'the model is asked about this card');
+  assert.match(readFileSync(join(caseDir, 'build', `${CARD}.md`), 'utf8'), /built line/);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('the runner moves the card to Implementation once, before the build starts', async () => {
+  const { fake, dir } = await openCase({ untilFirstWait: true });
+
+  assert.deepEqual(fake.moved, [{ identifier: CARD, state: 'Implementation' }]);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('a card Linear cannot return fails the run and names the card', async () => {
+  const { result, dir } = await openCase({ reviewOptions: { cardMissing: true } });
+
+  assert.equal(result.status, 'failed');
+  assert.match(JSON.stringify(result.error ?? result), new RegExp(`Linear card ${CARD} could not be read`));
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('a model failure in the build step fails the card without a retry setting of its own', async () => {
+  let attempts = 0;
+  const failing = buildOn(
+    createMockModel({
+      spyStream: () => {
+        attempts += 1;
+        throw new Error('the model is down');
+      },
+    }),
+  );
+  const { result, dir } = await openCase({ build: failing });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(attempts, 1, 'the step carries no retry setting, so it makes one attempt');
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+const buildInCopy = (log, note) =>
+  new Agent({
+    id: 'flow-build',
+    name: 'Flow build',
+    instructions: 'Reply with one line.',
+    model: createMockModel({ mockText: 'built line' }),
+    tools: TASK_TOOL_STUBS,
+    workspace: ({ requestContext } = {}) => {
+      const folder = requestContext?.get?.('cardCheckout') ?? join(tmpdir(), 'no-card-copy');
+      const entry = {
+        folder,
+        sawMain: existsSync(join(folder, 'README.md')),
+        sawEarlierRound: existsSync(join(folder, 'round-1.txt')),
+      };
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, note), 'written by the build\n');
+      entry.wrote = existsSync(join(folder, note));
+      log.push(entry);
+      return new Workspace({
+        id: `card-copy-${log.length}`,
+        filesystem: new LocalFilesystem({ basePath: folder }),
+        sandbox: new LocalSandbox({ workingDirectory: folder }),
+      });
+    },
+  });
+
+test("a card builds in a fresh copy named after it, and the copy goes when the card ends", async () => {
+  const log = [];
+  const { result, dir, repo } = await openCase({ build: buildInCopy(log, 'build-note.txt') });
+  const folder = join(copiesRoot(), CARD);
+
+  assert.ok(log.length > 0);
+  assert.equal(log[0].folder, folder, 'the build works in the folder named after the card');
+  assert.equal(log[0].sawMain, true, 'the copy starts from main, so main has a file in it');
+  assert.equal(log[0].wrote, true);
+  assert.equal(result.status, 'success');
+  assert.equal(existsSync(folder), false, 'the copy is removed when the card ends');
+  assert.notEqual(git(repo, ['branch', '--list', `card/${CARD}`]).trim(), '', 'the branch and its pull request stay');
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('two cards started together each work in their own copy and leave the Studio folder alone', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'flow-two-'));
+  process.env.FLOW_SCRATCH = join(dir, 'scratch');
+  const repo = studioRepo(dir);
+  openScratch(dir);
+  const before = contents(repo);
+  const log = [];
+  const cards = ['JUL-100-ONE', 'JUL-101-TWO'];
+  for (const card of cards) {
+    const caseDir = join(dir, card);
+    mkdirSync(caseDir, { recursive: true });
+    writeFileSync(join(caseDir, 'verdicts.json'), JSON.stringify({ smoke: ['PASS'] }));
+    writeFileSync(join(caseDir, 'cursors.json'), '{}');
+  }
+
+  const fake = fakeReview(['PASS', 'PASS']);
+  const workflow = buildCardPath({
+    agents: { ...agents, build: buildInCopy(log, 'card-note.txt'), shipping: fake.shipping },
+    dir,
+    repo,
+    review: fake.review,
+    check: { run: async () => ({ ok: true }) },
+  });
+  const mastra = await openMastra({
+    card: '',
+    stateDb: join(dir, 'state.db'),
+    traceDb: join(dir, 'trace.duckdb'),
+    workflow,
+  });
+  const wf = mastra.getWorkflow(workflow.id);
+
+  async function drive(card) {
+    const run = await wf.createRun();
+    let result = await run.start({ inputData: { card, kind: 'product' } });
+    while (result.status === 'suspended') {
+      const state = await wf.getWorkflowRunById(run.runId);
+      const open = createWorkflowStateReader(state).getSuspendedStep();
+      result = await run.resume({
+        step: open.stepId,
+        resumeData: { request: open.suspendPayload.request, answer: 'yes' },
+      });
+    }
+    return result;
+  }
+
+  const [one, two] = await Promise.all(cards.map(drive));
+  await mastra.shutdown();
+
+  const folders = [...new Set(log.map(entry => entry.folder))].sort();
+  assert.deepEqual(folders, [join(copiesRoot(), 'JUL-100-ONE'), join(copiesRoot(), 'JUL-101-TWO')].sort());
+  assert.equal(one.status, 'success');
+  assert.equal(two.status, 'success');
+  assert.deepEqual(contents(repo), before, 'the Studio folder is exactly as it was');
+  assert.equal(git(repo, ['status', '--porcelain']), '', 'the Studio repository has no stray work in it');
+  assert.equal(git(repo, ['worktree', 'list']).trim().split('\n').length, 1, 'only the Studio folder is left as a worktree');
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('a card resumed after a restart carries on in the same copy', async () => {
+  const log = [];
+  const build = buildInCopy(log, 'round-2.txt');
+  const { dir, repo, workflow, fake, run, mastra } = await openCase({ build, untilFirstWait: true, answers: ['no'] });
+  const folder = join(copiesRoot(), CARD);
+  assert.equal(log[0].folder, folder);
+  writeFileSync(join(folder, 'round-1.txt'), 'round one\n');
+
+  await mastra.shutdown();
+  const restarted = buildCardPath({
+    agents: { ...agents, build, shipping: fake.shipping },
+    dir,
+    repo,
+    check: { run: async () => ({ ok: true }) },
+    review: fake.review,
+  });
+  assert.equal(restarted.id, workflow.id);
+  const back = await openMastra({
+    card: CARD,
+    stateDb: join(dir, 'state.db'),
+    traceDb: join(dir, 'trace.duckdb'),
+    workflow: restarted,
+  });
+  const wf = back.getWorkflow(restarted.id);
+  const resumed = await wf.createRun({ runId: run.runId });
+  const open = createWorkflowStateReader(await wf.getWorkflowRunById(run.runId)).getSuspendedStep();
+  let result = await resumed.resume({
+    step: open.stepId,
+    resumeData: { request: open.suspendPayload.request, answer: 'no' },
+  });
+  while (result.status === 'suspended') {
+    const state = await wf.getWorkflowRunById(run.runId);
+    const wait = createWorkflowStateReader(state).getSuspendedStep();
+    result = await resumed.resume({
+      step: wait.stepId,
+      resumeData: { request: wait.suspendPayload.request, answer: 'yes' },
+    });
+  }
+  await back.shutdown();
+
+  assert.equal(log[log.length - 1].folder, folder, 'the second build round works in the same copy');
+  assert.equal(log[log.length - 1].sawEarlierRound, true, 'the copy kept what the first round wrote');
+  assert.equal(result.status, 'success');
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('a Shipping FAIL goes to remediation and a fresh Shipping pass lands the card', async () => {
+  const { result, dir, report } = await openCase({ review: ['FAIL', 'PASS'] });
+
+  assert.equal(result.status, 'success');
+  assert.equal(result.result.failCount, 1);
+  assert.equal(result.result.verdict, 'PASS');
+  assert.equal(result.result.landed, true);
+  assert.equal(existsSync(report), true, 'cleanup leaves the card report behind');
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('Shipping gets the card and its pull request, and the verdict is posted on that pull request by the stage', async () => {
+  const { result, dir, fake } = await openCase({ kind: 'machine' });
+
+  assert.equal(result.status, 'success');
+  assert.equal(fake.asked.length, 1);
+  assert.match(fake.asked[0].task, /pull request #498/);
+  assert.match(fake.asked[0].task, /it works/);
+  assert.doesNotMatch(fake.asked[0].task, /built line/, 'the builder\'s words never reach Shipping');
+  assert.equal(fake.asked[0].checkout, join(copiesRoot(), CARD), 'Shipping reviews the copy this card built in');
+  assert.equal(fake.posted.length, 1);
+  assert.equal(fake.posted[0].pr, 498);
+  assert.match(fake.posted[0].body, /^Shipping agent: PASS\n/);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('PASS+NOTES moves the card forward like PASS and its notes are on the pull request', async () => {
+  const { result, dir, fake } = await openCase({ kind: 'machine', review: ['PASS+NOTES'] });
+
+  assert.equal(result.status, 'success');
+  assert.equal(result.result.verdict, 'PASS+NOTES');
+  assert.equal(result.result.failCount, 0);
+  assert.equal(result.result.landed, true);
+  assert.match(fake.posted[0].body, /^Shipping agent: PASS\+NOTES\n/);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+for (const [name, options, why] of [
+  ['an answer with no verdict line', { review: ['text:I looked around and it seemed fine.'] }, /first line is not a verdict line/],
+  ['a verdict line with two verdict words', { review: ['text:VERDICT: PASS | FAIL\nCRITERION 1: PASS — ok'] }, /exactly one of PASS/],
+  ['a PASS with a FAIL criterion line', { review: ['text:VERDICT: PASS\nCRITERION 1: FAIL — broke'] }, /PASS with a FAIL criterion line/],
+  ['a PASS+NOTES with a FAIL criterion line', { review: ['text:VERDICT: PASS+NOTES\nCRITERION 1: FAIL — broke'] }, /PASS\+NOTES with a FAIL criterion line/],
+  ['an answer missing a criterion line', { review: ['text:VERDICT: PASS\nNOTES: none'] }, /criterion 1 does not have exactly one/],
+  ['an answer with a criterion line twice', { review: ['text:VERDICT: PASS\nCRITERION 1: PASS — a\nCRITERION 1: PASS — b'] }, /criterion 1 does not have exactly one/],
+  ['a verdict line that is not first', { review: ['text:I checked.\nVERDICT: PASS\nCRITERION 1: PASS — ok'] }, /first line is not a verdict line/],
+  ['no pull request for the card', { reviewOptions: { pulls: { reason: 'no open pull request names the card' } } }, /no open pull request names the card/],
+  ['a verdict that could not be posted', { reviewOptions: { postFails: true } }, /could not be posted to pull request #498/],
+]) {
+  test(`${name} leaves the failure count alone and reports the card as unreviewed`, async () => {
+    const { result, trail, dir, report } = await openCase({ kind: 'machine', ...options });
+
+    assert.equal(trail.length, 0);
+    assert.equal(result.status, 'success');
+    assert.equal(result.result.stopped, true);
+    assert.equal(result.result.landed, false);
+    assert.equal(result.result.failCount, 0);
+    const text = readFileSync(report, 'utf8');
+    assert.match(text, /Part: Shipping/);
+    assert.match(text, why);
+    assert.match(text, /unreviewed/);
+    assert.match(text, /Failures counted: 0/);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+  });
+}
+
+test('parseVerdict reads a well-formed answer and refuses each malformed one', async () => {
+  const { parseVerdict } = await import('./review.mjs');
+  assert.equal(parseVerdict('\n\nVERDICT: PASS\nCRITERION 1: PASS — ok\nCRITERION 2: PASS — ok', 2).verdict, 'PASS');
+  assert.equal(parseVerdict('VERDICT: FAIL\nCRITERION 1: PASS — ok\nCRITERION 2: FAIL — no', 2).verdict, 'FAIL');
+  assert.equal(parseVerdict('VERDICT: PASS\nCRITERION 1: PASS — ok', 2).verdict, null);
+  assert.equal(parseVerdict('VERDICT: PASS\nCRITERION 1: PASS — ok\nCRITERION 2: PASS — ok', 1).verdict, null);
+  assert.equal(parseVerdict('VERDICT: PASS FAIL\nCRITERION 1: PASS — ok', 1).verdict, null);
+});
+
+test('a second Shipping FAIL stops the card with a report that names its folder and starting point', async () => {
+  const { result, trail, dir, repo } = await openCase({ review: ['FAIL', 'FAIL'] });
+
+  assert.equal(trail.length, 0, 'a stopped card never reaches Todd');
+  assert.equal(result.status, 'success');
+  assert.equal(result.result.stopped, true);
+  assert.equal(result.result.failCount, 2);
+  assert.equal(result.result.landed, false);
+  const text = readFileSync(join(dir, CARD, 'reports', `${CARD}.md`), 'utf8');
+  assert.match(text, /Part: Shipping/);
+  assert.match(text, /Failures counted: 2/);
+  assert.match(text, new RegExp(`Copy: ${join(copiesRoot(), CARD).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.match(text, new RegExp(`Started from main at: ${git(repo, ['rev-parse', 'HEAD']).trim()}`));
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('a live smoke FAIL after landing goes to a fresh Shipping pass and straight back to land', async () => {
+  const { result, trail, dir, report } = await openCase({ smoke: ['FAIL', 'PASS'] });
+
+  assert.equal(trail.length, 1, 'the fix after a smoke failure does not ask Todd again');
+  assert.equal(result.status, 'success');
+  assert.equal(result.result.failCount, 1);
+  assert.equal(result.result.landed, true);
+  assert.equal(result.result.stopped, false);
+  assert.equal(existsSync(report), true, 'cleanup leaves the card report behind');
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('a second live smoke FAIL stops the card and says which part failed', async () => {
+  const { result, dir, report } = await openCase({ smoke: ['FAIL', 'FAIL'] });
+
+  assert.equal(result.status, 'success');
+  assert.equal(result.result.stopped, true);
+  assert.equal(result.result.failCount, 2);
+  const text = readFileSync(report, 'utf8');
+  assert.match(text, /Part: live smoke test/);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test("Todd's no sends the card back to build and a later yes lands it", async () => {
+  const { result, trail, dir } = await openCase({ answers: ['no', 'yes'] });
+
+  assert.deepEqual(
+    trail.map(entry => entry.request),
+    [`${CARD}/build-1`, `${CARD}/build-2`],
+  );
+  assert.equal(result.status, 'success');
+  assert.equal(result.result.accepted, true);
+  assert.equal(result.result.landed, true);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('a machine card walks the same path without asking Todd', async () => {
+  const { result, trail, dir } = await openCase({ kind: 'machine' });
+
+  assert.equal(trail.length, 0);
+  assert.equal(result.status, 'success');
+  assert.equal(result.result.accepted, true);
+  assert.equal(result.result.landed, true);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
+});
+
+test('an answer for another request is refused and the same run still takes the right one', async () => {
+  const dirCase = mkdtempSync(join(tmpdir(), 'flow-stale-'));
+  process.env.FLOW_SCRATCH = join(dirCase, 'scratch');
+  const repo = studioRepo(dirCase);
+  openScratch(dirCase);
+  const caseDir = join(dirCase, CARD);
+  mkdirSync(caseDir, { recursive: true });
+  writeFileSync(join(caseDir, 'verdicts.json'), JSON.stringify({ smoke: ['PASS'] }));
+  writeFileSync(join(caseDir, 'cursors.json'), '{}');
+  const fake = fakeReview(['PASS']);
+  const caseWorkflow = buildCardPath({ agents: { ...agents, shipping: fake.shipping }, dir: dirCase, repo, review: fake.review, check: { run: async () => ({ ok: true }) } });
+  const mastra = await openMastra({
+    card: CARD,
+    stateDb: join(dirCase, 'state.db'),
+    traceDb: join(dirCase, 'trace.duckdb'),
+    workflow: caseWorkflow,
+  });
+  const w = mastra.getWorkflow(caseWorkflow.id);
+  const run = await w.createRun();
+  const started = await run.start({ inputData: { card: CARD, kind: 'product' } });
+  assert.equal(started.status, 'suspended');
+
+  const wrong = await run.resume({
+    step: 'attempt',
+    resumeData: { request: `${CARD}/build-9`, answer: 'yes' },
+  });
+  assert.equal(wrong.status, 'suspended', 'an answer to another request keeps the card waiting');
+  const stillOpen = createWorkflowStateReader(await w.getWorkflowRunById(run.runId)).getSuspendedStep();
+  assert.equal(stillOpen.suspendPayload.request, `${CARD}/build-1`);
+
+  const right = await run.resume({
+    step: 'attempt',
+    resumeData: { request: `${CARD}/build-1`, answer: 'yes' },
+  });
+  assert.equal(right.status, 'success');
+  assert.equal(right.result.landed, true);
+  try { rmSync(dirCase, { recursive: true, force: true }); } catch {}
+});
+
+test('start refuses a card when the lead lacks its task tools and names what is missing', async t => {
+  const dirCase = mkdtempSync(join(tmpdir(), 'flow-no-tasks-'));
+  t.after(() => { try { rmSync(dirCase, { recursive: true, force: true }); } catch {} });
+  const repo = studioRepo(dirCase);
+  openScratch(dirCase);
+  const noTaskBuild = new Agent({ id: 'flow-build', name: 'Flow build', instructions: 'Reply.', model: createMockModel({ mockText: 'ok' }) });
+  const caseWorkflow = buildCardPath({ agents: { ...agents, build: noTaskBuild }, dir: dirCase, repo, review: fakeReview(['PASS']).review, check: { run: async () => ({ ok: true }) } });
+  const mastra = await openMastra({
+    card: CARD,
+    stateDb: join(dirCase, 'state.db'),
+    traceDb: join(dirCase, 'trace.duckdb'),
+    workflow: caseWorkflow,
+  });
+  const w = mastra.getWorkflow(caseWorkflow.id);
+  const run = await w.createRun();
+  const result = await run.start({ inputData: { card: CARD, kind: 'machine' } });
+  assert.equal(result.status, 'failed');
+  assert.match(String(result.steps.start.error ?? result.error ?? ''), /missing required task tools/i);
+  await mastra.shutdown();
+});
+
+test('a memory model failure stops the card with a report naming the failure', async t => {
+  const dirCase = mkdtempSync(join(tmpdir(), 'flow-mem-fail-'));
+  t.after(() => { try { rmSync(dirCase, { recursive: true, force: true }); } catch {} });
+  const repo = studioRepo(dirCase);
+  openScratch(dirCase);
+  const { TripWire } = await import('@mastra/core/agent');
+  const failingBuild = {
+    listTools: async () => TASK_TOOL_STUBS,
+    stream: async () => {
+      throw new TripWire('429 rate limit', { metadata: { observerFailure: { cause: { stopReason: 'model_error' } } } }, 'observational-memory');
+    },
+  };
+  const caseWorkflow = buildCardPath({
+    agents: { ...agents, build: failingBuild },
+    dir: dirCase,
+    repo,
+    review: fakeReview(['PASS']).review,
+    check: { run: async () => ({ ok: true }) },
+  });
+  const mastra = await openMastra({
+    card: CARD,
+    stateDb: join(dirCase, 'state.db'),
+    traceDb: join(dirCase, 'trace.duckdb'),
+    workflow: caseWorkflow,
+  });
+  const w = mastra.getWorkflow(caseWorkflow.id);
+  const run = await w.createRun();
+  const result = await run.start({ inputData: { card: CARD, kind: 'machine' } });
+  assert.equal(result.status, 'success');
+  assert.equal(result.steps.attempt.output.stopped, true);
+  const report = readFileSync(join(dirCase, CARD, 'reports', `${CARD}.md`), 'utf8');
+  assert.match(report, /Part: Memory/);
+  assert.match(report, /429 rate limit/);
+  await mastra.shutdown();
+});
+
+test('starting a card with leftover GitHub work stops and posts the recorded outcome to the card', async () => {
+  const dirCase = mkdtempSync(join(tmpdir(), 'flow-leftover-'));
+  const repo = studioRepo(dirCase);
+  const origin = join(dirCase, 'origin.git');
+  git(dirCase, ['clone', '--bare', '--quiet', repo, origin]);
+  git(repo, ['remote', 'add', 'origin', origin]);
+  git(repo, ['branch', `card/${CARD}`]);
+  git(repo, ['push', '--quiet', 'origin', `card/${CARD}`]);
+  git(repo, ['branch', '-D', `card/${CARD}`]);
+  openScratch(dirCase);
+
+  const cardComments = [];
+  const { review } = fakeReview(['PASS']);
+  review.postCardComment = async (identifier, body) => { cardComments.push({ identifier, body }); };
+  const caseWorkflow = buildCardPath({
+    agents,
+    dir: dirCase,
+    repo,
+    review,
+    check: { run: async () => ({ ok: true }) },
+  });
+  const mastra = await openMastra({
+    card: CARD,
+    stateDb: join(dirCase, 'state.db'),
+    traceDb: join(dirCase, 'trace.duckdb'),
+    workflow: caseWorkflow,
+  });
+  const w = mastra.getWorkflow(caseWorkflow.id);
+  const run = await w.createRun();
+  const result = await run.start({ inputData: { card: CARD, kind: 'product' } });
+  assert.equal(result.status, 'success');
+  assert.equal(result.steps.attempt.output.stopped, true);
+  const report = readFileSync(join(dirCase, CARD, 'reports', `${CARD}.md`), 'utf8');
+  assert.match(report, /Part: Leftover work/);
+  assert.match(report, new RegExp(`card/${CARD} already exists on origin`));
+  assert.equal(cardComments.length, 1);
+  assert.equal(cardComments[0].identifier, CARD);
+  assert.match(cardComments[0].body, /Part: Leftover work/);
+  await mastra.shutdown();
+});
+
+test('a run that pauses at acceptance or stops posts its reason and wait state to the card', async () => {
+  const dirCase = mkdtempSync(join(tmpdir(), 'flow-notify-'));
+  const repo = studioRepo(dirCase);
+  openScratch(dirCase);
+  const cardComments = [];
+  const { shipping, review } = fakeReview(['PASS']);
+  review.postCardComment = async (identifier, body) => { cardComments.push({ identifier, body }); };
+  const caseWorkflow = buildCardPath({
+    agents: { ...agents, shipping },
+    dir: dirCase,
+    repo,
+    review,
+    check: { run: async () => ({ ok: true }) },
+  });
+  const mastra = await openMastra({
+    card: CARD,
+    stateDb: join(dirCase, 'state.db'),
+    traceDb: join(dirCase, 'trace.duckdb'),
+    workflow: caseWorkflow,
+  });
+  const w = mastra.getWorkflow(caseWorkflow.id);
+  const run = await w.createRun();
+  const suspended = await run.start({ inputData: { card: CARD, kind: 'product' } });
+  assert.equal(suspended.status, 'suspended');
+  assert.equal(cardComments.some(c => c.identifier === CARD && /paused at acceptance/i.test(c.body) && /waiting for Todd/i.test(c.body)), true);
+  await mastra.shutdown();
+});
+
+test('a failed card post leaves a record under reports/<card>-post-failures.log', async () => {
+  const dirCase = mkdtempSync(join(tmpdir(), 'flow-post-fail-'));
+  const repo = studioRepo(dirCase);
+  openScratch(dirCase);
+  const { shipping, review } = fakeReview(['PASS']);
+  review.postCardComment = async () => { throw new Error('Linear API unreachable'); };
+  const caseWorkflow = buildCardPath({
+    agents: { ...agents, shipping },
+    dir: dirCase,
+    repo,
+    review,
+    check: { run: async () => ({ ok: true }) },
+  });
+  const mastra = await openMastra({
+    card: CARD,
+    stateDb: join(dirCase, 'state.db'),
+    traceDb: join(dirCase, 'trace.duckdb'),
+    workflow: caseWorkflow,
+  });
+  const w = mastra.getWorkflow(caseWorkflow.id);
+  const run = await w.createRun();
+  const suspended = await run.start({ inputData: { card: CARD, kind: 'product' } });
+  assert.equal(suspended.status, 'suspended');
+  const failureLog = join(dirCase, CARD, 'reports', `${CARD}-post-failures.log`);
+  assert.equal(existsSync(failureLog), true);
+  assert.match(readFileSync(failureLog, 'utf8'), /Linear API unreachable/);
+  await mastra.shutdown();
+  try { rmSync(dirCase, { recursive: true, force: true }); } catch {}
+});
