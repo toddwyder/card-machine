@@ -40,6 +40,8 @@ function setupEnvironment(t) {
     USERPROFILE: home,
     FLOW_DIR: flowDir,
     FLOW_REPO: repo,
+    FLOW_PROJECT_REPO: repo,
+    FLOW_PROJECT_GITHUB_REPO: 'example/throwaway-studio-test',
   };
   delete env.JULIA_LEAD_MODEL_FILE;
   delete env.JULIA_LEAD_ROLE_MODELS_FILE;
@@ -75,3 +77,21 @@ test('Studio card-path starts a run from the run form and stops cleanly when ori
   assert.match(report, /Part: start-build/);
   assert.match(report, /Failed to fetch latest main from origin/);
 });
+
+for (const setting of ['FLOW_PROJECT_REPO', 'FLOW_PROJECT_GITHUB_REPO']) {
+  test(`Studio start-up stops before any paid work when ${setting} is unset or empty`, t => {
+    const { env } = setupEnvironment(t);
+    for (const bad of [undefined, '']) {
+      const testEnv = { ...env };
+      if (bad === undefined) delete testEnv[setting];
+      else testEnv[setting] = bad;
+      const child = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', `import ${JSON.stringify(indexUrl)};`],
+        { cwd: repoRoot, env: testEnv, encoding: 'utf8' },
+      );
+      assert.notEqual(child.status, 0, `expected non-zero exit when ${setting} is ${JSON.stringify(bad)}`);
+      assert.match(child.stderr, new RegExp(setting));
+    }
+  });
+}

@@ -74,8 +74,12 @@ async function makeNewest(client, threadId) {
   });
 }
 
-export function pullRequestUrl(pr, repoSlug = process.env.FLOW_PROJECT_GITHUB_REPO ?? 'toddwyder/card-machine') {
-  return `https://github.com/${repoSlug}/pull/${pr}`;
+export function pullRequestUrl(pr, repoSlug = process.env.FLOW_PROJECT_GITHUB_REPO) {
+  const slug = String(repoSlug ?? '').trim();
+  if (!slug) {
+    throw new Error('FLOW_PROJECT_GITHUB_REPO is unset or empty. Set FLOW_PROJECT_GITHUB_REPO to the target GitHub repository slug (owner/name).');
+  }
+  return `https://github.com/${slug}/pull/${pr}`;
 }
 
 function quote(label, text) {

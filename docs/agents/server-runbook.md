@@ -40,8 +40,9 @@ node scripts/julia-agents.mjs -- npx mastra dev
 Run it from the repository root: the CLI looks for `src/mastra/index.ts` there. The server answers on
 `:4111` by default. `FLOW_DIR` is where the run's state (`state.db`) and trace (`trace.duckdb`) are
 written, and it defaults to `.artifacts/flow/studio` under the repository; set it to an absolute path
-to keep runs apart. The repository the build agent works in is `FLOW_REPO`, default the working
-directory.
+to keep runs apart. The repository the machine itself runs from is `FLOW_REPO`, default the working
+directory. The target project checkout a card builds in is `FLOW_PROJECT_REPO`, and its GitHub
+`owner/name` slug is `FLOW_PROJECT_GITHUB_REPO`; both are required at start-up and must be set.
 
 In Studio, pick the `card-path` workflow and press run. The form asks for `card` and `kind`
 (`product` or `machine`) and nothing else; the workflow copies both into saved state and opens

@@ -106,7 +106,12 @@ async function inspect(port, root, configuredModel) {
 
 export async function checkLead({ root = process.cwd() } = {}) {
   assert(process.env.NODE_ENV !== 'test' && !process.env.VITEST, 'Run the subscription check outside test mode.');
-  const env = { ...process.env, NODE_ENV: 'development' };
+  const env = {
+    ...process.env,
+    NODE_ENV: 'development',
+    FLOW_PROJECT_REPO: process.env.FLOW_PROJECT_REPO || root,
+    FLOW_PROJECT_GITHUB_REPO: process.env.FLOW_PROJECT_GITHUB_REPO || 'example/throwaway-lead-check',
+  };
   delete env.FLOW_REPO;
   delete env.OPENAI_API_KEY;
   delete env.OPENAI_BASE_URL;

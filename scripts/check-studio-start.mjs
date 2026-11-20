@@ -75,7 +75,14 @@ export async function checkStudioStart({ root = process.cwd(), timeoutMs = 18000
     cwd: root,
     detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...env, PORT: String(port), FLOW_DIR: dir, MASTRA_TELEMETRY_DISABLED: '1' },
+    env: {
+      FLOW_PROJECT_REPO: env.FLOW_PROJECT_REPO || root,
+      FLOW_PROJECT_GITHUB_REPO: env.FLOW_PROJECT_GITHUB_REPO || 'example/throwaway-studio-check',
+      ...env,
+      PORT: String(port),
+      FLOW_DIR: dir,
+      MASTRA_TELEMETRY_DISABLED: '1',
+    },
   });
   const onExit = () => {
     if (child.exitCode === null && child.signalCode === null) killProcessGroupNow(child.pid, 'SIGKILL');

@@ -40,6 +40,7 @@ test('card copy reads the project main version while skills, playbooks, and grap
     USERPROFILE: process.env.USERPROFILE,
     FLOW_REPO: process.env.FLOW_REPO,
     FLOW_PROJECT_REPO: process.env.FLOW_PROJECT_REPO,
+    FLOW_PROJECT_GITHUB_REPO: process.env.FLOW_PROJECT_GITHUB_REPO,
     FLOW_SCRATCH: process.env.FLOW_SCRATCH,
   };
   t.after(() => {
@@ -77,6 +78,7 @@ test('card copy reads the project main version while skills, playbooks, and grap
   process.env.USERPROFILE = userHome;
   process.env.FLOW_REPO = home;
   process.env.FLOW_PROJECT_REPO = project;
+  process.env.FLOW_PROJECT_GITHUB_REPO = 'example/throwaway-project-split';
   process.env.FLOW_SCRATCH = scratch;
 
   assert.equal(repoRoot(), home);

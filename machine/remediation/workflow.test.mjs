@@ -188,7 +188,13 @@ test('one FAIL hands that determination to the builder and a fresh review passes
   assert.equal(calls.posts.length, 0, 'a found session needs no note on the card');
 });
 
-test('two FAILs in a row run the investigation once and stop with a ping that names the pull request and the root cause', withoutProgram, async () => {
+test('two FAILs in a row run the investigation once and stop with a ping that names the pull request and the root cause', withoutProgram, async t => {
+  const prevSlug = process.env.FLOW_PROJECT_GITHUB_REPO;
+  t.after(() => {
+    if (prevSlug === undefined) delete process.env.FLOW_PROJECT_GITHUB_REPO;
+    else process.env.FLOW_PROJECT_GITHUB_REPO = prevSlug;
+  });
+  process.env.FLOW_PROJECT_GITHUB_REPO = 'example/throwaway-remediation';
   const { started, calls } = await runLoop([FAIL_ANSWER, FAIL_ANSWER]);
   assert.equal(started.status, 'success', started.error);
   const record = started.result;
@@ -212,7 +218,7 @@ test('two FAILs in a row run the investigation once and stop with a ping that na
 
   assert.equal(calls.pings.length, 1, 'Todd is pinged once');
   const ping = calls.pings[0];
-  assert.match(ping.message, /https:\/\/github\.com\/toddwyder\/card-machine\/pull\/42/);
+  assert.match(ping.message, /https:\/\/github\.com\/example\/throwaway-remediation\/pull\/42/);
   assert.match(ping.message, /Root cause: Shipping is the first thing that opens the page\./);
   assert.match(ping.message, /Review 1 on commit-shipping-judged: FAIL/);
   assert.equal(record.stop.ping.posted, true);

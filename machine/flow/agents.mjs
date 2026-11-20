@@ -41,7 +41,19 @@ export function repoRoot() {
 }
 
 export function projectRepoRoot() {
-  return process.env.FLOW_PROJECT_REPO ?? repoRoot();
+  const value = process.env.FLOW_PROJECT_REPO?.trim();
+  if (!value) {
+    throw new Error('FLOW_PROJECT_REPO is unset or empty. Set FLOW_PROJECT_REPO to the target project repository path.');
+  }
+  return value;
+}
+
+export function projectGithubRepo() {
+  const value = process.env.FLOW_PROJECT_GITHUB_REPO?.trim();
+  if (!value) {
+    throw new Error('FLOW_PROJECT_GITHUB_REPO is unset or empty. Set FLOW_PROJECT_GITHUB_REPO to the target GitHub repository slug (owner/name).');
+  }
+  return value;
 }
 
 export function createAgents({ model, leadModel, helperModel, costLimit, repo = repoRoot(), leadModelFile, roleModelsFile, tools = {} } = {}) {
