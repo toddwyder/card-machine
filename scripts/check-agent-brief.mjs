@@ -50,6 +50,14 @@ const MODEL = new RegExp(
   'i',
 );
 
+// The name of the app a person runs is not a model name: "Claude Code" names the harness, and a
+// card may name it. The models that harness runs still fail below.
+const HARNESS_NAME = /\bclaude\s+code\b/gi;
+
+function modelName(text) {
+  return MODEL.exec(String(text ?? '').replace(HARNESS_NAME, ' '));
+}
+
 // A proof resting on one of these shows nothing on the real surface.
 const WEAK_EVIDENCE = [
   [/\b(?:status|pipeline|build|ci)\b[^.]{0,20}\b(?:green|passing|passes|passed|succeeds)\b/i, 'a passing status'],
@@ -70,9 +78,13 @@ const CONCURRENT = /\b(?:race|races|concurrent\w*|simultaneous\w*|interleav\w*|a
 const FORMAL_VERIFICATION = /\b(?:TLA\+?|PlusCal|statechart|model[- ]?check\w*|formal (?:verification|model|proof)|invariant|Apalache|TLC|Alloy)\b/i;
 const TODD_CLAIM = /\b(?:Todd|the operator)\b[^.]{0,40}\b(?:approved|approves|signed off|signs off|decided|decides|chose|chosen|confirmed|confirms|accepted|accepts)\b/i;
 const TODD_POSSESSIVE = /\b(?:Todd|the operator)['’]s (?:approval|sign-off|decision|confirmation)\b/i;
+// A line that states the rule about claims is a mention, not a claim: "A line that claims Todd's
+// approval fails." Names the thing that fails, so the card is telling the agent what not to write.
+const RULE_MENTION = /\b(?:a|any|every|each)\s+(?:line|row|card|rule|check|bullet|entry)\b[^.]{0,80}\bfails?\b/i;
 const TODD_CONDITIONAL = /\b(?:when|once|after|until|if|before|by)\b[^.]{0,50}\b(?:Todd|the operator)\b|\bjudged by (?:Todd|the operator)\b/i;
 const APPEARANCE = /\b(?:looks?|looking|appears?|visually|visual|style|styling|design|pretty|polished|spacing|font|colour|color|layout)\b/i;
-const POINTER = /(?:`[^`]+`|\[[^\]]+\]\([^)]+\))[\s.;:,]*$/;
+// The source may name the part of the file it means: "`machine/flow/task.mjs` (`taskFromCard`)."
+const POINTER = /(?:`[^`]+`|\[[^\]]+\]\([^)]+\))(?:\s*\(`[^`]+`\))?[\s.;:,]*$/;
 
 const normalizedName = text => String(text ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -244,7 +256,36 @@ function resolveReference(target, ctx) {
   for (const base of [ctx.root, ctx.machineRoot]) {
     if (base && existsSync(resolve(base, path))) return { kind: 'file', path };
   }
+  // A card may name a file by its bare name, such as a playbook that sits deep in a folder. It
+  // resolves when a file the project or the machine holds carries that name.
+  if (!path.includes('/') && basenames(ctx).has(path)) return { kind: 'file', path };
   return { kind: 'missing', path };
+}
+
+// The names of the files the project and the machine hold, read once and kept on the context.
+function basenames(ctx) {
+  if (!ctx.basenames) ctx.basenames = new Set([...basenamesIn(ctx.root), ...basenamesIn(ctx.machineRoot)]);
+  return ctx.basenames;
+}
+
+function basenamesIn(base) {
+  if (!base || !existsSync(base)) return [];
+  let files;
+  try {
+    files = execFileSync('git', ['ls-files'], { cwd: base, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
+  } catch {
+    files = [];
+    const visit = directory => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) visit(path);
+        else files.push(path);
+      }
+    };
+    visit(base);
+  }
+  return files.map(file => file.split('/').pop());
 }
 
 function directoryExists(path, ctx) {
@@ -273,7 +314,7 @@ function negationFinding(criterion) {
 
 function modelFinding(criterion) {
   // Matched against the raw text, because plain drops the slash from a provider address such as commandcode/reflection/beam.
-  const model = MODEL.exec(String(criterion.text ?? ''));
+  const model = modelName(criterion.text);
   return model ? `${criterion.id} names the model "${model[0]}"; name a kind of model, such as a free model, and leave the specific one in the pstack models file` : null;
 }
 
@@ -444,7 +485,7 @@ export const CHECKS = [
     title: "No line claims Todd's approval or decision",
     run: async draft => {
       const findings = draft.rows
-        .filter(row => (TODD_CLAIM.test(row.text) || TODD_POSSESSIVE.test(row.text)) && !TODD_CONDITIONAL.test(row.text))
+        .filter(row => (TODD_CLAIM.test(row.text) || TODD_POSSESSIVE.test(row.text)) && !TODD_CONDITIONAL.test(row.text) && !RULE_MENTION.test(row.text))
         .map(row => `line ${row.line} claims a decision Todd has given; state the rule the card needs instead`);
       return findings.length ? failed(findings) : passed();
     },
@@ -456,7 +497,7 @@ export const CHECKS = [
       const findings = draft.rows
         .filter(row => {
           const stripped = row.text.replace(/\]\([^)]*\)/g, ']').replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, ' ');
-          return MODEL.test(stripped);
+          return Boolean(modelName(stripped));
         })
         .map(row => `line ${row.line} names a specific model; name a kind of model, such as a free model, and leave the specific one in the pstack models file`);
       return findings.length ? failed(findings) : passed();

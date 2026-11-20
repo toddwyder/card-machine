@@ -48,7 +48,11 @@ const NO_LINK = 'The card sits per `docs/review.md`.';
 const COPIED = 'The draft names each rule it breaks and leaves every passing rule alone.';
 const COPIED_DOC = `# Rules\n\nOne hard rule. ${COPIED}\n`;
 
-const NAMED = ['machine/flow/task.mjs', 'scripts/check-agent-brief.test.mjs', 'scripts/check-agent-brief.mjs', 'docs/review.md'];
+const NAMED = [
+  'machine/flow/task.mjs', 'scripts/check-agent-brief.test.mjs', 'scripts/check-agent-brief.mjs', 'docs/review.md',
+  'docs/plans/path-forward.md', 'scripts/linear-token.mjs', 'scripts/linear-cli.mjs',
+  '.agents/skills/poteto-mode/playbooks/autonomous-run.md', '.agents/skills/poteto-mode/playbooks/hillclimb.md',
+];
 
 function project(t, { agents = '# Rules\n\nWrite the observed behavior.\n' } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'card-'));
@@ -225,6 +229,59 @@ test('a slash in a backticked choice is not a missing path', async t => {
 
   const gone = await check(t, edit(GOOD, DONE_LINE_THREE, '- The build opens `scripts/beta` at start.'));
   assert.deepEqual(statuses(gone.results), ['references']);
+});
+
+// Four lines off a real card that the checker once failed. Each one is correct: a mention of the
+// claim rule, the name of the harness a person runs, a playbook named by its bare filename, and a
+// source that names the part of the file it means.
+const REAL_CLAIM_LINE = "- A line that claims Todd's approval or decision fails, because only Todd gives those.";
+const REAL_HARNESS_LINE = '- The Claude Code personal skills folder could not be read.';
+const REAL_PLAYBOOK_LINE = "- A line that tells the agent to stop and ask fails, because the machine's `AGENTS.md` and `docs/plans/path-forward.md` hold the stop rules and pstack's playbooks (`autonomous-run.md`, `hillclimb.md`) cover being stuck. A rule about the order of events in product code needs a formal verification line in its proof.";
+const REAL_POINTER_LINE = "- The machine signs in to Linear with write permission by default and changes a card's status through Linear's update request: card-machine `scripts/linear-token.mjs` and `scripts/linear-cli.mjs` (`setIssueState`).";
+
+function withLine(text, line) {
+  return edit(text, '- No model call sits anywhere in the check.', `- No model call sits anywhere in the check.\n${line}`);
+}
+
+test('a line stating the claim rule is a mention, while a claim still fails', async t => {
+  const mention = await check(t, withLine(GOOD, REAL_CLAIM_LINE));
+  assert.deepEqual(statuses(mention.results), []);
+
+  const decision = await check(t, withLine(GOOD, "- Todd's decision: ship it."));
+  assert.deepEqual(statuses(decision.results), ['todd-approval']);
+
+  const approved = await check(t, withLine(GOOD, '- Todd approved this card.'));
+  assert.deepEqual(statuses(approved.results), ['todd-approval']);
+});
+
+test('the harness name passes, while a model name still fails', async t => {
+  const harness = await check(t, withLine(GOOD, REAL_HARNESS_LINE));
+  assert.deepEqual(statuses(harness.results), []);
+
+  for (const line of ['- The build runs on claude.', '- The build runs on Claude Opus.', '- The build runs on opus.']) {
+    const named = await check(t, withLine(GOOD, line));
+    assert.deepEqual(statuses(named.results), ['model-names'], line);
+  }
+});
+
+test('a bare filename the project holds resolves, while one it does not still fails', async t => {
+  const tracked = await check(t, withLine(GOOD, REAL_PLAYBOOK_LINE));
+  assert.deepEqual(statuses(tracked.results), []);
+
+  const missing = await check(t, withLine(GOOD, '- A stuck run reads `no-such-playbook.md` before it reports.'));
+  assert.deepEqual(statuses(missing.results), ['references']);
+});
+
+test('a source that names the part of the file passes, while plain prose still fails', async t => {
+  const named = await check(t, edit(GOOD, KNOWN_LINE_TWO, `${REAL_POINTER_LINE}\n${KNOWN_LINE_TWO}`));
+  assert.deepEqual(statuses(named.results), []);
+
+  const prose = await check(t, edit(
+    GOOD,
+    KNOWN_LINE_TWO,
+    '- The checker reads headings through the card reader in `machine/flow/task.mjs` and that file is the one it uses.',
+  ));
+  assert.deepEqual(statuses(prose.results), ['known-pointers']);
 });
 
 test('a made-up link fails and an unreachable one is not checked', async t => {
