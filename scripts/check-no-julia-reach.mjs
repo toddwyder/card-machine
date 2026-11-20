@@ -21,9 +21,6 @@ const SKIP_FILES = new Set([
 const SKIP_PREFIXES = [
   'docs/',
   'graphify-out/',
-  'machine/merge/',
-  'machine/remediation/',
-  'machine/shipping/',
 ];
 
 const REACH_PATTERNS = [
@@ -58,7 +55,7 @@ function listFiles(root) {
 export function checkNoJuliaReach(root = process.cwd()) {
   const failures = [];
   for (const file of listFiles(root)) {
-    if (SKIP_FILES.has(file) || file.endsWith('.test.mjs')) continue;
+    if (SKIP_FILES.has(file)) continue;
     if (SKIP_PREFIXES.some(prefix => file.startsWith(prefix))) continue;
     if (!CODE_EXTENSIONS.has(extname(file))) continue;
     const full = join(root, file);

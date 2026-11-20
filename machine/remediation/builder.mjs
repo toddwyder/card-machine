@@ -74,8 +74,8 @@ async function makeNewest(client, threadId) {
   });
 }
 
-export function pullRequestUrl(pr) {
-  return `https://github.com/toddwyder/julia-next/pull/${pr}`;
+export function pullRequestUrl(pr, repoSlug = process.env.FLOW_PROJECT_GITHUB_REPO ?? 'toddwyder/card-machine') {
+  return `https://github.com/${repoSlug}/pull/${pr}`;
 }
 
 function quote(label, text) {

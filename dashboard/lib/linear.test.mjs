@@ -15,7 +15,7 @@ test('reads every page fresh and sorts every Ready card newest first', async () 
   const options = opts(async (_url, init) => {
     calls.push(init);
     const { variables, query } = JSON.parse(init.body);
-    assert.match(query, /Julia-next/);
+    assert.ok(query.includes('Julia-next'));
     assert.match(query, /Ready/);
     return variables.after === null
       ? response([card('JUL-1')], { hasNextPage: true, endCursor: 'next' })

@@ -5,6 +5,7 @@
 
 import { loadMastra } from '../shipping/harness.mjs';
 import { criteriaFromCard } from '../shipping/determination.mjs';
+import { pullRequestUrl } from './builder.mjs';
 import { BUG_FIX_PLAYBOOK, INVESTIGATION_PLAYBOOK, rootCauseFrom } from './builder.mjs';
 
 export const WORKFLOW_ID = 'remediation';
@@ -54,7 +55,7 @@ export function stopMessage(record) {
   const lines = [
     `The remediation loop stopped on ${record.card.identifier}.`,
     `Why: ${record.stop?.reason ?? 'no reason recorded'}`,
-    `Pull request: https://github.com/toddwyder/julia-next/pull/${record.pr}`,
+    `Pull request: ${pullRequestUrl(record.pr)}`,
   ];
   for (const review of record.reviews) {
     const failed = (review.failed ?? []).map(item => `criterion ${item.number}`);
