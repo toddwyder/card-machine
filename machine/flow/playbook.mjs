@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { TaskSignalProvider } from '@mastra/core/signals';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
@@ -121,11 +122,7 @@ export function createChoosePlaybookTool({ repo, onChosen, onInvalid } = {}) {
         };
       }
 
-      const store = await context?.mastra?.getStorage?.()?.getStore?.('threadState');
-      const threadId = context?.agent?.threadId;
-      const existing = store && threadId
-        ? await store.getState({ threadId, type: TASK_STATE_TYPE })
-        : context?.requestContext?.get?.(TASKS_REQUEST_CONTEXT_KEY);
+      const { store, threadId, tasks: existing } = await readTaskState(context);
       const tasks = seedPlaybookTasks(existing, entry.steps);
 
       if (store && threadId) {
@@ -144,4 +141,56 @@ export function createChoosePlaybookTool({ repo, onChosen, onInvalid } = {}) {
       };
     },
   });
+}
+
+const FLAG_PATTERN = /\bflag\s*:/i;
+
+export const hasTaskFlag = task =>
+  FLAG_PATTERN.test(String(task?.content ?? '')) || FLAG_PATTERN.test(String(task?.activeForm ?? ''));
+
+async function readTaskState(context) {
+  const store = await context?.mastra?.getStorage?.()?.getStore?.('threadState');
+  const threadId = context?.agent?.threadId;
+  const raw = store && threadId
+    ? await store.getState({ threadId, type: TASK_STATE_TYPE })
+    : context?.requestContext?.get?.(TASKS_REQUEST_CONTEXT_KEY);
+  return { store, threadId, tasks: Array.isArray(raw) ? raw : [] };
+}
+
+const flaggedTaskRefusal = tasks => ({
+  content: 'Refused: a task cannot be marked completed with a flag:. Finish the step cleanly in this run without flagging it.',
+  tasks,
+  isError: true,
+});
+
+const wrapTaskTool = (base, checkRefusal) => createTool({
+  id: base.id,
+  description: base.description,
+  inputSchema: base.inputSchema,
+  outputSchema: base.outputSchema,
+  execute: async (input, context) => {
+    const { tasks } = await readTaskState(context);
+    if (checkRefusal(input, tasks)) return flaggedTaskRefusal(tasks);
+    return base.execute(input, context);
+  },
+});
+
+export function createGuardedTaskTools() {
+  const builtin = new TaskSignalProvider().getTools();
+  return {
+    task_write: wrapTaskTool(
+      builtin.task_write,
+      input => Array.isArray(input?.tasks) && input.tasks.some(task => task?.status === 'completed' && hasTaskFlag(task)),
+    ),
+    task_update: wrapTaskTool(builtin.task_update, (input, tasks) => {
+      const existing = tasks.find(task => task?.id === input?.id);
+      const nextStatus = input?.status ?? existing?.status;
+      const nextTask = { content: input?.content ?? existing?.content, activeForm: input?.activeForm ?? existing?.activeForm };
+      return nextStatus === 'completed' && hasTaskFlag(nextTask);
+    }),
+    task_complete: wrapTaskTool(builtin.task_complete, (input, tasks) => {
+      const existing = tasks.find(task => task?.id === input?.id);
+      return Boolean(existing && hasTaskFlag(existing));
+    }),
+  };
 }

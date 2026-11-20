@@ -520,5 +520,4 @@ test('Lead refuses to mark a playbook step completed with a flag: and lets the r
   const store = await mastra.getStorage().getStore('threadState');
   const tasks = await store.getState({ threadId: 'JUL-407/flag-test', type: 'task' });
   assert.equal(tasks.find(item => item.id === 'playbook_5')?.status, 'completed');
-  await mastra.getStorage().close?.();
 });

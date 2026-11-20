@@ -8,7 +8,7 @@ import { LocalFilesystem, LocalSandbox, Workspace } from '@mastra/core/workspace
 
 import { cardMemory } from './memory.mjs';
 import { buildModelReader, leadModelId } from './models.mjs';
-import { createChoosePlaybookTool } from './playbook.mjs';
+import { createChoosePlaybookTool, createGuardedTaskTools } from './playbook.mjs';
 import { ensureCardResources } from './resources.mjs';
 import { SHIPPING_MAX_STEPS } from './review.mjs';
 import { agentModel, helperKey, readRoleModels, readStageModels } from './role-models.mjs';
@@ -139,7 +139,13 @@ export function createAgents({ model, leadModel, helperModel, costLimit, repo = 
     return new Workspace({
       id,
       filesystem: new LocalFilesystem({ basePath: folder, ...(readOnly ? { readOnly: true } : {}) }),
-      sandbox: new LocalSandbox({ workingDirectory: folder, env: { HOME: homedir() } }),
+      sandbox: new LocalSandbox({
+        workingDirectory: folder,
+        env: {
+          HOME: homedir(),
+          ...(process.env.LINEAR_API_KEY ? { LINEAR_API_KEY: process.env.LINEAR_API_KEY } : {}),
+        },
+      }),
       ...extra,
     });
   };
@@ -194,7 +200,7 @@ export function createAgents({ model, leadModel, helperModel, costLimit, repo = 
     ...cardMemory(memoryModelId),
     workspace: cardWorkspace('machine-repo', { readOnly: true, skills: ['.agents/skills'] }),
     agents: helpers,
-    tools: { ...tools, choose_playbook: choosePlaybookTool },
+    tools: { ...createGuardedTaskTools(), ...tools, choose_playbook: choosePlaybookTool },
     defaultOptions: {
       maxSteps: 400,
       toolCallConcurrency: HELPER_CONCURRENCY,

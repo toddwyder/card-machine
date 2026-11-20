@@ -14,8 +14,8 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `7a1a595c253ae3b7c7e3d4fa26f823fb9e790afefe72078689e176f6d21faa17` |
 | `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `d901ebec78c181644defcbdd4a4eafe48c28e8fd7c91afa820ef7d874ec4c4d0` |
 | `machine/flow/task.mjs` | The task the Lead is given, taken word for word from the card. | `ee7d91a262a8dc0a1664ba03fc5c73f3f19aac19fedb5cd6b9c003b10ff11f2a` |
-| `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `99e6175d940acc2064010b7e8e63a0a3e1a5aaf99d5797395c6f96ef0730baaf` |
-| `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `90531eb2366f1c5bb03ac23014363ff8b2498c7da931d59a6a29981e276f2a31` |
+| `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `471474656361bf2bc3c976ea991ff7e94006fca42c3aa9d7865e770f3b7010a9` |
+| `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `8b357b1e60870c6eacfb06e87c36805ee62dc96d801ca7d88155dcdf5f43716e` |
 | `machine/flow/graphify.mjs` | The Graphify graph tools offered to Lead and its helpers. | `c502bc49faa96ef1de469764696d1682347679a61a17629766940de5baf546b6` |
 | `machine/flow/memory.mjs` | The memory note-takers, run on the free model the card picked. | `c166620cff305155382848e9e2c7bf09b24641bb14d3a0ed8bca242a852835b1` |
 | `machine/flow/models.mjs` | The Lead model, read from its independent setting and routed through its account provider. | `271f19a5a292f05566244e8c5191b10526e811b9a068590d82f1b3116d83e0e9` |
