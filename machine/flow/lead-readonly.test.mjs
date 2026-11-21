@@ -350,3 +350,67 @@ test('Criterion 4: the lead still reads the card work, runs its proofs, saves ev
   assert.ok(toolCalls.includes('mastra_workspace_read_file'), 'trace records Lead read_file');
   assert.ok(toolCalls.includes('mastra_workspace_execute_command'), 'trace records Lead execute_command');
 });
+
+test('Reproduction: Lead has no command-running or file-writing tools and cannot change a file in the card copy', async t => {
+  const ctx = setupCase(t);
+  let startTools = [];
+  let secondPrompt = '';
+  const leadModel = fakeModel({
+    onOptions: (options, step) => {
+      if (step === 0) startTools = toolNamesFromOptions(options);
+      if (step === 1) secondPrompt = JSON.stringify(options.prompt);
+    },
+    steps: [
+      {
+        toolCalls: [
+          { name: 'choose_playbook', input: { playbook: 'bug-fix' } },
+          {
+            name: 'mastra_workspace_execute_command',
+            input: { command: 'echo "changed by lead" > README.md' },
+          },
+        ],
+      },
+      { text: 'Attempted shell edit.' },
+    ],
+  });
+
+  await runLead({ ...ctx, leadModel, helperModel: fakeModel({ modelId: HELPER_MODEL_ID, provider: 'commandcode' }) });
+  for (const forbidden of [...WRITE_TOOLS, 'mastra_workspace_execute_command', 'execute_command']) {
+    assert.ok(!startTools.includes(forbidden), `Lead must not have ${forbidden} in registered tools`);
+  }
+  assert.match(secondPrompt, /Tool \\"mastra_workspace_execute_command\\" not found/, 'Lead shell call is rejected');
+  assert.equal(readFileSync(join(ctx.checkout, 'README.md'), 'utf8'), 'checkout\n', 'Lead could not change README.md');
+});
+
+test('Reproduction: helper can change a file in the card copy when the Lead delegates', async t => {
+  const ctx = setupCase(t);
+  const leadModel = fakeModel({
+    steps: [
+      {
+        toolCalls: [
+          { name: 'choose_playbook', input: { playbook: 'bug-fix' } },
+          { name: 'agent-featureRefactoring', input: { prompt: 'Update README.md via shell or file tool' } },
+        ],
+      },
+      { text: 'Delegated README.md update to helper.' },
+    ],
+  });
+  const helperModel = fakeModel({
+    modelId: HELPER_MODEL_ID,
+    provider: 'commandcode',
+    steps: [
+      {
+        toolCalls: [
+          {
+            name: 'mastra_workspace_execute_command',
+            input: { command: 'echo "changed by helper" > README.md' },
+          },
+        ],
+      },
+      { text: 'Updated README.md.' },
+    ],
+  });
+
+  await runLead({ ...ctx, leadModel, helperModel });
+  assert.equal(readFileSync(join(ctx.checkout, 'README.md'), 'utf8'), 'changed by helper\n');
+});
