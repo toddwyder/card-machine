@@ -43,6 +43,8 @@ export const METRIC_RATES = Object.freeze({
   'mastra_model_input_audio_tokens': 'input',
   'mastra_model_input_cache_read_tokens': 'cacheRead',
   'mastra_model_input_cache_write_tokens': 'cacheWrite',
+  'mastra_model_input_cache_write_5m_tokens': 'cacheWrite5m',
+  'mastra_model_input_cache_write_1h_tokens': 'cacheWrite1h',
   'mastra_model_output_text_tokens': 'output',
   'mastra_model_output_reasoning_tokens': 'output',
   'mastra_model_output_image_tokens': 'output',
@@ -231,11 +233,16 @@ function baseRates(cost) {
   const input = Number(cost.input);
   const output = Number(cost.output);
   if (!Number.isFinite(input) || !Number.isFinite(output)) return null;
+  const cacheWrite = Number.isFinite(Number(cost.cache_write)) ? Number(cost.cache_write) : input;
+  const cacheWrite1h = Number.isFinite(Number(cost.cache_write_1h))
+    ? Number(cost.cache_write_1h)
+    : (Number.isFinite(Number(cost.cache_write)) ? cacheWrite * 1.6 : input);
   return {
     input,
     output,
     cacheRead: Number.isFinite(Number(cost.cache_read)) ? Number(cost.cache_read) : input,
-    cacheWrite: Number.isFinite(Number(cost.cache_write)) ? Number(cost.cache_write) : input,
+    cacheWrite,
+    cacheWrite1h,
   };
 }
 
@@ -273,12 +280,14 @@ export function priceFor({ catalog, corrections = {}, provider, model, at = null
     outputPerMillion: scaled(base.output),
     cacheReadPerMillion: scaled(base.cacheRead),
     cacheWritePerMillion: scaled(base.cacheWrite),
+    cacheWrite1hPerMillion: scaled(base.cacheWrite1h),
     tiers: tiersOf(cost?.cost).map(tier => ({
       size: tier.size,
       inputPerMillion: scaled(tier.rates.input),
       outputPerMillion: scaled(tier.rates.output),
       cacheReadPerMillion: scaled(tier.rates.cacheRead),
       cacheWritePerMillion: scaled(tier.rates.cacheWrite),
+      cacheWrite1hPerMillion: scaled(tier.rates.cacheWrite1h),
     })),
     free,
     peak: multiplier > 1,
@@ -293,6 +302,7 @@ export function ratesForTokens(price, totalInput = 0) {
     outputPerMillion: price.outputPerMillion,
     cacheReadPerMillion: price.cacheReadPerMillion,
     cacheWritePerMillion: price.cacheWritePerMillion,
+    cacheWrite1hPerMillion: price.cacheWrite1hPerMillion ?? price.cacheWritePerMillion,
   };
 }
 
@@ -301,11 +311,14 @@ export function ratesForTokens(price, totalInput = 0) {
 // count the same tokens twice.
 export function costOfTokens({ price, tokens = {} }) {
   const number = value => (Number.isFinite(Number(value)) ? Number(value) : 0);
+  const cacheWrite5m = number(tokens.cacheWrite5m);
+  const cacheWrite1h = number(tokens.cacheWrite1h);
+  const unclassifiedCacheWrite = Math.max(0, number(tokens.cacheWrite) - cacheWrite5m - cacheWrite1h);
   const totalInput = number(tokens.totalInput)
-    || number(tokens.inputText) + number(tokens.cacheRead) + number(tokens.cacheWrite);
+    || number(tokens.inputText) + number(tokens.cacheRead) + cacheWrite5m + cacheWrite1h + unclassifiedCacheWrite;
   const totalOutput = number(tokens.totalOutput)
     || number(tokens.outputText) + number(tokens.outputReasoning);
-  const hasComponents = ['inputText', 'cacheRead', 'cacheWrite'].some(name => number(tokens[name]) > 0)
+  const hasComponents = ['inputText', 'cacheRead', 'cacheWrite', 'cacheWrite5m', 'cacheWrite1h'].some(name => number(tokens[name]) > 0)
     || ['outputText', 'outputReasoning'].some(name => number(tokens[name]) > 0);
   const rates = ratesForTokens(price, totalInput);
   let usd = 0;
@@ -313,7 +326,8 @@ export function costOfTokens({ price, tokens = {} }) {
   if (hasComponents) {
     usd += number(tokens.inputText) * rates.inputPerMillion;
     usd += number(tokens.cacheRead) * rates.cacheReadPerMillion;
-    usd += number(tokens.cacheWrite) * rates.cacheWritePerMillion;
+    usd += (cacheWrite5m + unclassifiedCacheWrite) * rates.cacheWritePerMillion;
+    usd += cacheWrite1h * (rates.cacheWrite1hPerMillion ?? rates.cacheWritePerMillion);
     usd += (number(tokens.outputText) + number(tokens.outputReasoning)) * rates.outputPerMillion;
   } else {
     usd += totalInput * rates.inputPerMillion;
@@ -328,6 +342,8 @@ function tokenField(name) {
   if (rate === 'input') return 'inputText';
   if (rate === 'cacheRead') return 'cacheRead';
   if (rate === 'cacheWrite') return 'cacheWrite';
+  if (rate === 'cacheWrite5m') return 'cacheWrite5m';
+  if (rate === 'cacheWrite1h') return 'cacheWrite1h';
   return 'outputText';
 }
 
