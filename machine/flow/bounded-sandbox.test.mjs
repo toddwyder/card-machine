@@ -110,7 +110,20 @@ test('a command stops when the Studio unit it belongs to is killed', { timeout: 
   }
 });
 
-test('a command writes inside the card copy and nowhere else', { timeout: 60000 }, async () => {
+const hasBwrap = () => {
+  try {
+    execFileSync('sh', ['-c', 'command -v bwrap'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+test('a command writes inside the card copy and nowhere else', { timeout: 60000 }, async t => {
+  if (!hasBwrap()) {
+    t.skip('bwrap is not installed here, so there is no jail to test');
+    return;
+  }
   const scratch = path.join(os.homedir(), '.local', 'state', 'julia-scratch');
   fs.mkdirSync(scratch, { recursive: true });
   const copy = fs.mkdtempSync(path.join(scratch, 'jail-'));
