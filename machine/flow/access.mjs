@@ -19,7 +19,6 @@ const KNOWN_SERVICE_KEYS = new Set([
   'SENTRY_PROJECT',
   'AXIOM_TOKEN',
   'AXIOM_DATASET',
-  'STITCH_API_KEY',
 ]);
 
 export function readAgentServiceKeys(envFile) {
@@ -59,7 +58,6 @@ function buildProbeScript({ extraKeys = [], requireBrowser = false, playwrightFa
       commandcode: endpoints.commandcode ?? 'https://api.commandcode.ai/provider/v1/models',
       sentry: endpoints.sentry ?? 'https://sentry.io/api/0',
       axiom: endpoints.axiom ?? 'https://api.axiom.co/v2/datasets',
-      stitch: endpoints.stitch ?? 'https://stitch.googleapis.com/mcp',
     },
   });
 
@@ -108,14 +106,6 @@ const checks = [
   probe('axiom', ['AXIOM_TOKEN', 'AXIOM_DATASET'], () =>
     fetch(cfg.endpoints.axiom + '/' + encodeURIComponent(env.AXIOM_DATASET), {
       headers: { Authorization: 'Bearer ' + env.AXIOM_TOKEN },
-      signal: AbortSignal.timeout(10000),
-    }),
-  ),
-  probe('stitch', ['STITCH_API_KEY'], () =>
-    fetch(cfg.endpoints.stitch, {
-      method: 'POST',
-      headers: { 'X-Goog-Api-Key': env.STITCH_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_projects', arguments: {} } }),
       signal: AbortSignal.timeout(10000),
     }),
   ),

@@ -9,7 +9,7 @@ import { scratchDir } from './scratch-dir.mjs'
 export const agentsTokenPath='/home/ubuntu/.config/julia-agents/service-account-token'
 const referencesPath=fileURLToPath(new URL('./julia-agents.env',import.meta.url))
 const tokenScript=fileURLToPath(new URL('./linear-token.mjs',import.meta.url))
-const fields=new Set(['CMD_API_KEY','COMMANDCODE_API_KEY','LINEAR_API_KEY','LINEAR_CLIENT_ID','LINEAR_CLIENT_SECRET','LINEAR_OAUTH_SCOPE','SENTRY_AUTH_TOKEN','NEXT_PUBLIC_SENTRY_DSN','SENTRY_ORG','SENTRY_PROJECT','AXIOM_TOKEN','AXIOM_DATASET','STITCH_API_KEY'])
+const fields=new Set(['CMD_API_KEY','COMMANDCODE_API_KEY','LINEAR_API_KEY','LINEAR_CLIENT_ID','LINEAR_CLIENT_SECRET','LINEAR_OAUTH_SCOPE','SENTRY_AUTH_TOKEN','NEXT_PUBLIC_SENTRY_DSN','SENTRY_ORG','SENTRY_PROJECT','AXIOM_TOKEN','AXIOM_DATASET'])
 function prepareAgentsInvocation(argv,{tokenPath=agentsTokenPath,environment=process.env}={}){
  if(!Array.isArray(argv))throw Error()
  const linearOnly=argv[0]==='--linear'

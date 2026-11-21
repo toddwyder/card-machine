@@ -24,7 +24,6 @@ test('Shipping workspace loads pstack skills and inherits services from scripts/
     LINEAR_API_KEY: process.env.LINEAR_API_KEY,
     SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
     AXIOM_TOKEN: process.env.AXIOM_TOKEN,
-    STITCH_API_KEY: process.env.STITCH_API_KEY,
     UNRELATED_SECRET: process.env.UNRELATED_SECRET,
   };
   t.after(() => {
@@ -36,7 +35,6 @@ test('Shipping workspace loads pstack skills and inherits services from scripts/
   process.env.LINEAR_API_KEY = 'Bearer linear-repro-token';
   process.env.SENTRY_AUTH_TOKEN = 'sentry-repro-token';
   process.env.AXIOM_TOKEN = 'axiom-repro-token';
-  process.env.STITCH_API_KEY = 'stitch-repro-token';
   process.env.UNRELATED_SECRET = 'must-not-leak';
 
   const { shipping } = createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' });
@@ -48,14 +46,13 @@ test('Shipping workspace loads pstack skills and inherits services from scripts/
   try {
     const res = await ws.sandbox.executeCommand(process.execPath, [
       '-e',
-      'console.log(JSON.stringify({ linear: process.env.LINEAR_API_KEY ?? null, sentry: process.env.SENTRY_AUTH_TOKEN ?? null, axiom: process.env.AXIOM_TOKEN ?? null, stitch: process.env.STITCH_API_KEY ?? null, unrelated: process.env.UNRELATED_SECRET ?? null }))',
+      'console.log(JSON.stringify({ linear: process.env.LINEAR_API_KEY ?? null, sentry: process.env.SENTRY_AUTH_TOKEN ?? null, axiom: process.env.AXIOM_TOKEN ?? null, unrelated: process.env.UNRELATED_SECRET ?? null }))',
     ]);
     assert.equal(res.exitCode, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), {
       linear: 'Bearer linear-repro-token',
       sentry: 'sentry-repro-token',
       axiom: 'axiom-repro-token',
-      stitch: 'stitch-repro-token',
       unrelated: null,
     });
   } finally {
@@ -122,9 +119,9 @@ test('verifyRunAccess passes with real browser and local service endpoints, and 
   const dir = temporary(t);
   const leadModelFile = join(dir, 'lead-model');
   installLeadModel(leadModelFile);
-  let stitchStatus = 200;
+  let axiomStatus = 200;
   const server = createServer((req, res) => {
-    const status = req.url === '/stitch' ? stitchStatus : 200;
+    const status = req.url.startsWith('/axiom') ? axiomStatus : 200;
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: status === 200 }));
   });
@@ -137,7 +134,6 @@ test('verifyRunAccess passes with real browser and local service endpoints, and 
     commandcode: `${base}/commandcode`,
     sentry: `${base}/sentry`,
     axiom: `${base}/axiom`,
-    stitch: `${base}/stitch`,
   };
 
   const keys = {
@@ -148,7 +144,6 @@ test('verifyRunAccess passes with real browser and local service endpoints, and 
     SENTRY_PROJECT: 'proj',
     AXIOM_TOKEN: 'ok',
     AXIOM_DATASET: 'ds',
-    STITCH_API_KEY: 'ok',
   };
   const prev = Object.fromEntries(Object.keys(keys).map(k => [k, process.env[k]]));
   t.after(() => {
@@ -166,9 +161,9 @@ test('verifyRunAccess passes with real browser and local service endpoints, and 
   const pass = await verifyRunAccess({ agents: minimalAgents, checkout: repo, repo, checkBrowser: true, endpoints });
   assert.equal(pass.ok, true, pass.reason);
 
-  stitchStatus = 401;
+  axiomStatus = 401;
   const fail = await verifyRunAccess({ agents: minimalAgents, checkout: repo, repo, checkBrowser: false, endpoints });
   assert.equal(fail.ok, false);
-  assert.match(fail.reason, /Lead: stitch \(HTTP 401\)/);
-  assert.match(fail.reason, /Shipping: stitch \(HTTP 401\)/);
+  assert.match(fail.reason, /Lead: axiom \(HTTP 401\)/);
+  assert.match(fail.reason, /Shipping: axiom \(HTTP 401\)/);
 });

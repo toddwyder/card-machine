@@ -15,7 +15,7 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `d901ebec78c181644defcbdd4a4eafe48c28e8fd7c91afa820ef7d874ec4c4d0` |
 | `machine/flow/task.mjs` | The task the Lead is given, taken word for word from the card. | `ee7d91a262a8dc0a1664ba03fc5c73f3f19aac19fedb5cd6b9c003b10ff11f2a` |
 | `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `48b107419fdc1fa6853d2f7387121d306cc9e589d09bbaa0faff858dd26496b6` |
-| `machine/flow/access.mjs` | Shares the service environment from scripts/julia-agents.env across agent workspaces and checks every agent’s access at run start. | `fedc341bd46db6e16ea77a52fc4b820d3122b24ee2e95e0fef7d93d8f496ca01` |
+| `machine/flow/access.mjs` | Shares the service environment from scripts/julia-agents.env across agent workspaces and checks every agent’s access at run start. | `06fa83fef74bc58c1796486b15d45dd9fab80a122ea8d6b05fd905155f04f072` |
 | `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `8b357b1e60870c6eacfb06e87c36805ee62dc96d801ca7d88155dcdf5f43716e` |
 | `machine/flow/graphify.mjs` | The Graphify graph tools offered to Lead and its helpers. | `c502bc49faa96ef1de469764696d1682347679a61a17629766940de5baf546b6` |
 | `machine/flow/memory.mjs` | The memory note-takers, run on the free model the card picked. | `c166620cff305155382848e9e2c7bf09b24641bb14d3a0ed8bca242a852835b1` |
@@ -31,4 +31,4 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/run.mjs` | Answers a waiting card and reads a run. No way to start one. | `6aa66f1d72561054364ad8ffe90a19d5d3119ebcd8dd3539df3cbb57c14f4338` |
 | `machine/flow/report.mjs` | Builds the card report and tripwire stop helper. | `73092dd6925cba0014dc078e82be1d71686a9c35c1357cec9433f200bcf57499` |
 | `machine/flow/resources.mjs` | Checks memory and disk before and during every card and clears idle leftovers when short. | `4734373a90d3cafd03cfd2d2959d6345b3dba39feaa729da5e3417d3cf450e4a` |
-| `scripts/julia-agents.mjs` | Runs a machine command with the Julia keys it needs. | `58edde255a25e6a4b4aa43fa802a121b934320d41ffdd45ce741a393c48fd3cf` |
+| `scripts/julia-agents.mjs` | Runs a machine command with the Julia keys it needs. | `b0e522f94f3c02926ddc6542e60b16f8e117dcac5509a84148b141c39dc985f6` |
