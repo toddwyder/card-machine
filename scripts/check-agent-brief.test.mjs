@@ -1,43 +1,327 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import { checkBrief, checkCriterion, findCopiedText, parseCriteria } from './check-agent-brief.mjs';
+import {
+  CHECKS, checkCriterion, checkDraft, contextFor, findCopiedText, parseDraft, renderChecked, writeChecked,
+} from './check-agent-brief.mjs';
 
-function root(t, doc = '') {
-  const directory = mkdtempSync(join(tmpdir(), 'agent-brief-'));
+// The draft the machine checks: line 1 is the Linear title, the rest is the card.
+const GOOD = `# The draft checker names each fault in plain words
+
+Read .agents/skills/poteto-mode/SKILL.md and follow it.
+
+## Goal
+
+Todd reads one short section at the end of a draft and knows what still stands between him and approval.
+
+## Done means
+
+- A draft that breaks one rule names that rule on one line of the Checked section.
+- The Checked section sits at the end of the draft and a second run leaves it alone.
+- The command that checks a draft exits nonzero while any rule fails.
+- Every rule reads the draft through the card reader that \`machine/flow/task.mjs\` owns.
+
+## Proof
+
+- \`node --test scripts/check-agent-brief.test.mjs\` prints one case per rule, and its output names every rule.
+- \`node scripts/check-agent-brief.mjs\` runs twice on a draft, and the saved section holds one heading on the second run.
+- The same command on a draft with one broken rule exits with status 1, and its printed section names that rule on one line.
+- \`machine/flow/task.mjs\` exports the heading table, and the test compares its part list with the list the checker prints.
+
+## What we know
+
+- The checker reads headings through the card reader, and the reader's table lives in \`machine/flow/task.mjs\`.
+- The five writing-for-agents rules already run on every draft, as records in \`scripts/check-agent-brief.mjs\`.
+- Todd judges wording at approval and the fresh review reads the same section, per \`docs/review.md\` and the [guide](https://example.com/guide).
+
+## Constraints
+
+- The exact words live in the checker code, and this card says what each check reads in plain words.
+- No model call sits anywhere in the check.
+`;
+
+const NO_LINK = 'The card sits per `docs/review.md`.';
+const COPIED = 'The draft names each rule it breaks and leaves every passing rule alone.';
+const COPIED_DOC = `# Rules\n\nOne hard rule. ${COPIED}\n`;
+
+const NAMED = [
+  'machine/flow/task.mjs', 'scripts/check-agent-brief.test.mjs', 'scripts/check-agent-brief.mjs', 'docs/review.md',
+  'docs/plans/path-forward.md', 'scripts/linear-token.mjs', 'scripts/linear-cli.mjs',
+  '.agents/skills/poteto-mode/playbooks/autonomous-run.md', '.agents/skills/poteto-mode/playbooks/hillclimb.md',
+];
+
+function project(t, { agents = '# Rules\n\nWrite the observed behavior.\n' } = {}) {
+  const directory = mkdtempSync(join(tmpdir(), 'card-'));
   t.after(() => rmSync(directory, { force: true, recursive: true }));
-  if (doc) writeFileSync(join(directory, 'AGENTS.md'), doc);
+  for (const path of NAMED) {
+    mkdirSync(dirname(join(directory, path)), { recursive: true });
+    writeFileSync(join(directory, path), '');
+  }
+  writeFileSync(join(directory, 'AGENTS.md'), agents);
   return directory;
 }
 
-test('reads criteria under the section heading', () => {
-  const criteria = parseCriteria('## Outcome\n\nOne outcome.\n\n## Acceptance criteria\n\n- [ ] The dashboard shows each finished step.\n- [x] Each skipped step has its own count.\n\n## Proof\n');
-  assert.deepEqual(criteria.map(criterion => criterion.text), [
-    'The dashboard shows each finished step.',
-    'Each skipped step has its own count.',
-  ]);
+const okLink = async () => ({ status: 'ok' });
+
+function context(root, fetchLink = okLink) {
+  return contextFor({ root, fetchLink });
+}
+
+const statuses = results => results.filter(result => result.status === 'failed').map(result => result.id);
+
+async function check(t, text, options = {}) {
+  const root = project(t, options);
+  return { root, results: await checkDraft(parseDraft(text), context(root, options.fetchLink)) };
+}
+
+function offline(text) {
+  return edit(text, ' per `docs/review.md` and the [guide](https://example.com/guide).', `. ${NO_LINK}`);
+}
+
+function edit(text, from, to) {
+  assert.ok(text.includes(from), `the good card holds "${from}"`);
+  return text.replace(from, to);
+}
+
+const DONE_LINE_ONE = '- A draft that breaks one rule names that rule on one line of the Checked section.';
+const DONE_LINE_TWO = '- The Checked section sits at the end of the draft and a second run leaves it alone.';
+const DONE_LINE_THREE = '- The command that checks a draft exits nonzero while any rule fails.';
+const DONE_LINE_FOUR = '- Every rule reads the draft through the card reader that `machine/flow/task.mjs` owns.';
+const PROOF_LINE_ONE = '- `node --test scripts/check-agent-brief.test.mjs` prints one case per rule, and its output names every rule.';
+const PROOF_LINE_THREE = '- The same command on a draft with one broken rule exits with status 1, and its printed section names that rule on one line.';
+const PROOF_LINE_FOUR = '- `machine/flow/task.mjs` exports the heading table, and the test compares its part list with the list the checker prints.';
+const KNOWN_LINE_TWO = "- The five writing-for-agents rules already run on every draft, as records in `scripts/check-agent-brief.mjs`.";
+
+test('the good card passes every check', async t => {
+  const { results } = await check(t, GOOD);
+  assert.deepEqual(statuses(results), []);
+  assert.equal(results.length, 16);
+  assert.deepEqual(results.map(result => result.id), CHECKS.map(check => check.id));
+  assert.equal(results.filter(result => result.status !== 'passed').length, 0, renderChecked(results));
 });
 
-test('reads plain bullets in the current triage shape', () => {
-  const criteria = parseCriteria('## Acceptance criteria\n\n* The dashboard displays the checklist.\n* Each step is marked finished.\n');
-  assert.deepEqual(criteria.map(criterion => criterion.text), [
-    'The dashboard displays the checklist.',
-    'Each step is marked finished.',
-  ]);
+test('the good card under the other done-means heading gives the same results', async t => {
+  const one = await check(t, GOOD);
+  const other = await check(t, GOOD.replace('## Done means', '## Acceptance criteria'));
+  assert.deepEqual(statuses(other.results), []);
+  assert.deepEqual(other.results, one.results);
 });
 
-test('reads criteria under the Agent Brief field', () => {
-  const criteria = parseCriteria('## Agent Brief\n\n**Acceptance criteria:**\n\n- [ ] The card is admitted.\n- [ ] The build starts.\n\n**Out of scope:**\n\n- Another card.\n');
-  assert.deepEqual(criteria.map(criterion => criterion.text), ['The card is admitted.', 'The build starts.']);
+// One planted mistake per check, on the good card, fails that check and no other.
+const PLANTS = [
+  {
+    id: 'copied-text',
+    card: () => edit(GOOD, DONE_LINE_ONE, `- ${COPIED}`),
+    options: { agents: COPIED_DOC },
+  },
+  {
+    id: 'done-means',
+    card: () => GOOD.replace(/## Done means[\s\S]*?(?=## What we know)/, ''),
+  },
+  {
+    id: 'outcome-form',
+    card: () => edit(GOOD, DONE_LINE_ONE, '- Add one line per broken rule to the Checked section.'),
+  },
+  {
+    id: 'implementation-words',
+    card: () => edit(GOOD, DONE_LINE_TWO, '- The Checked section sits at the end of the file and a second run leaves it alone.'),
+  },
+  {
+    id: 'negations',
+    card: () => edit(GOOD, DONE_LINE_TWO, '- The Checked section never carries a rule that passed.'),
+  },
+  {
+    id: 'five-lines',
+    card: () => edit(
+      edit(GOOD, DONE_LINE_FOUR, `${DONE_LINE_FOUR}\n- Each passing rule takes one line of the section.\n- A run on a draft with every rule clear exits with status 0.`),
+      PROOF_LINE_FOUR,
+      `${PROOF_LINE_FOUR}\n- \`node --test scripts/check-agent-brief.test.mjs\` covers the passing-rule line, and its output shows that case.\n- \`node scripts/check-agent-brief.mjs\` on the good draft exits 0 and prints one line per rule.`,
+    ),
+  },
+  {
+    id: 'proof-count',
+    card: () => GOOD.replace(`${PROOF_LINE_FOUR}\n`, ''),
+  },
+  {
+    id: 'proof-evidence',
+    card: () => edit(GOOD, PROOF_LINE_ONE, '- The build status is green.'),
+  },
+  {
+    id: 'opener',
+    card: () => edit(GOOD, 'Read .agents/skills/poteto-mode/SKILL.md and follow it.', 'Read the poteto skill before the work.'),
+  },
+  {
+    id: 'references',
+    card: () => edit(GOOD, '`node scripts/check-agent-brief.mjs` runs twice', '`node scripts/gone.mjs` runs twice'),
+  },
+  {
+    id: 'headings',
+    card: () => `${GOOD}\n## Risks\n\nThe card may grow past five lines one day.\n`,
+  },
+  {
+    id: 'stop-and-ask',
+    card: () => edit(GOOD, '- No model call sits anywhere in the check.', '- No model call sits anywhere in the check.\n- The run stops and asks Todd before the card changes.'),
+  },
+  {
+    id: 'stop-and-ask',
+    card: () => edit(GOOD, DONE_LINE_THREE, '- The card record is written before another build reads it during a race.'),
+  },
+  {
+    id: 'todd-approval',
+    card: () => edit(GOOD, '- No model call sits anywhere in the check.', '- No model call sits anywhere in the check.\n- Todd approved the wording before the build started.'),
+  },
+  {
+    id: 'model-names',
+    card: () => edit(GOOD, '- No model call sits anywhere in the check.', '- No model call sits anywhere in the check.\n- The determination runs on claude-opus-5.'),
+  },
+  {
+    id: 'known-pointers',
+    card: () => edit(GOOD, KNOWN_LINE_TWO, '- The five writing-for-agents rules already run on every draft.'),
+  },
+  {
+    id: 'appearance',
+    card: () => edit(
+      edit(GOOD, DONE_LINE_THREE, '- The page looks polished after the second run.'),
+      DONE_LINE_FOUR,
+      '- The buttons look consistent on a narrow screen.',
+    ),
+  },
+];
+
+for (const plant of PLANTS) {
+  test(`a card with one ${plant.id} mistake fails only that check`, async t => {
+    const { results } = await check(t, plant.card(), plant.options);
+    assert.deepEqual(statuses(results), [plant.id]);
+  });
+}
+
+test('an event-order line with a formal verification run in its proof passes', async t => {
+  const card = edit(
+    edit(GOOD, DONE_LINE_THREE, '- The card record is written before another build reads it during a race.'),
+    PROOF_LINE_THREE,
+    '- The same command on a draft with one broken rule exits with status 1, and the TLA+ run prints the order.',
+  );
+  const { results } = await check(t, card);
+  assert.deepEqual(statuses(results), []);
+});
+
+test('a card with several mistakes names each failed check', async t => {
+  const card = edit(
+    edit(GOOD, DONE_LINE_ONE, '- Add one line per broken rule to the Checked section.'),
+    DONE_LINE_TWO,
+    '- The Checked section never carries a rule that passed.',
+  );
+  const { results } = await check(t, card);
+  assert.deepEqual(statuses(results), ['outcome-form', 'negations']);
+  const section = renderChecked(results);
+  assert.match(section, /Failed: Done-means lines describe an outcome/);
+  assert.match(section, /Failed: Done-means lines carry no negation/);
+  assert.match(section, /2 of 16 checks failed, so the card is not ready\./);
+});
+
+test('a slash in a backticked choice is not a missing path', async t => {
+  const choices = await check(t, edit(GOOD, DONE_LINE_THREE, '- The build runs on `free/paid`, and the card says which.'));
+  assert.deepEqual(statuses(choices.results), []);
+
+  const gone = await check(t, edit(GOOD, DONE_LINE_THREE, '- The build opens `scripts/beta` at start.'));
+  assert.deepEqual(statuses(gone.results), ['references']);
+});
+
+// Four lines off a real card that the checker once failed. Each one is correct: a mention of the
+// claim rule, the name of the harness a person runs, a playbook named by its bare filename, and a
+// source that names the part of the file it means.
+const REAL_CLAIM_LINE = "- A line that claims Todd's approval or decision fails, because only Todd gives those.";
+const REAL_HARNESS_LINE = '- The Claude Code personal skills folder could not be read.';
+const REAL_PLAYBOOK_LINE = "- A line that tells the agent to stop and ask fails, because the machine's `AGENTS.md` and `docs/plans/path-forward.md` hold the stop rules and pstack's playbooks (`autonomous-run.md`, `hillclimb.md`) cover being stuck. A rule about the order of events in product code needs a formal verification line in its proof.";
+const REAL_POINTER_LINE = "- The machine signs in to Linear with write permission by default and changes a card's status through Linear's update request: card-machine `scripts/linear-token.mjs` and `scripts/linear-cli.mjs` (`setIssueState`).";
+
+function withLine(text, line) {
+  return edit(text, '- No model call sits anywhere in the check.', `- No model call sits anywhere in the check.\n${line}`);
+}
+
+test('a line stating the claim rule is a mention, while a claim still fails', async t => {
+  const mention = await check(t, withLine(GOOD, REAL_CLAIM_LINE));
+  assert.deepEqual(statuses(mention.results), []);
+
+  const decision = await check(t, withLine(GOOD, "- Todd's decision: ship it."));
+  assert.deepEqual(statuses(decision.results), ['todd-approval']);
+
+  const approved = await check(t, withLine(GOOD, '- Todd approved this card.'));
+  assert.deepEqual(statuses(approved.results), ['todd-approval']);
+});
+
+test('the harness name passes, while a model name still fails', async t => {
+  const harness = await check(t, withLine(GOOD, REAL_HARNESS_LINE));
+  assert.deepEqual(statuses(harness.results), []);
+
+  for (const line of ['- The build runs on claude.', '- The build runs on Claude Opus.', '- The build runs on opus.']) {
+    const named = await check(t, withLine(GOOD, line));
+    assert.deepEqual(statuses(named.results), ['model-names'], line);
+  }
+});
+
+test('a bare filename the project holds resolves, while one it does not still fails', async t => {
+  const tracked = await check(t, withLine(GOOD, REAL_PLAYBOOK_LINE));
+  assert.deepEqual(statuses(tracked.results), []);
+
+  const missing = await check(t, withLine(GOOD, '- A stuck run reads `no-such-playbook.md` before it reports.'));
+  assert.deepEqual(statuses(missing.results), ['references']);
+});
+
+test('a source that names the part of the file passes, while plain prose still fails', async t => {
+  const named = await check(t, edit(GOOD, KNOWN_LINE_TWO, `${REAL_POINTER_LINE}\n${KNOWN_LINE_TWO}`));
+  assert.deepEqual(statuses(named.results), []);
+
+  const prose = await check(t, edit(
+    GOOD,
+    KNOWN_LINE_TWO,
+    '- The checker reads headings through the card reader in `machine/flow/task.mjs` and that file is the one it uses.',
+  ));
+  assert.deepEqual(statuses(prose.results), ['known-pointers']);
+});
+
+test('a made-up link fails and an unreachable one is not checked', async t => {
+  const missing = await check(t, GOOD, { fetchLink: async () => ({ status: 'missing' }) });
+  assert.deepEqual(statuses(missing.results), ['references']);
+
+  const unreachable = await check(t, GOOD, { fetchLink: async () => ({ status: 'unreachable', reason: 'no answer in 5 seconds' }) });
+  assert.deepEqual(statuses(unreachable.results), []);
+  const row = unreachable.results.find(result => result.id === 'references');
+  assert.equal(row.status, 'not checked');
+  assert.match(renderChecked(unreachable.results), /Not checked: Every file, script, skill and link the card names resolves\./);
+  assert.match(renderChecked(unreachable.results), /All 15 checks passed and 1 could not be checked/);
+});
+
+test('a second run leaves exactly one Checked section and the same wording', async t => {
+  const { results } = await check(t, GOOD);
+  const once = writeChecked(GOOD, results);
+  const twice = writeChecked(once, await checkDraft(parseDraft(once), context(project(t))));
+  assert.equal(twice, once);
+  assert.equal(once.match(/^## Checked$/gm).length, 1);
+  assert.match(once, /All 16 checks passed\./);
+  assert.ok(once.trimEnd().endsWith('All 16 checks passed.'));
+});
+
+test('the section sits last and the card above it is left as it was', async t => {
+  const { results } = await check(t, GOOD);
+  const written = writeChecked(GOOD, results);
+  assert.ok(written.startsWith(GOOD.trimEnd()));
+  assert.ok(written.includes('\n\n## Checked\n\n'));
+});
+
+test('the draft file itself is not a doc the card copies from', async t => {
+  const root = project(t);
+  writeFileSync(join(root, 'draft.md'), GOOD);
+  const results = await checkDraft(parseDraft(GOOD), contextFor({ root, fetchLink: okLink }));
+  assert.deepEqual(statuses(results), []);
 });
 
 test('refuses text copied from a repository doc', () => {
-  const copied = 'The dashboard shows the running build checklist and ticks off every step as the build finishes.';
-  const findings = findCopiedText({ text: copied, docs: [{ file: 'AGENTS.md', text: `Rule: ${copied}` }] });
+  const findings = findCopiedText({ text: COPIED, docs: [{ file: 'AGENTS.md', text: `Rule: ${COPIED}` }] });
   assert.equal(findings.length, 1);
   assert.match(findings[0], /copies text from AGENTS\.md/);
 });
@@ -62,33 +346,6 @@ test('refuses a negation in a criterion', () => {
 
 test('accepts an outcome criterion with no implementation words or negations', () => {
   assert.deepEqual(checkCriterion({ id: 'AC1', text: 'Each skipped step shows its own count.' }), []);
-});
-
-test('accepts any number of criteria; pstack slices large cards', t => {
-  const directory = root(t, '# Rules\n\nWrite the observed behavior.\n');
-  const six = '## Outcome\n\nOne outcome.\n\n## Acceptance criteria\n\n- One.\n- Two.\n- Three.\n- Four.\n- Five.\n- Six.\n';
-  assert.deepEqual(checkBrief({ text: six, file: 'brief.md', root: directory }), []);
-});
-
-test('accepts a clean brief and refuses one with no criteria', t => {
-  const directory = root(t, '# Rules\n\nWrite the observed behavior.\n');
-  const clean = '## Outcome\n\nThe dashboard shows the live checklist.\n\n## Acceptance criteria\n\n- [ ] The dashboard shows each finished step.\n- [ ] Each skipped step has its own count.\n';
-  assert.deepEqual(checkBrief({ text: clean, file: 'brief.md', root: directory }), []);
-  assert.deepEqual(checkBrief({ text: '## Outcome\n\nOne outcome.\n', file: 'brief.md', root: directory }), [
-    'brief.md:1: no acceptance criteria found; a brief needs testable criteria',
-  ]);
-});
-
-test('the command exits nonzero and names the failing criterion', t => {
-  const directory = root(t, '# Rules\n');
-  const result = spawnSync(process.execPath, [
-    join(import.meta.dirname, 'check-agent-brief.mjs'),
-    '--text', '## Acceptance criteria\n\n- [ ] Update the API endpoint.\n',
-    '--root', directory,
-  ], { encoding: 'utf8' });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /brief\.md:3: AC1 is procedural/);
-  assert.match(result.stderr, /brief\.md:3: AC1 uses the implementation word "API"/);
 });
 
 test('accepts a PR, which Todd reads on GitHub', () => {
@@ -119,4 +376,31 @@ test('the required poteto-mode opener is not reported as copied text', () => {
   assert.deepEqual(findCopiedText({ text: `${opener}\n\n## Goal\n\nSomething new.`, docs }), []);
   const copied = 'The dashboard shows every finished step together with the time each step took to finish.';
   assert.equal(findCopiedText({ text: `${opener}\n\n${copied}`, docs: [{ file: 'AGENTS.md', text: `Rule: ${copied}` }] }).length, 1);
+});
+
+test('the command rewrites the draft, prints the section and exits nonzero on a failure', t => {
+  const root = project(t);
+  const file = join(root, 'draft.md');
+  writeFileSync(file, edit(offline(GOOD), DONE_LINE_ONE, '- Add one line per broken rule to the Checked section.'));
+  const command = [join(import.meta.dirname, 'check-agent-brief.mjs'), file, '--root', root];
+
+  const first = spawnSync(process.execPath, command, { encoding: 'utf8' });
+  assert.equal(first.status, 1);
+  assert.match(first.stdout, /Failed: Done-means lines describe an outcome/);
+  assert.match(readFileSync(file, 'utf8'), /## Checked/);
+
+  const second = spawnSync(process.execPath, command, { encoding: 'utf8' });
+  assert.equal(second.status, 1);
+  assert.equal(readFileSync(file, 'utf8').match(/^## Checked$/gm).length, 1);
+  assert.equal(second.stdout, first.stdout);
+});
+
+test('the command exits zero and leaves one section when every check passes', t => {
+  const root = project(t);
+  const file = join(root, 'draft.md');
+  writeFileSync(file, offline(GOOD));
+  const result = spawnSync(process.execPath, [join(import.meta.dirname, 'check-agent-brief.mjs'), file, '--root', root], { encoding: 'utf8' });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /All 16 checks passed\./);
+  assert.equal(readFileSync(file, 'utf8').match(/^## Checked$/gm).length, 1);
 });

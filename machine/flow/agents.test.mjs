@@ -5,8 +5,11 @@ import { join } from 'node:path';
 
 import test from 'node:test';
 import { RequestContext } from '@mastra/core/request-context';
+import { MastraLanguageModelV2Mock, simulateReadableStream } from '@mastra/core/test-utils/llm-mock';
 
 import { createAgents, repoRoot } from './agents.mjs';
+import { openMastra } from './mastra.mjs';
+import { buildCardPath } from './workflow.mjs';
 import { helperKey, readRoleModels } from './role-models.mjs';
 import { buildModel, leadModelId } from './models.mjs';
 import { installLeadModel } from '../../scripts/install-lead-model.mjs';
@@ -68,7 +71,11 @@ test('Lead shell commands find global Git settings without inheriting unrelated 
   writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = Lead test account\n');
   const leadModelFile = join(home, 'lead-model');
   installLeadModel(leadModelFile);
-  const workspace = await createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' }).build.getWorkspace();
+  const roleModelsFile = completeRoleFile(join(home, 'lead-role-models.md'));
+  const agents = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
+  assert.equal((await agents.build.getWorkspace()).sandbox, undefined, 'Lead has no sandbox');
+  const helper = Object.values(await agents.build.listAgents())[0];
+  const workspace = await helper.getWorkspace();
   const sandbox = workspace.sandbox;
   try {
     await sandbox.start();
@@ -197,12 +204,13 @@ test('the build and its helpers work in the card copy the run names', async t =>
 
   const lead = (await agents.build.getWorkspace({ requestContext })).getPathContext();
   assert.equal(lead.filesystem.basePath, cardCopy);
-  assert.equal(lead.sandbox.workingDirectory, cardCopy);
+  assert.equal(lead.sandbox, undefined);
   const helper = (await (await agents.build.listAgents()).featureRefactoring.getWorkspace({ requestContext })).getPathContext();
   assert.equal(helper.sandbox.workingDirectory, cardCopy);
 
   const settings = (await createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' }).build.getWorkspace()).getPathContext();
-  assert.equal(settings.sandbox.workingDirectory, repo, 'a read with no card copy works in Studio’s repository');
+  assert.equal(settings.filesystem.basePath, repo, 'a read with no card copy works in Studio’s repository');
+  assert.equal(settings.sandbox, undefined);
 });
 
 // 7 Nov: a pick saved at 15:18:07 only reached the run after Studio restarted at 15:18:10.
@@ -388,4 +396,135 @@ test('playbookGuard reminds the Lead to name a valid playbook and stops the card
   assert.ok(aborted, 'stops the card if Lead still names no playbook');
   assert.match(aborted.reason, /playbook/i);
   assert.equal(aborted.opts?.metadata?.part, 'Playbook');
+});
+
+test('Lead and helper sandboxes inherit LINEAR_API_KEY without inheriting unrelated environment variables', async t => {
+  const home = temporary(t);
+  const previous = {
+    HOME: process.env.HOME,
+    LINEAR_API_KEY: process.env.LINEAR_API_KEY,
+    JUL339_UNRELATED_SECRET: process.env.JUL339_UNRELATED_SECRET,
+  };
+  t.after(() => {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+  process.env.HOME = home;
+  process.env.LINEAR_API_KEY = 'Bearer linear-test-token';
+  process.env.JUL339_UNRELATED_SECRET = 'parent-only';
+  const leadModelFile = join(home, 'lead-model');
+  installLeadModel(leadModelFile);
+  const roleModelsFile = completeRoleFile(join(home, 'lead-role-models.md'));
+  const agents = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
+  const helper = Object.values(agents.build.listAgents ? await agents.build.listAgents() : {})[0];
+  assert.equal((await agents.build.getWorkspace()).sandbox, undefined, 'Lead has no sandbox');
+  for (const agent of [agents.shipping, ...(helper ? [helper] : [])]) {
+    const workspace = await agent.getWorkspace({ requestContext: new RequestContext([['cardCheckout', repo]]) });
+    await workspace.sandbox.start();
+    try {
+      const envRun = await workspace.sandbox.executeCommand(process.execPath, [
+        '-e',
+        'console.log(JSON.stringify({ linearApiKey: process.env.LINEAR_API_KEY ?? null, unrelatedSecret: !!process.env.JUL339_UNRELATED_SECRET }))',
+      ]);
+      assert.equal(envRun.exitCode, 0, envRun.stderr);
+      assert.deepEqual(JSON.parse(envRun.stdout), { linearApiKey: 'Bearer linear-test-token', unrelatedSecret: false });
+    } finally {
+      await workspace.sandbox.stop();
+    }
+  }
+});
+
+test('Lead refuses to mark a playbook step completed with a flag: and lets the run finish it cleanly', async t => {
+  const dir = temporary(t);
+  const leadModelFile = join(dir, 'lead-model');
+  installLeadModel(leadModelFile);
+  let turn = 0;
+  const toolResults = [];
+  const leadModel = new MastraLanguageModelV2Mock({
+    doStream: async () => {
+      turn += 1;
+      if (turn === 1) {
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: 'tool-call', toolCallId: 'c1', toolName: 'choose_playbook', input: JSON.stringify({ playbook: 'feature' }) },
+              { type: 'finish', finishReason: 'tool-calls', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+            ],
+          }),
+        };
+      }
+      if (turn === 2) {
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              {
+                type: 'tool-call',
+                toolCallId: 'c2',
+                toolName: 'task_update',
+                input: JSON.stringify({
+                  id: 'playbook_5',
+                  status: 'completed',
+                  content: '5. Verify on the matching surface. "Inconclusive" or wrong-surface is not a pass. Flag it. flag: real Linear write not verified',
+                }),
+              },
+              { type: 'finish', finishReason: 'tool-calls', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+            ],
+          }),
+        };
+      }
+      if (turn === 3) {
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              {
+                type: 'tool-call',
+                toolCallId: 'c3',
+                toolName: 'task_update',
+                input: JSON.stringify({
+                  id: 'playbook_5',
+                  status: 'completed',
+                  content: '5. Verify on the matching surface. "Inconclusive" or wrong-surface is not a pass. Flag it.',
+                }),
+              },
+              { type: 'finish', finishReason: 'tool-calls', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+            ],
+          }),
+        };
+      }
+      return {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'text-start', id: 't1' },
+            { type: 'text-delta', id: 't1', delta: 'done' },
+            { type: 'text-end', id: 't1' },
+            { type: 'finish', finishReason: 'stop', usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+          ],
+        }),
+      };
+    },
+  });
+  const roleModelsFile = completeRoleFile(join(dir, 'lead-role-models.md'));
+  const agents = createAgents({ repo, leadModelFile, roleModelsFile, leadModel, model: 'openai/gpt-6.1-sol' });
+  const workflow = buildCardPath({ agents, dir, repo });
+  const mastra = await openMastra({ card: 'JUL-407', agents, workflow, stateDb: join(dir, 'state.db') });
+  const requestContext = new RequestContext();
+  requestContext.set('flowCard', 'JUL-407');
+  requestContext.set('cardCheckout', repo);
+  const stream = await agents.build.stream('Build JUL-407', {
+    requestContext,
+    memory: { thread: 'JUL-407/flag-test', resource: 'JUL-407' },
+    onStepFinish: ({ toolResults: tr }) => {
+      if (Array.isArray(tr)) toolResults.push(...tr);
+    },
+  });
+  await stream.text;
+  const updates = toolResults.filter(r => r?.payload?.toolName === 'task_update').map(r => r.payload.result);
+  assert.equal(updates[0]?.isError, true, 'flagged completion must be refused during the build');
+  assert.match(updates[0]?.content ?? '', /flag:/i);
+  assert.equal(updates[1]?.isError, false, 'clean completion after finishing the work must succeed');
+  const store = await mastra.getStorage().getStore('threadState');
+  const tasks = await store.getState({ threadId: 'JUL-407/flag-test', type: 'task' });
+  assert.equal(tasks.find(item => item.id === 'playbook_5')?.status, 'completed');
 });

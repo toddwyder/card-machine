@@ -255,6 +255,61 @@ export async function setIssueState(identifier, stateName, opts) {
 }
 
 // ---------------------------------------------------------------------------
+// Writing a card's title and description (JUL-407)
+// ---------------------------------------------------------------------------
+//
+// The approve command puts a checked draft on the board, and it makes two
+// writes this file had never made: a new card in a team named by its key, and a
+// card's title and description. They sit next to the state change so the
+// GraphQL, the success check and the returned shape stay in one place. A draft
+// whose Checked section did not pass never gets this far.
+
+const TEAM_BY_KEY_QUERY = `
+  query TeamByKey($key: String!) {
+    teams(filter: { key: { eq: $key } }) {
+      nodes { id key }
+    }
+  }
+`;
+
+const ISSUE_CREATE_MUTATION = `
+  mutation IssueCreate($teamId: String!, $title: String!, $description: String!) {
+    issueCreate(input: { teamId: $teamId, title: $title, description: $description }) {
+      success
+      issue { id identifier url }
+    }
+  }
+`;
+
+const ISSUE_TEXT_UPDATE_MUTATION = `
+  mutation IssueTextUpdate($id: String!, $title: String!, $description: String!) {
+    issueUpdate(id: $id, input: { title: $title, description: $description }) {
+      success
+      issue { id identifier url }
+    }
+  }
+`;
+
+export async function createIssue({ teamKey, title, description }, opts) {
+  const { teams } = await linearGraphQL(TEAM_BY_KEY_QUERY, { key: teamKey }, opts);
+  const team = (teams?.nodes ?? []).find(candidate => String(candidate.key).toLowerCase() === String(teamKey).toLowerCase());
+  if (!team) throw new Error(`Linear has no team with the key "${teamKey}"`);
+  const data = await linearGraphQL(ISSUE_CREATE_MUTATION, { teamId: team.id, title, description }, opts);
+  if (!data.issueCreate.success) throw new Error(`issueCreate did not report success for "${title}"`);
+  return data.issueCreate.issue;
+}
+
+export async function updateIssue(identifier, { title, description }, opts) {
+  const { issue } = await linearGraphQL(ISSUE_ID_QUERY, { id: identifier }, opts);
+  if (!issue) throw new Error(`Linear returned no card for ${identifier}`);
+  const data = await linearGraphQL(ISSUE_TEXT_UPDATE_MUTATION, { id: issue.id, title, description }, opts);
+  if (!data.issueUpdate.success) {
+    throw new Error(`issueUpdate did not report success for ${identifier}`);
+  }
+  return data.issueUpdate.issue;
+}
+
+// ---------------------------------------------------------------------------
 // Reading the comment body off the command line (JUL-284 retro)
 // ---------------------------------------------------------------------------
 //

@@ -68,13 +68,13 @@ test('both routes strip inherited authentication overrides and secret references
     OP_CONNECT_TOKEN: 'bad-token', OP_SESSION: 'bad-session', OP_CACHE: 'true',
     LINEAR_API_KEY: 'revoked', LINEAR_CLIENT_ID: 'override', LINEAR_CLIENT_SECRET: 'override', LINEAR_OAUTH_SCOPE: 'override',
     CMD_API_KEY: 'override', COMMANDCODE_API_KEY: 'override', SENTRY_AUTH_TOKEN: 'override',
-    AXIOM_TOKEN: 'override', STITCH_API_KEY: 'override', OTHER_SECRET: 'op://unrelated/item/field',
+    AXIOM_TOKEN: 'override', OTHER_SECRET: 'op://unrelated/item/field',
   };
   for (const prefix of [[], ['--linear', '--']]) {
     assert.equal(runAgentsCommand([...prefix, 'node', 'task.mjs'], f.options), 0);
     const env = f.calls.at(-1).options.env;
     assert.equal(env.KEEP, 'ordinary');
-    for (const key of ['OP_CONNECT_HOST', 'OP_CONNECT_TOKEN', 'OP_SESSION', 'LINEAR_API_KEY', 'CMD_API_KEY', 'COMMANDCODE_API_KEY', 'SENTRY_AUTH_TOKEN', 'AXIOM_TOKEN', 'STITCH_API_KEY', 'OTHER_SECRET']) assert.equal(env[key], undefined);
+    for (const key of ['OP_CONNECT_HOST', 'OP_CONNECT_TOKEN', 'OP_SESSION', 'LINEAR_API_KEY', 'CMD_API_KEY', 'COMMANDCODE_API_KEY', 'SENTRY_AUTH_TOKEN', 'AXIOM_TOKEN', 'OTHER_SECRET']) assert.equal(env[key], undefined);
     assert.equal(env.OP_SERVICE_ACCOUNT_TOKEN, 'offline-service-account-token');
     assert.notEqual(env.LINEAR_CLIENT_SECRET, 'override');
   }

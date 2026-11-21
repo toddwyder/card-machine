@@ -1,14 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { Agent } from '@mastra/core/agent';
 import { createCodingAgent } from '@mastra/core/coding-agent';
 import { CyberRefusalHandler, TokenCostControl } from '@mastra/core/processors';
 import { LocalFilesystem, LocalSandbox, Workspace } from '@mastra/core/workspace';
 
+import { sandboxEnv } from './access.mjs';
 import { cardMemory } from './memory.mjs';
 import { buildModelReader, leadModelId } from './models.mjs';
-import { createChoosePlaybookTool } from './playbook.mjs';
+import { createChoosePlaybookTool, createGuardedTaskTools } from './playbook.mjs';
 import { ensureCardResources } from './resources.mjs';
 import { SHIPPING_MAX_STEPS } from './review.mjs';
 import { agentModel, helperKey, readRoleModels, readStageModels } from './role-models.mjs';
@@ -134,12 +134,20 @@ export function createAgents({ model, leadModel, helperModel, costLimit, repo = 
     };
   };
 
-  const cardWorkspace = (id, { readOnly = false, ...extra } = {}) => ({ requestContext } = {}) => {
-    const folder = requestContext?.get?.('cardCheckout') ?? repo;
+  const cardWorkspace = (id, { readOnly = false, sandbox = !readOnly, requireCheckout = false, ...extra } = {}) => ({ requestContext } = {}) => {
+    const folder = requestContext?.get?.('cardCheckout') ?? (requireCheckout ? null : repo);
+    if (!folder) throw new Error('Shipping has no checkout to review.');
     return new Workspace({
       id,
       filesystem: new LocalFilesystem({ basePath: folder, ...(readOnly ? { readOnly: true } : {}) }),
-      sandbox: new LocalSandbox({ workingDirectory: folder, env: { HOME: homedir() } }),
+      ...(sandbox
+        ? {
+            sandbox: new LocalSandbox({
+              workingDirectory: folder,
+              env: sandboxEnv({ repo }),
+            }),
+          }
+        : {}),
       ...extra,
     });
   };
@@ -194,7 +202,7 @@ export function createAgents({ model, leadModel, helperModel, costLimit, repo = 
     ...cardMemory(memoryModelId),
     workspace: cardWorkspace('machine-repo', { readOnly: true, skills: ['.agents/skills'] }),
     agents: helpers,
-    tools: { ...tools, choose_playbook: choosePlaybookTool },
+    tools: { ...createGuardedTaskTools(), ...tools, choose_playbook: choosePlaybookTool },
     defaultOptions: {
       maxSteps: 400,
       toolCallConcurrency: HELPER_CONCURRENCY,
@@ -206,18 +214,10 @@ export function createAgents({ model, leadModel, helperModel, costLimit, repo = 
     id: 'flow-shipping',
     name: 'Shipping',
     instructions:
-      'You are the Shipping reviewer. You did not write the code. You run what the card asks you to run inside the checkout you are given, judge each criterion from what the commands printed, and answer in the shape the task gives.',
+      'You are the Shipping reviewer. You did not write the code. Load the pstack skills from .agents/skills and follow the Shipping playbook. Verify each criterion on the real surface the criterion names (such as Linear, a browser for web pages, or commands in the checkout), never treating unit tests with fakes as proof of real-service behavior, and answer in the shape the task gives.',
     model: stageModel('shipping'),
     ...cardProcessors(),
-    workspace: ({ requestContext } = {}) => {
-      const checkout = requestContext?.get?.('cardCheckout');
-      if (!checkout) throw new Error('Shipping has no checkout to review.');
-      return new Workspace({
-        id: 'shipping-checkout',
-        filesystem: new LocalFilesystem({ basePath: checkout }),
-        sandbox: new LocalSandbox({ workingDirectory: checkout, env: { HOME: homedir() } }),
-      });
-    },
+    workspace: cardWorkspace('shipping-checkout', { requireCheckout: true, skills: ['.agents/skills'] }),
     defaultOptions: { maxSteps: SHIPPING_MAX_STEPS },
   });
 

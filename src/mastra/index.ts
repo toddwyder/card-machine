@@ -21,7 +21,10 @@ const dir = resolve(repo, process.env.FLOW_DIR ?? '.artifacts/flow/studio');
 
 openScratch(dir);
 const agents = createAgents({ tools: await graphifyTools(), dir, repo });
-const workflow = buildCardPath({ agents, dir, repo, projectRepo });
+const preflight = process.env.FLOW_SKIP_ACCESS_CHECK === '1'
+  ? async () => ({ ok: true, failures: [], reason: '' })
+  : undefined;
+const workflow = buildCardPath({ agents, dir, repo, projectRepo, preflight });
 
 // Storage and observability come from the same place a resumed run uses, so the
 // model calls a Studio run makes are written to this run folder's trace file.

@@ -160,3 +160,27 @@ test('the shipped price list prices a peak DeepSeek call at the peak rate', () =
   assert.equal(price.peak, true);
   assert.equal(price.inputPerMillion, 0.3);
 });
+
+test('1h cache-write tokens are priced at 1.6x without double-counting the combined cache-write row (JUL-407 call 313563df716811bc)', () => {
+  const rows = [
+    { spanId: '313563df716811bc', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_input_text_tokens', value: 20 },
+    { spanId: '313563df716811bc', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_input_cache_read_tokens', value: 267072 },
+    { spanId: '313563df716811bc', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_input_cache_write_1h_tokens', value: 232288 },
+    { spanId: '313563df716811bc', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_input_cache_write_tokens', value: 232288 },
+    { spanId: '313563df716811bc', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_output_reasoning_tokens', value: 829 },
+    { spanId: '313563df716811bc', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_output_text_tokens', value: 3499 },
+    { spanId: '313563df716811bc', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_total_input_tokens', value: 499380 },
+    { spanId: '313563df716811bc', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_total_output_tokens', value: 4328 },
+  ];
+  const total = costFromMetrics(rows, { catalog, corrections });
+  assert.equal(Number(total.usd.toFixed(6)), 1.998358);
+});
+
+test('5m cache-write tokens are not double-counted when paired with the combined cache-write row', () => {
+  const rows = [
+    { spanId: 'b', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_input_cache_write_5m_tokens', value: 1_000_000 },
+    { spanId: 'b', provider: 'anthropic', model: 'claude-opus-5-5', timestamp: '2026-11-21T05:18:22.202Z', name: 'mastra_model_input_cache_write_tokens', value: 1_000_000 },
+  ];
+  const total = costFromMetrics(rows, { catalog, corrections });
+  assert.equal(total.usd, 5);
+});

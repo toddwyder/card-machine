@@ -5,21 +5,6 @@
 
 const VERDICT = /(PASS\+NOTES|PASS|FAIL)/i;
 
-export function criteriaFromCard(description) {
-  const text = String(description ?? '');
-  const heading = /^#{1,6}[ \t]*(?:acceptance[ \t]+)?criteria[ \t]*$/im.exec(text);
-  if (!heading) return [];
-  const after = text.slice(heading.index + heading[0].length);
-  const next = /^#{1,6}[ \t]+\S/m.exec(after);
-  const section = next ? after.slice(0, next.index) : after;
-  return section
-    .split(/\r?\n/)
-    .map(line => line.match(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?(.+)$/))
-    .filter(Boolean)
-    .map(match => match[1].trim())
-    .filter(line => line.length > 0);
-}
-
 export function parseVerdict(answer) {
   const raw = String(answer ?? '').trim();
   const lines = raw.split(/\r?\n/);

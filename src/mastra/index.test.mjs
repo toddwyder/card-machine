@@ -51,7 +51,8 @@ function setupEnvironment(t) {
 }
 
 test('Studio card-path starts a run from the run form and stops cleanly when origin main cannot be fetched', t => {
-  const { env, flowDir } = setupEnvironment(t);
+  const { env: baseEnv, flowDir } = setupEnvironment(t);
+  const env = { ...baseEnv, FLOW_SKIP_ACCESS_CHECK: '1' };
   const childScript = `
     import assert from 'node:assert/strict';
     import { mastra } from ${JSON.stringify(indexUrl)};

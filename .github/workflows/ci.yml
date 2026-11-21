@@ -95,6 +95,8 @@ jobs:
         run: node scripts/test-owners.mjs --plan
       - name: Install each local owner's locked dependencies
         run: node scripts/test-owners.mjs --install local
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
       - name: Run local owners' tests
         run: node scripts/test-owners.mjs --run local
 

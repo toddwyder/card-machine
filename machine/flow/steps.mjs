@@ -9,16 +9,17 @@ import { join } from 'node:path';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
 
+import { stopIfAccessMissing, verifyRunAccess } from './access.mjs';
 import { realCheck } from './check.mjs';
 import { closeCopy, findLeftoverWork, openCopy } from './copy.mjs';
 import { sendCardCostRecord } from './cost-record.mjs';
 import { pruneTrace } from './mastra.mjs';
 import { acceptanceWaitMessage, notifyCard, reportText, tripwireStop } from './report.mjs';
 import { stopIfResourcesShort } from './resources.mjs';
-import { REVIEW_TIME_LIMIT_MS, criteriaFromCard, parseVerdict, realReview, reviewTask, verdictComment } from './review.mjs';
+import { REVIEW_TIME_LIMIT_MS, parseVerdict, realReview, reviewTask, verdictComment } from './review.mjs';
 import { cardState, flowData, runInput } from './schema.mjs';
 import { nextVerdict, openRun, readArtifact, sweepBuild, writeArtifact, writeLanding, writeReport, writeRetro } from './scratch.mjs';
-import { taskFromCard } from './task.mjs';
+import { criteriaFromCard, taskFromCard } from './task.mjs';
 
 const step = (id, execute, extra = {}) =>
   createStep({ id, inputSchema: flowData, outputSchema: flowData, ...extra, execute });
@@ -28,7 +29,7 @@ const REQUIRED_TASK_TOOLS = ['task_write', 'task_update', 'task_complete', 'task
 const finishCard = ({ mastra, card, status }) =>
   Promise.allSettled([sendCardCostRecord({ mastra, card, status }), pruneTrace(mastra)]);
 
-export function createStages({ agents, dir, repo, projectRepo = repo, review = realReview, check = realCheck }) {
+export function createStages({ agents, dir, repo, projectRepo = repo, review = realReview, check = realCheck, preflight = verifyRunAccess }) {
   const cardDir = (card) => join(dir, card);
 
   const halt = async ({ inputData, state }) =>
@@ -61,6 +62,10 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
       openRun(dir, inputData.card);
       const short = await stopIfResourcesShort({ inputData, state: { ...state, card: inputData.card, kind: inputData.kind }, setState }, dir);
       if (short) return short;
+      const denied = preflight === verifyRunAccess
+        ? await stopIfAccessMissing({ inputData, state: { ...state, card: inputData.card, kind: inputData.kind }, setState }, { agents, checkout: projectRepo, repo })
+        : await preflight({ agents, checkout: projectRepo, repo }).then(async r => r.ok ? null : (await setState({ ...state, card: inputData.card, kind: inputData.kind, stopPart: 'Access', stopWhy: r.reason, stopped: true }), { card: inputData.card, kind: inputData.kind, stopped: true, detail: r.reason }));
+      if (denied) return denied;
       return { card: inputData.card, kind: inputData.kind };
     },
   });
@@ -94,7 +99,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
     if (!issue) throw new Error(`Linear card ${card} could not be read.`);
     if (buildRounds === 1) await review.moveCard(card, 'Implementation');
     const backNote = state.checkReasons?.length > 0 ? `\n\n## Previous check failure\n${state.checkReasons.at(-1)}` : '';
-    const playbookNote = '\n\n## Playbook step\nAs your first act before any other tool call, call `choose_playbook` with the poteto-mode playbook name for this card (for example `feature`, `bug-fix`, `investigation`, `refactoring`). Keep every `playbook_*` item\'s content word for word (only append `skip: <reason>` when leaving a step undone); use `task_complete` or `task_update` with `status` alone to mark a step done (read a named skill\'s `SKILL.md` before marking its step done), and place any step-required sub-items (such as Feature step 3\'s four throughput checkpoint items) immediately after that step rather than overwriting it.';
+    const playbookNote = '\n\n## Playbook step\nAs your first act before any other tool call, call `choose_playbook` with the poteto-mode playbook name for this card (for example `feature`, `bug-fix`, `investigation`, `refactoring`). You have no shell or file-writing tools; delegate every command, code edit, test, git operation, Linear update, and verification to the appropriate helper. Keep every `playbook_*` item\'s content word for word (only append `skip: <reason>` when leaving a step undone); use `task_complete` or `task_update` with `status` alone to mark a step done (read a named skill\'s `SKILL.md` before marking its step done), and place any step-required sub-items (such as Feature step 3\'s four throughput checkpoint items) immediately after that step rather than overwriting it.';
     return { ...inputData, card, detail: `build round ${buildRounds} started in ${copy.folder}`, prompt: `${taskFromCard(issue)}${backNote}${playbookNote}` };
   });
 

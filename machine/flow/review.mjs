@@ -1,26 +1,11 @@
 import { execFileSync } from 'node:child_process';
 
 import { getIssue, postComment as postCardComment, setIssueState } from '../../scripts/linear-cli.mjs';
+import { withoutChecked } from './task.mjs';
 
 export const PLAYBOOK = '.agents/skills/poteto-mode/playbooks/shipping.md';
 export const REVIEW_TIME_LIMIT_MS = 20 * 60_000;
 export const SHIPPING_MAX_STEPS = 300;
-
-
-export function criteriaFromCard(description) {
-  const text = String(description ?? '');
-  const heading = /^#{1,6}[ \t]*(?:acceptance[ \t]+)?criteria[ \t]*$/im.exec(text);
-  if (!heading) return [];
-  const after = text.slice(heading.index + heading[0].length);
-  const next = /^#{1,6}[ \t]+\S/m.exec(after);
-  const section = next ? after.slice(0, next.index) : after;
-  return section
-    .split(/\r?\n/)
-    .map(line => line.match(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?(.+)$/))
-    .filter(Boolean)
-    .map(match => match[1].trim())
-    .filter(line => line.length > 0);
-}
 
 // The reviewer's answer is a verdict only if its first non-empty line is `VERDICT: <one word>`, it has
 // exactly one `CRITERION n: PASS|FAIL` line for each listed criterion, and the two agree: a PASS with a
@@ -77,10 +62,10 @@ export function reviewTask({ pr, sha, checkout, card, criteria }) {
     '--- card ---',
     `# ${card.title}`,
     '',
-    card.description ?? '',
+    withoutChecked(card.description),
     '--- end card ---',
     '',
-    'For each criterion, run the command it names, exactly as written, inside this checkout. Decide from what the command printed and the exit code it gave. You may also run read-only commands to look around (cat, ls, git show, git diff, git log). Do not run npm ci, npm install, or any installer, and do not edit, commit, push, or otherwise change the checkout.',
+    'For each criterion, verify it on the real surface the criterion names (such as commands in this checkout, reading or testing against Linear with the checkout tools, or opening web pages in a browser). Do not treat unit tests with fakes or mocks as proof of real-service behavior. You may also run read-only commands to look around (cat, ls, git show, git diff, git log). Do not run npm ci, npm install, or any installer, and do not edit, commit, push, or otherwise change the checkout.',
     '',
     `The card lists ${criteria.length} ${criteria.length === 1 ? 'criterion' : 'criteria'}. Judge every one of them.`,
     '',

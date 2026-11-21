@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import {
   createChoosePlaybookTool,
+  createGuardedTaskTools,
   listPlaybooks,
   normalizePlaybookName,
   parsePlaybookSteps,
@@ -83,4 +84,29 @@ test('createChoosePlaybookTool writes playbook steps to threadState and rejects 
   assert.equal(stored.length, 4);
   assert.equal(chosen.playbook, 'investigation');
   assert.equal(ctx.requestContext.get('mastra:tasks').length, 4);
+});
+
+test('createGuardedTaskTools refuses task_write and task_complete on flagged tasks', async () => {
+  const storeTasks = [
+    { id: 'playbook_1', content: 'Step one. flag: not verified', status: 'in_progress', activeForm: 'Step one' },
+  ];
+  const ctx = {
+    mastra: {
+      getStorage: () => ({
+        getStore: async () => ({ getState: async () => storeTasks, setState: async () => {} }),
+      }),
+    },
+    agent: { threadId: 't-1' },
+    requestContext: new Map(),
+  };
+  const guarded = createGuardedTaskTools();
+  const written = await guarded.task_write.execute({
+    tasks: [{ id: 'playbook_1', content: 'Step one. flag: skipped', status: 'completed', activeForm: 'Step one' }],
+  }, ctx);
+  assert.equal(written.isError, true);
+  assert.match(written.content, /flag:/i);
+
+  const completed = await guarded.task_complete.execute({ id: 'playbook_1' }, ctx);
+  assert.equal(completed.isError, true);
+  assert.match(completed.content, /flag:/i);
 });

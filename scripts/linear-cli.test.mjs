@@ -4,7 +4,7 @@ import { rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { linearGraphQL, getIssue, postComment, postCommentToIssueId, checkForToddGuard, findStateId, setIssueState, commentBodyFromArgs } from './linear-cli.mjs';
+import { linearGraphQL, getIssue, postComment, postCommentToIssueId, checkForToddGuard, findStateId, setIssueState, createIssue, updateIssue, commentBodyFromArgs } from './linear-cli.mjs';
 
 function fakeFetch(responses) {
   let call = 0;
@@ -408,4 +408,58 @@ test('comment refuses a real existing path on this machine, and still posts a pl
 
 test('comment --file without a path is a usage error', () => {
   assert.throws(() => commentBodyFromArgs(['--file']), /usage: linear-cli\.mjs comment <ID> --file <path>/);
+});
+
+// JUL-407: the approve command writes a card's title and description, and these
+// pin the GraphQL it sends. They are the only tests that can: no key reaches
+// this machine, so nothing here touches the real board.
+function recordingFetch(respond) {
+  const sent = [];
+  return {
+    sent,
+    fetchImpl: async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      sent.push(body);
+      return { ok: true, status: 200, json: async () => ({ data: respond(body, sent.length) }) };
+    },
+  };
+}
+
+test('createIssue finds the team by key, then creates the card with the whole description', async () => {
+  const { sent, fetchImpl } = recordingFetch(body => (body.query.includes('TeamByKey')
+    ? { teams: { nodes: [{ id: 'team-1', key: 'JUL' }] } }
+    : { issueCreate: { success: true, issue: { id: 'uuid-1', identifier: 'JUL-501', url: 'https://linear.app/jul/issue/JUL-501' } } }));
+  const issue = await createIssue({ teamKey: 'JUL', title: 'A card', description: '# body\n\nWith text.\n' }, { apiKey: 'fixture', fetchImpl });
+  assert.match(sent[0].query, /TeamByKey/);
+  assert.deepEqual(sent[0].variables, { key: 'JUL' });
+  assert.match(sent[1].query, /issueCreate/);
+  assert.deepEqual(sent[1].variables, { teamId: 'team-1', title: 'A card', description: '# body\n\nWith text.\n' });
+  assert.deepEqual(issue, { id: 'uuid-1', identifier: 'JUL-501', url: 'https://linear.app/jul/issue/JUL-501' });
+});
+
+test('createIssue refuses a team key the workspace does not have', async () => {
+  const { sent, fetchImpl } = recordingFetch(() => ({ teams: { nodes: [{ id: 'team-1', key: 'JUL' }] } }));
+  await assert.rejects(() => createIssue({ teamKey: 'NOPE', title: 'A card', description: 'body' }, { apiKey: 'fixture', fetchImpl }), /no team with the key "NOPE"/);
+  assert.equal(sent.length, 1, 'nothing is created when the team is missing');
+});
+
+test('updateIssue resolves the identifier to its id, then writes the title and description', async () => {
+  const { sent, fetchImpl } = recordingFetch(body => (body.query.includes('IssueIdByIdentifier')
+    ? { issue: { id: 'uuid-1' } }
+    : { issueUpdate: { success: true, issue: { id: 'uuid-1', identifier: 'JUL-407', url: 'https://linear.app/jul/issue/JUL-407' } } }));
+  const issue = await updateIssue('JUL-407', { title: 'A card', description: 'The kept text.' }, { apiKey: 'fixture', fetchImpl });
+  assert.match(sent[0].query, /IssueIdByIdentifier/);
+  assert.deepEqual(sent[0].variables, { id: 'JUL-407' });
+  assert.ok(sent[1].query.includes('title: $title') && sent[1].query.includes('description: $description'));
+  assert.deepEqual(sent[1].variables, { id: 'uuid-1', title: 'A card', description: 'The kept text.' });
+  assert.equal(issue.identifier, 'JUL-407');
+});
+
+test('updateIssue refuses a card Linear does not have, and a write that did not succeed', async () => {
+  const missing = recordingFetch(() => ({ issue: null }));
+  await assert.rejects(() => updateIssue('JUL-999', { title: 'A card', description: 'body' }, { apiKey: 'fixture', fetchImpl: missing.fetchImpl }), /returned no card for JUL-999/);
+  const refused = recordingFetch(body => (body.query.includes('IssueIdByIdentifier')
+    ? { issue: { id: 'uuid-1' } }
+    : { issueUpdate: { success: false, issue: null } }));
+  await assert.rejects(() => updateIssue('JUL-407', { title: 'A card', description: 'body' }, { apiKey: 'fixture', fetchImpl: refused.fetchImpl }), /issueUpdate did not report success for JUL-407/);
 });

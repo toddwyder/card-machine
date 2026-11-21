@@ -161,7 +161,7 @@ const toolNamesFromOptions = options =>
 
 const toolSpanName = span => String(span.attributes?.toolId ?? span.name ?? '').replace(/^tool:\s*'?|'?$/gi, '').trim();
 
-test('Criterion 1: every write poteto-mode asks of the lead itself still works', async t => {
+test('Criterion 1: every write poteto-mode asks of the lead itself still works via helper delegation', async t => {
   const ctx = setupCase(t);
   let startTools = [];
   const leadModel = fakeModel({
@@ -183,12 +183,8 @@ test('Criterion 1: every write poteto-mode asks of the lead itself still works',
           },
           { name: 'task_complete', input: { id: '2' } },
           {
-            name: 'mastra_workspace_execute_command',
-            input: { command: 'printf "ts\\tphase\\tdecision\\twhy\\tevidence\\tresult\\n2026-11-13T00:00:00Z\\tbuild\\tdelegated\\treadOnly lead\\tdecisions.tsv\\tok\\n" > decisions.tsv' },
-          },
-          {
-            name: 'mastra_workspace_execute_command',
-            input: { command: 'git add decisions.tsv && git -c user.email=lead@test -c user.name=Lead commit -m "chore: log decision"' },
+            name: 'agent-featureRefactoring',
+            input: { prompt: 'Write decisions.tsv and commit it' },
           },
         ],
       },
@@ -196,26 +192,41 @@ test('Criterion 1: every write poteto-mode asks of the lead itself still works',
     ],
   });
 
-  const { text, spans } = await runLead({ ...ctx, leadModel, helperModel: fakeModel({ modelId: HELPER_MODEL_ID, provider: 'commandcode' }) });
+  const helperModel = fakeModel({
+    modelId: HELPER_MODEL_ID,
+    provider: 'commandcode',
+    steps: [
+      {
+        toolCalls: [
+          {
+            name: 'mastra_workspace_execute_command',
+            input: { command: 'printf "ts\\tphase\\tdecision\\twhy\\tevidence\\tresult\\n2026-11-13T00:00:00Z\\tbuild\\tdelegated\\treadOnly lead\\tdecisions.tsv\\tok\\n" > decisions.tsv && git add decisions.tsv && git -c user.email=lead@test -c user.name=Lead commit -m "chore: log decision"' },
+          },
+        ],
+      },
+      { text: 'Wrote decisions.tsv and committed.' },
+    ],
+  });
+
+  const { text, spans } = await runLead({ ...ctx, leadModel, helperModel });
   assert.equal(text, 'Checklist, decision log, and commit succeeded.');
 
-  for (const writeTool of WRITE_TOOLS) {
-    assert.ok(!startTools.includes(writeTool), `Lead must not be given ${writeTool} at start of run`);
+  for (const forbidden of [...WRITE_TOOLS, 'mastra_workspace_execute_command']) {
+    assert.ok(!startTools.includes(forbidden), `Lead must not be given ${forbidden} at start of run`);
   }
   assert.ok(startTools.includes('task_write'), 'Lead keeps task_write');
   assert.ok(startTools.includes('task_complete'), 'Lead keeps task_complete');
-  assert.ok(startTools.includes('mastra_workspace_execute_command'), 'Lead keeps execute_command');
 
   const toolSpans = spans.filter(s => s.spanType === 'tool_call');
   const toolCalls = toolSpans.map(toolSpanName);
   assert.ok(toolCalls.includes('task_write'), 'trace records task_write');
   assert.ok(toolCalls.includes('task_complete'), 'trace records task_complete');
-  assert.ok(toolCalls.includes('mastra_workspace_execute_command'), 'trace records execute_command');
+  assert.ok(toolCalls.includes('mastra_workspace_execute_command'), 'trace records helper execute_command');
   const taskWriteSpan = toolSpans.find(s => toolSpanName(s) === 'task_write');
   assert.ok(taskWriteSpan.output != null && !/validation failed/i.test(JSON.stringify(taskWriteSpan.output)), `task_write output: ${JSON.stringify(taskWriteSpan.output)}`);
   const taskCompleteSpan = toolSpans.find(s => toolSpanName(s) === 'task_complete');
   assert.ok(taskCompleteSpan.output != null && !/validation failed/i.test(JSON.stringify(taskCompleteSpan.output)), `task_complete output: ${JSON.stringify(taskCompleteSpan.output)}`);
-  assert.ok(existsSync(join(ctx.checkout, 'decisions.tsv')), 'decisions.tsv was written via shell');
+  assert.ok(existsSync(join(ctx.checkout, 'decisions.tsv')), 'decisions.tsv was written via helper');
 });
 
 test('Criterion 2: a lead that reaches to change the card work gets one clear answer and hands the change to a helper in the same run', async t => {
@@ -309,7 +320,7 @@ test('Criterion 3: the change lands when a helper makes it', async t => {
   assert.equal(writeSpans.length, 1, 'trace records helper write_file call');
 });
 
-test('Criterion 4: the lead still reads the card work, runs its proofs, saves evidence and opens the pull request', async t => {
+test('Criterion 4: the lead still reads the card work and delegates proofs, evidence, and git status to a helper', async t => {
   const ctx = setupCase(t);
   writeFileSync(join(ctx.checkout, 'app.mjs'), 'export const value = 42;\n');
   let readOutput = '';
@@ -327,26 +338,102 @@ test('Criterion 4: the lead still reads the card work, runs its proofs, saves ev
       {
         toolCalls: [
           {
-            name: 'mastra_workspace_execute_command',
-            input: { command: 'node -e "import(\'./app.mjs\').then(m => { if (m.value !== 42) process.exit(1); console.log(\'PROOF_OK\', m.value); })" > .artifacts/proof.txt' },
-          },
-          {
-            name: 'mastra_workspace_execute_command',
-            input: { command: 'git status --short' },
+            name: 'agent-featureRefactoring',
+            input: { prompt: 'Run proof on app.mjs, save .artifacts/proof.txt, and check git status' },
           },
         ],
       },
-      { text: 'Read app.mjs, ran proof, saved .artifacts/proof.txt, checked git status for PR.' },
+      { text: 'Read app.mjs, delegated proof, saved .artifacts/proof.txt, checked git status for PR.' },
+    ],
+  });
+
+  const helperModel = fakeModel({
+    modelId: HELPER_MODEL_ID,
+    provider: 'commandcode',
+    steps: [
+      {
+        toolCalls: [
+          {
+            name: 'mastra_workspace_execute_command',
+            input: { command: 'node -e "import(\'./app.mjs\').then(m => { if (m.value !== 42) process.exit(1); console.log(\'PROOF_OK\', m.value); })" > .artifacts/proof.txt && git status --short' },
+          },
+        ],
+      },
+      { text: 'Proof saved and git status checked.' },
     ],
   });
 
   mkdirSync(join(ctx.checkout, '.artifacts'), { recursive: true });
-  const { spans } = await runLead({ ...ctx, leadModel, helperModel: fakeModel({ modelId: HELPER_MODEL_ID, provider: 'commandcode' }) });
+  const { spans } = await runLead({ ...ctx, leadModel, helperModel });
 
   assert.match(readOutput, /export const value = 42/, 'Lead read app.mjs');
-  assert.match(readFileSync(join(ctx.checkout, '.artifacts/proof.txt'), 'utf8'), /PROOF_OK 42/, 'Lead saved proof evidence');
+  assert.match(readFileSync(join(ctx.checkout, '.artifacts/proof.txt'), 'utf8'), /PROOF_OK 42/, 'helper saved proof evidence');
 
   const toolCalls = spans.filter(s => s.spanType === 'tool_call').map(toolSpanName);
   assert.ok(toolCalls.includes('mastra_workspace_read_file'), 'trace records Lead read_file');
-  assert.ok(toolCalls.includes('mastra_workspace_execute_command'), 'trace records Lead execute_command');
+  assert.ok(toolCalls.includes('mastra_workspace_execute_command'), 'trace records helper execute_command');
+});
+
+test('Reproduction: Lead has no command-running or file-writing tools and cannot change a file in the card copy', async t => {
+  const ctx = setupCase(t);
+  let startTools = [];
+  let secondPrompt = '';
+  const leadModel = fakeModel({
+    onOptions: (options, step) => {
+      if (step === 0) startTools = toolNamesFromOptions(options);
+      if (step === 1) secondPrompt = JSON.stringify(options.prompt);
+    },
+    steps: [
+      {
+        toolCalls: [
+          { name: 'choose_playbook', input: { playbook: 'bug-fix' } },
+          {
+            name: 'mastra_workspace_execute_command',
+            input: { command: 'echo "changed by lead" > README.md' },
+          },
+        ],
+      },
+      { text: 'Attempted shell edit.' },
+    ],
+  });
+
+  await runLead({ ...ctx, leadModel, helperModel: fakeModel({ modelId: HELPER_MODEL_ID, provider: 'commandcode' }) });
+  for (const forbidden of [...WRITE_TOOLS, 'mastra_workspace_execute_command', 'execute_command']) {
+    assert.ok(!startTools.includes(forbidden), `Lead must not have ${forbidden} in registered tools`);
+  }
+  assert.match(secondPrompt, /Tool \\"mastra_workspace_execute_command\\" not found/, 'Lead shell call is rejected');
+  assert.equal(readFileSync(join(ctx.checkout, 'README.md'), 'utf8'), 'checkout\n', 'Lead could not change README.md');
+});
+
+test('Reproduction: helper can change a file in the card copy when the Lead delegates', async t => {
+  const ctx = setupCase(t);
+  const leadModel = fakeModel({
+    steps: [
+      {
+        toolCalls: [
+          { name: 'choose_playbook', input: { playbook: 'bug-fix' } },
+          { name: 'agent-featureRefactoring', input: { prompt: 'Update README.md via shell or file tool' } },
+        ],
+      },
+      { text: 'Delegated README.md update to helper.' },
+    ],
+  });
+  const helperModel = fakeModel({
+    modelId: HELPER_MODEL_ID,
+    provider: 'commandcode',
+    steps: [
+      {
+        toolCalls: [
+          {
+            name: 'mastra_workspace_execute_command',
+            input: { command: 'echo "changed by helper" > README.md' },
+          },
+        ],
+      },
+      { text: 'Updated README.md.' },
+    ],
+  });
+
+  await runLead({ ...ctx, leadModel, helperModel });
+  assert.equal(readFileSync(join(ctx.checkout, 'README.md'), 'utf8'), 'changed by helper\n');
 });
