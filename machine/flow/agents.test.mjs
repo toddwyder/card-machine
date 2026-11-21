@@ -499,7 +499,8 @@ test('Lead refuses to mark a playbook step completed with a flag: and lets the r
       };
     },
   });
-  const agents = createAgents({ repo, leadModelFile, leadModel, model: 'openai/gpt-6.1-sol' });
+  const roleModelsFile = completeRoleFile(join(dir, 'lead-role-models.md'));
+  const agents = createAgents({ repo, leadModelFile, roleModelsFile, leadModel, model: 'openai/gpt-6.1-sol' });
   const workflow = buildCardPath({ agents, dir, repo });
   const mastra = await openMastra({ card: 'JUL-407', agents, workflow, stateDb: join(dir, 'state.db') });
   const requestContext = new RequestContext();
