@@ -21,17 +21,36 @@ function studio(t) {
   return { dir, repo, env: { FLOW_SCRATCH: join(dir, 'scratch') } };
 }
 
-test('a card’s copy goes when the card ends and its branch stays for the pull request', t => {
+test('a card’s copy goes when the card ends and the studio repository never holds it', t => {
   const { repo, env } = studio(t);
   const copy = openCopy({ repo, card: 'JUL-402', env });
   writeFileSync(join(copy.folder, 'pushed.txt'), 'the build’s work\n');
+  git(copy.folder, ['add', '-A']);
+  git(copy.folder, ['-c', 'user.email=helper@test', '-c', 'user.name=helper', 'commit', '--quiet', '-m', 'the work']);
+
+  assert.equal(git(copy.folder, ['rev-parse', '--show-toplevel']), copy.folder, 'the copy is its own repository');
+  assert.equal(existsSync(join(copy.folder, '.git', 'HEAD')), true, 'so the helpers can commit inside their jail');
+  assert.equal(git(repo, ['branch', '--list', 'card/JUL-402']), '', 'the studio repository grows no card branch while the card works');
+  assert.equal(git(repo, ['worktree', 'list']).includes('JUL-402'), false, 'and knows no card worktree');
 
   assert.equal(closeCopy({ repo, card: 'JUL-402', env }), true);
   assert.equal(existsSync(copy.folder), false);
-  assert.equal(git(repo, ['for-each-ref', 'refs/card-base']).includes('JUL-402'), false, 'the base ref goes too');
-  assert.equal(git(repo, ['branch', '--list', 'card/JUL-402']).includes('card/JUL-402'), true);
-  assert.equal(git(repo, ['worktree', 'list']).includes('JUL-402'), false, 'Git no longer knows the folder');
+  assert.equal(git(repo, ['show', 'card/JUL-402:pushed.txt']).trim(), 'the build’s work', 'the work stays with the branch for the pull request');
   assert.equal(closeCopy({ repo, card: 'JUL-402', env }), false, 'closing twice is quiet');
+});
+
+test('a helper commits in the copy without touching the studio repository', t => {
+  const { repo, env } = studio(t);
+  const copy = openCopy({ repo, card: 'JUL-405', env });
+  const before = git(repo, ['rev-parse', 'main']);
+
+  writeFileSync(join(copy.folder, 'work.txt'), 'done\n');
+  git(copy.folder, ['add', '-A']);
+  git(copy.folder, ['-c', 'user.email=helper@test', '-c', 'user.name=helper', 'commit', '--quiet', '-m', 'the helper’s work']);
+
+  assert.equal(git(copy.folder, ['rev-parse', '--abbrev-ref', 'HEAD']), 'card/JUL-405');
+  assert.notEqual(git(copy.folder, ['rev-parse', 'HEAD']), before);
+  assert.equal(git(repo, ['rev-parse', 'main']), before, 'the studio main branch stays where it was');
 });
 
 test('a card name that is not a plain word still gets a usable folder and branch', t => {
@@ -40,7 +59,7 @@ test('a card name that is not a plain word still gets a usable folder and branch
 
   assert.equal(copyFolder('JUL 403/a', env), join(copiesRoot(env), 'JUL-403-a'));
   assert.equal(existsSync(copy.folder), true);
-  assert.equal(git(repo, ['branch', '--list', 'card/JUL-403-a']).includes('card/JUL-403-a'), true);
+  assert.equal(git(copy.folder, ['branch', '--list', 'card/JUL-403-a']).includes('card/JUL-403-a'), true);
 });
 
 test('a repository with no main branch says so instead of making an empty copy', t => {

@@ -2,10 +2,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Agent } from '@mastra/core/agent';
 import { createCodingAgent } from '@mastra/core/coding-agent';
-import { CyberRefusalHandler, TokenCostControl } from '@mastra/core/processors';
+import { CyberRefusalHandler } from '@mastra/core/processors';
 import { LocalFilesystem, LocalSandbox, Workspace } from '@mastra/core/workspace';
 
 import { sandboxEnv } from './access.mjs';
+import { BoundedLocalSandbox } from './bounded-sandbox.mjs';
+import { CallCostControl } from './call-cost.mjs';
+import { studioUnit } from './interrupted.mjs';
 import { cardMemory } from './memory.mjs';
 import { buildModelReader, leadModelId } from './models.mjs';
 import { createChoosePlaybookTool, createGuardedTaskTools } from './playbook.mjs';
@@ -20,14 +23,8 @@ export const COST_LIMIT_DOLLARS = 4;
 const HELPER_CONCURRENCY = 4;
 const POTETO_SKILL = '.agents/skills/poteto-mode/SKILL.md';
 
-const resolveCostLimit = override => {
-  if (Number.isFinite(Number(override)) && Number(override) > 0) return Number(override);
-  const fromEnv = Number(process.env.FLOW_CARD_LIMIT_DOLLARS);
-  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : COST_LIMIT_DOLLARS;
-};
-
-const cardCostControl = maxCost =>
-  new TokenCostControl({ maxCost, scope: 'resource', window: '365d', includeBreakdown: true });
+const cardCostControl = () =>
+  new CallCostControl({ maxCost: COST_LIMIT_DOLLARS, scope: 'resource', window: '365d', includeBreakdown: true });
 
 function repositoryContaining(directory) {
   if (existsSync(join(directory, POTETO_SKILL))) return directory;
@@ -56,9 +53,8 @@ export function projectGithubRepo() {
   return value;
 }
 
-export function createAgents({ model, leadModel, helperModel, costLimit, repo = repoRoot(), leadModelFile, roleModelsFile, tools = {} } = {}) {
+export function createAgents({ model, leadModel, helperModel, repo = repoRoot(), leadModelFile, roleModelsFile, tools = {} } = {}) {
   if (!model && !leadModel) leadModelId(leadModelFile);
-  const limit = resolveCostLimit(costLimit);
   const stages = model
     ? { shipping: model, remediation: model, retro: model, memory: typeof model === 'string' ? model : null }
     : readStageModels(roleModelsFile);
@@ -83,9 +79,9 @@ export function createAgents({ model, leadModel, helperModel, costLimit, repo = 
       }
     },
   };
-  const cardProcessors = () => ({ inputProcessors: [cardResource, resourceGuard, cardCostControl(limit)], outputProcessors: [] });
+  const cardProcessors = () => ({ inputProcessors: [cardResource, resourceGuard, cardCostControl()], outputProcessors: [] });
   const codingProcessors = () => ({
-    inputProcessors: [cardResource, resourceGuard, cardCostControl(limit)],
+    inputProcessors: [cardResource, resourceGuard, cardCostControl()],
     outputProcessors: [new CyberRefusalHandler()],
   });
 
@@ -137,15 +133,23 @@ export function createAgents({ model, leadModel, helperModel, costLimit, repo = 
   const cardWorkspace = (id, { readOnly = false, sandbox = !readOnly, requireCheckout = false, ...extra } = {}) => ({ requestContext } = {}) => {
     const folder = requestContext?.get?.('cardCheckout') ?? (requireCheckout ? null : repo);
     if (!folder) throw new Error('Shipping has no checkout to review.');
+    const unit = studioUnit();
+    const studio = unit && /^card-machine-(self-)?studio\.service$/.test(unit);
     return new Workspace({
       id,
       filesystem: new LocalFilesystem({ basePath: folder, ...(readOnly ? { readOnly: true } : {}) }),
       ...(sandbox
         ? {
-            sandbox: new LocalSandbox({
-              workingDirectory: folder,
-              env: sandboxEnv({ repo }),
-            }),
+            // Studio runs card commands inside a builder slice with a measured
+            // ceiling, so a runaway install dies there instead of taking Studio
+            // down, and inside a jail that makes everything but the card's own
+            // copy read only, so a second checkout cannot appear somewhere else.
+            // Any other service — CI and the checks — gets the plain sandbox:
+            // it has no slice to bind to, and a generic service name must never
+            // turn the jail on where the server has no such unit.
+            sandbox: studio
+              ? new BoundedLocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }), ownerUnit: unit, jail: folder })
+              : new LocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }) }),
           }
         : {}),
       ...extra,

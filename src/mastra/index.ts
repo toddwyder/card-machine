@@ -5,10 +5,11 @@
 
 process.env.CMD_API_KEY ??= process.env.COMMANDCODE_API_KEY;
 
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { createAgents, projectGithubRepo, projectRepoRoot, repoRoot } from '../../machine/flow/agents.mjs';
 import { graphifyTools } from '../../machine/flow/graphify.mjs';
+import { reconcileInterruptedRuns } from '../../machine/flow/interrupted.mjs';
 import { openMastra } from '../../machine/flow/mastra.mjs';
 import { CARD_PATH } from '../../machine/flow/schema.mjs';
 import { openScratch } from '../../machine/flow/scratch.mjs';
@@ -34,4 +35,18 @@ export const mastra = await openMastra({
   workflow,
   stateDb: resolve(dir, 'state.db'),
   traceDb: resolve(dir, 'trace.duckdb'),
+});
+
+// A run is finished by the process that started it, and the workflow never
+// restarts one on its own, so a run whose Studio was killed still says
+// "running". Before this Studio serves anything, every such run is stopped and
+// its card is told why. A run another process is still driving has a live
+// heartbeat and is left alone. Failing to reconcile must not keep Studio down:
+// the record it leaves behind is retried on the next boot.
+await reconcileInterruptedRuns({
+  dir: join(dir, 'interrupted'),
+  store: await mastra.getStorage().getStore('workflows'),
+  workflow,
+}).catch((error: unknown) => {
+  console.error(`Could not reconcile interrupted runs: ${error instanceof Error ? error.message : String(error)}`);
 });

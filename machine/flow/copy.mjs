@@ -62,9 +62,10 @@ function linkModules(repo, folder) {
   }
 }
 
-function baseOf(repo, card) {
+function baseOf(folder, card) {
+  if (!existsSync(folder)) return '';
   try {
-    return git(repo, ['rev-parse', '--verify', `${baseRef(card)}^{commit}`]);
+    return git(folder, ['rev-parse', '--verify', `${baseRef(card)}^{commit}`]);
   } catch {
     return '';
   }
@@ -99,10 +100,13 @@ export function findLeftoverWork({ repo, card, findPr, env = process.env }) {
   return `Leftover work on GitHub for ${card}: ${reasons.join('; ')}. Stopped before creating a diverging branch; decide whether to resume, merge, or close and delete the earlier work.`;
 }
 
+// The copy is its own repository, not a worktree of the studio's. A card's commands
+// run in a jail where only the copy is writable, so the git folder the helpers commit
+// with has to live inside it.
 export function openCopy({ repo, card, env = process.env }) {
   const folder = copyFolder(card, env);
   if (existsSync(folder)) {
-    const base = baseOf(repo, card);
+    const base = baseOf(folder, card);
     if (base) return { folder, base, fresh: false };
   }
   const remote = findExistingRemoteBranch(repo, card);
@@ -113,15 +117,22 @@ export function openCopy({ repo, card, env = process.env }) {
 
   const base = startedFrom(repo);
   mkdirSync(copiesRoot(env), { recursive: true });
-  git(repo, ['worktree', 'add', '--quiet', '--force', '-B', branch(card), folder, base]);
-  git(repo, ['update-ref', baseRef(card), base]);
+  git(repo, ['clone', '--quiet', '--shared', '--no-checkout', repo, folder]);
+  git(folder, ['checkout', '--quiet', '-B', branch(card), base]);
+  git(folder, ['update-ref', baseRef(card), base]);
   linkModules(repo, folder);
   return { folder, base, fresh: true };
 }
 
 export function closeCopy({ repo, card, env = process.env }) {
   const folder = copyFolder(card, env);
-  const had = existsSync(folder) || Boolean(baseOf(repo, card));
+  const had = existsSync(folder);
+  if (had) {
+    try {
+      git(repo, ['fetch', '--quiet', '--no-tags', folder, `+${branch(card)}:${branch(card)}`]);
+    } catch {
+    }
+  }
   rmSync(folder, { recursive: true, force: true });
   try {
     git(repo, ['worktree', 'prune']);

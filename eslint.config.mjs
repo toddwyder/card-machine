@@ -155,12 +155,15 @@ export const frameworkPlugins = {
   'eslint-comments': commentsPlugin,
 };
 
-// The runner files below write the run record, the cost record, the per-card spending record and
-// the exit timer, so the framework rules cover the flow definitions only.
+// The runner files below write the run record, the cost record, the per-card spending record, the
+// interrupted-run record and its heartbeat, and the exit timer, so the framework rules cover the
+// flow definitions only.
 const flowRunnerFiles = [
   'machine/flow/run.mjs',
   'machine/flow/start.mjs',
   'machine/flow/scratch.mjs',
+  'machine/flow/crash-stop.mjs',
+  'machine/flow/interrupted.mjs',
   'machine/flow/**/*.test.mjs',
 ];
 

@@ -5,10 +5,12 @@
 // the shipping run.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BUILDER_SLICE, COMMAND_MEMORY_MAX, boundedCommand, builderLock, sliceMemoryMax } from '../flow/bounded-sandbox.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,7 +43,55 @@ export function prepareCheckout(pr, runDir, checkout) {
 // the root and dashboard trees one after the other, never together: two npm ci
 // runs at once took 3.4 GB on this 7.6 GB server and the kernel killed Studio.
 // A tree installed from the same lockfile is reused.
+//
+// Bun installs this lockfile under a 1.2 GB ceiling in about 10 s; npm 11 needs
+// about 3.8 GB and 90 s for the same tree, which is more than the builder slice
+// allows. A command that runs out of memory must be the one that dies.
+//
+// The install runs inside the builder slice under the same lock card commands
+// take, so a shipping install and a card command never install or build at the
+// same time, and an install that outgrows the slice is the one that dies.
 const INSTALL_TREES = ['', 'dashboard'];
+
+const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
+
+function inBuilderSlice() {
+  return sliceMemoryMax(BUILDER_SLICE) !== null && Boolean(process.env.DBUS_SESSION_BUS_ADDRESS);
+}
+
+function installInvocation(run) {
+  const plain = [run.command, ...run.args].map(quote).join(' ');
+  if (!inBuilderSlice()) return plain;
+  const ceiling = sliceMemoryMax(BUILDER_SLICE);
+  const scoped = boundedCommand(plain, {
+    memoryMax: Math.min(COMMAND_MEMORY_MAX, ceiling),
+    lock: builderLock(),
+    description: 'Card dependencies install',
+  });
+  return `test "$(systemctl --user show ${quote(BUILDER_SLICE)} --property=MemoryMax --value)" = ${quote(ceiling)} && exec ${scoped}`;
+}
+
+function installer() {
+  try {
+    execFileSync('bun', ['--version'], { stdio: 'ignore' });
+    return { command: 'bun', args: ['install', '--frozen-lockfile'], env: {} };
+  } catch {
+    return {
+      command: 'npm',
+      args: ['ci', '--include=dev', '--no-audit', '--no-fund'],
+      env: { npm_config_omit: '', NODE_OPTIONS: [process.env.NODE_OPTIONS, '--max-old-space-size=2048'].filter(Boolean).join(' ') },
+    };
+  }
+}
+
+function lockHash(file) {
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function markInstalled(marker, hash) {
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  fs.writeFileSync(marker, `${hash}\n`, { mode: 0o600 });
+}
 
 function sameContents(left, right) {
   try {
@@ -65,8 +115,9 @@ export function prepareDependencies(checkout, { log = () => {}, timeoutMs = 15 *
     const cwd = path.join(checkout, relative);
     const lock = path.join(cwd, 'package-lock.json');
     const nodeModules = path.join(cwd, 'node_modules');
-    const marker = path.join(nodeModules, '.package-lock.json');
+    const marker = path.join(nodeModules, '.card-dependencies');
     if (!fs.existsSync(lock)) continue;
+    const hash = lockHash(lock);
 
     // A pull request that does not change the lockfile can use the tree already
     // installed in the main checkout, so the review starts without an install.
@@ -79,26 +130,25 @@ export function prepareDependencies(checkout, { log = () => {}, timeoutMs = 15 *
       // A hardlink clone is a real directory, so Next's Turbopack accepts it;
       // a symlink to an external tree is rejected as an invalid external path.
       execFileSync('cp', ['-al', mainModules, nodeModules]);
+      markInstalled(marker, hash);
       log(`Cloned ${relative || 'root'} dependencies from the main checkout; the lockfile matches.`);
       continue;
     }
 
     try {
-      if (fs.statSync(marker).mtimeMs >= fs.statSync(lock).mtimeMs) continue;
+      if (fs.readFileSync(marker, 'utf8').trim() === hash) continue;
     } catch {
-      // No installed tree yet; install it.
+      // No installed tree yet, or one from a different lockfile; install it.
     }
-    log(`Installing ${relative || 'root'} dependencies once, with dev dependencies.`);
-    execFileSync('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], {
+    const run = installer();
+    log(`Installing ${relative || 'root'} dependencies once with ${run.command}, from the lockfile.`);
+    execFileSync('/bin/sh', ['-c', installInvocation(run)], {
       cwd,
       stdio: ['ignore', 'inherit', 'inherit'],
-      env: {
-        ...process.env,
-        npm_config_omit: '',
-        NODE_OPTIONS: [process.env.NODE_OPTIONS, '--max-old-space-size=2048'].filter(Boolean).join(' '),
-      },
+      env: { ...process.env, ...run.env },
       timeout: timeoutMs,
     });
+    markInstalled(marker, hash);
   }
 }
 
