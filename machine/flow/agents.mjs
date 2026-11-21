@@ -133,6 +133,8 @@ export function createAgents({ model, leadModel, helperModel, repo = repoRoot(),
   const cardWorkspace = (id, { readOnly = false, sandbox = !readOnly, requireCheckout = false, ...extra } = {}) => ({ requestContext } = {}) => {
     const folder = requestContext?.get?.('cardCheckout') ?? (requireCheckout ? null : repo);
     if (!folder) throw new Error('Shipping has no checkout to review.');
+    const unit = studioUnit();
+    const studio = unit && /^card-machine-(self-)?studio\.service$/.test(unit);
     return new Workspace({
       id,
       filesystem: new LocalFilesystem({ basePath: folder, ...(readOnly ? { readOnly: true } : {}) }),
@@ -142,10 +144,11 @@ export function createAgents({ model, leadModel, helperModel, repo = repoRoot(),
             // ceiling, so a runaway install dies there instead of taking Studio
             // down, and inside a jail that makes everything but the card's own
             // copy read only, so a second checkout cannot appear somewhere else.
-            // A plain LocalSandbox appears only outside a Studio unit, where no
-            // slice to bind to exists (tests and checks).
-            sandbox: studioUnit()
-              ? new BoundedLocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }), ownerUnit: studioUnit(), jail: folder })
+            // Any other service — CI and the checks — gets the plain sandbox:
+            // it has no slice to bind to, and a generic service name must never
+            // turn the jail on where the server has no such unit.
+            sandbox: studio
+              ? new BoundedLocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }), ownerUnit: unit, jail: folder })
               : new LocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }) }),
           }
         : {}),
