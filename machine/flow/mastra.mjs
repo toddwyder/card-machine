@@ -8,6 +8,8 @@ import { DuckDBStore } from '@mastra/duckdb';
 import { LibSQLStore } from '@mastra/libsql';
 import { MastraStorageExporter, Observability } from '@mastra/observability';
 
+import { CallCostObservability } from './call-cost.mjs';
+
 export const DEFAULT_TRACE_MAX_AGE = '1d';
 
 export const cardStamper = card => ({
@@ -55,12 +57,13 @@ export async function openMastra({
     storage,
     observability: new Observability({
       configs: {
-        default: {
+        default: new CallCostObservability({
+          name: 'default',
           serviceName: 'jul-336-card-path',
           exporters: [new MastraStorageExporter({ maxBatchSize: 1 })],
           spanOutputProcessors: [cardStamper(card)],
           logging: { enabled: false },
-        },
+        }),
       },
     }),
   });
