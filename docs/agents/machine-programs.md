@@ -14,7 +14,7 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `52d85fd69b074a437839e69c5806efb3ca0be24ac8bcc9937ee2a43b15832e27` |
 | `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `d901ebec78c181644defcbdd4a4eafe48c28e8fd7c91afa820ef7d874ec4c4d0` |
 | `machine/flow/task.mjs` | The task the Lead is given, taken word for word from the card. | `ee7d91a262a8dc0a1664ba03fc5c73f3f19aac19fedb5cd6b9c003b10ff11f2a` |
-| `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `38ede0fd25d855f4022438444552af07055379005f3a531d66e6ca5385db0d3e` |
+| `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `bbfd2749763d8343465fd475763440aa4e4992674eb7aba2fb054634051c088b` |
 | `machine/flow/access.mjs` | Shares the service environment from scripts/julia-agents.env across agent workspaces and checks every agent’s access at run start. | `2f4e98b66d2880c38dfc4edadc2977a69f3dcdf87a4b00b4e0dd8f5c671f7b49` |
 | `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `8b357b1e60870c6eacfb06e87c36805ee62dc96d801ca7d88155dcdf5f43716e` |
 | `machine/flow/graphify.mjs` | The Graphify graph tools offered to Lead and its helpers. | `c502bc49faa96ef1de469764696d1682347679a61a17629766940de5baf546b6` |
