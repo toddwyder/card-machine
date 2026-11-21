@@ -71,7 +71,11 @@ test('Lead shell commands find global Git settings without inheriting unrelated 
   writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = Lead test account\n');
   const leadModelFile = join(home, 'lead-model');
   installLeadModel(leadModelFile);
-  const workspace = await createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' }).build.getWorkspace();
+  const roleModelsFile = completeRoleFile(join(home, 'lead-role-models.md'));
+  const agents = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
+  assert.equal((await agents.build.getWorkspace()).sandbox, undefined, 'Lead has no sandbox');
+  const helper = Object.values(await agents.build.listAgents())[0];
+  const workspace = await helper.getWorkspace();
   const sandbox = workspace.sandbox;
   try {
     await sandbox.start();
@@ -200,12 +204,13 @@ test('the build and its helpers work in the card copy the run names', async t =>
 
   const lead = (await agents.build.getWorkspace({ requestContext })).getPathContext();
   assert.equal(lead.filesystem.basePath, cardCopy);
-  assert.equal(lead.sandbox.workingDirectory, cardCopy);
+  assert.equal(lead.sandbox, undefined);
   const helper = (await (await agents.build.listAgents()).featureRefactoring.getWorkspace({ requestContext })).getPathContext();
   assert.equal(helper.sandbox.workingDirectory, cardCopy);
 
   const settings = (await createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' }).build.getWorkspace()).getPathContext();
-  assert.equal(settings.sandbox.workingDirectory, repo, 'a read with no card copy works in Studio’s repository');
+  assert.equal(settings.filesystem.basePath, repo, 'a read with no card copy works in Studio’s repository');
+  assert.equal(settings.sandbox, undefined);
 });
 
 // 7 Nov: a pick saved at 15:18:07 only reached the run after Studio restarted at 15:18:10.
@@ -414,8 +419,9 @@ test('Lead and helper sandboxes inherit LINEAR_API_KEY without inheriting unrela
   const roleModelsFile = completeRoleFile(join(home, 'lead-role-models.md'));
   const agents = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
   const helper = Object.values(agents.build.listAgents ? await agents.build.listAgents() : {})[0];
-  for (const agent of [agents.build, ...(helper ? [helper] : [])]) {
-    const workspace = await agent.getWorkspace();
+  assert.equal((await agents.build.getWorkspace()).sandbox, undefined, 'Lead has no sandbox');
+  for (const agent of [agents.shipping, ...(helper ? [helper] : [])]) {
+    const workspace = await agent.getWorkspace({ requestContext: new RequestContext([['cardCheckout', repo]]) });
     await workspace.sandbox.start();
     try {
       const envRun = await workspace.sandbox.executeCommand(process.execPath, [

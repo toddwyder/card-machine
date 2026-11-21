@@ -193,15 +193,15 @@ async function collectWorkspaceAgents(agents, { checkBrowser = true } = {}) {
     if (!agent || typeof agent.getWorkspace !== 'function' || seen.has(agent)) return;
     seen.add(agent);
     const ws = await agent.getWorkspace({ requestContext: new RequestContext([['cardCheckout', process.cwd()]]) }).catch(() => null);
-    if (ws) entries.push({ agentName, agent, ...options });
+    if (ws && (ws.sandbox || options.requireSandbox)) entries.push({ agentName, agent, ...options });
   };
 
   await add('Lead', agents?.build);
   const subagents = (await agents?.build?.listAgents?.()) ?? agents?.build?.agents ?? {};
   for (const [key, helper] of Object.entries(subagents)) {
-    await add(helper?.name ? `${helper.name} (${key})` : key, helper);
+    await add(helper?.name ? `${helper.name} (${key})` : key, helper, { requireSandbox: true });
   }
-  await add('Shipping', agents?.shipping, { requireBrowser: checkBrowser });
+  await add('Shipping', agents?.shipping, { requireBrowser: checkBrowser, requireSandbox: true });
 
   for (const [key, agent] of Object.entries(agents ?? {})) {
     if (key === 'build' || key === 'shipping') continue;

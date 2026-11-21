@@ -102,7 +102,9 @@ test('a new service added to scripts/julia-agents.env reaches Lead, helpers, and
 
   const agents = createAgents({ repo: dir, leadModelFile, model: 'openai/gpt-6.1-sol' });
   const helper = Object.values(await agents.build.listAgents())[0];
-  for (const [name, agent] of [['Lead', agents.build], ['Helper', helper], ['Shipping', agents.shipping]]) {
+  const leadWs = await agents.build.getWorkspace({ requestContext: new RequestContext([['cardCheckout', dir]]) });
+  assert.equal(leadWs.sandbox, undefined, 'Lead has no sandbox');
+  for (const [name, agent] of [['Helper', helper], ['Shipping', agents.shipping]]) {
     const ws = await agent.getWorkspace({ requestContext: new RequestContext([['cardCheckout', dir]]) });
     await ws.sandbox.start();
     try {
@@ -155,7 +157,9 @@ test('verifyRunAccess passes with real browser and local service endpoints, and 
   Object.assign(process.env, keys);
 
   const full = createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' });
-  full.build.listAgents = async () => ({});
+  const helpers = await full.build.listAgents();
+  const firstHelper = Object.values(helpers)[0];
+  full.build.listAgents = async () => ({ featureRefactoring: firstHelper });
   const minimalAgents = { build: full.build, shipping: full.shipping };
 
   const pass = await verifyRunAccess({ agents: minimalAgents, checkout: repo, repo, checkBrowser: true, endpoints });
@@ -164,6 +168,6 @@ test('verifyRunAccess passes with real browser and local service endpoints, and 
   axiomStatus = 401;
   const fail = await verifyRunAccess({ agents: minimalAgents, checkout: repo, repo, checkBrowser: false, endpoints });
   assert.equal(fail.ok, false);
-  assert.match(fail.reason, /Lead: axiom \(HTTP 401\)/);
+  assert.match(fail.reason, /featureRefactoring\): axiom \(HTTP 401\)/);
   assert.match(fail.reason, /Shipping: axiom \(HTTP 401\)/);
 });

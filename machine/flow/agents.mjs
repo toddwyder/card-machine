@@ -134,16 +134,20 @@ export function createAgents({ model, leadModel, helperModel, costLimit, repo = 
     };
   };
 
-  const cardWorkspace = (id, { readOnly = false, requireCheckout = false, ...extra } = {}) => ({ requestContext } = {}) => {
+  const cardWorkspace = (id, { readOnly = false, sandbox = !readOnly, requireCheckout = false, ...extra } = {}) => ({ requestContext } = {}) => {
     const folder = requestContext?.get?.('cardCheckout') ?? (requireCheckout ? null : repo);
     if (!folder) throw new Error('Shipping has no checkout to review.');
     return new Workspace({
       id,
       filesystem: new LocalFilesystem({ basePath: folder, ...(readOnly ? { readOnly: true } : {}) }),
-      sandbox: new LocalSandbox({
-        workingDirectory: folder,
-        env: sandboxEnv({ repo }),
-      }),
+      ...(sandbox
+        ? {
+            sandbox: new LocalSandbox({
+              workingDirectory: folder,
+              env: sandboxEnv({ repo }),
+            }),
+          }
+        : {}),
       ...extra,
     });
   };
