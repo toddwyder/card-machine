@@ -31,7 +31,7 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/run.mjs` | Answers a waiting card and reads a run. No way to start one. | `6aa66f1d72561054364ad8ffe90a19d5d3119ebcd8dd3539df3cbb57c14f4338` |
 | `machine/flow/report.mjs` | Builds the card report and tripwire stop helper. | `73092dd6925cba0014dc078e82be1d71686a9c35c1357cec9433f200bcf57499` |
 | `machine/flow/resources.mjs` | Checks memory and disk before and during every card and clears idle leftovers when short. | `4734373a90d3cafd03cfd2d2959d6345b3dba39feaa729da5e3417d3cf450e4a` |
-| `machine/flow/bounded-sandbox.mjs` | Runs a card command inside the builder slice so a runaway install dies there, not Studio. | `9ac4f4d6075fc5501da8918e3c2c04782090825fbfc20ebc7d35fdf3cbae9e21` |
+| `machine/flow/bounded-sandbox.mjs` | Runs a card command inside the builder slice so a runaway install dies there, not Studio. | `4a5d6db272d419c19ec5ba34346b16e8a4446f1db0e2db98656f66adfb666c01` |
 | `machine/flow/call-cost.mjs` | Counts each finished model call, keeps the card ledger honest when a lookup fails, and stops the card at $4. | `6c82e761ab1f5399cc98e1e1df9eb82caed9fb4006fb3f612126687426050db0` |
 | `machine/flow/crash-stop.mjs` | Stops a run whose Studio died, and posts the cause on the card. | `cf1c590c3b86813b448131b273434f6bf6fe4152718405cb1a35330f4e515747` |
 | `machine/flow/interrupted.mjs` | At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them. | `518b3442a8ae7ed09d2322942608119bdf64f8d45cb3dbb744f52b31d79c55cb` |

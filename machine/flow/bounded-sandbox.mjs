@@ -1,8 +1,9 @@
 // Commands that card agents run belong to a builder slice with a fixed memory
 // ceiling, and each command gets its own scope inside that slice. A runaway
 // install or test run dies at the ceiling instead of taking Studio and the rest
-// of the server with it. Measured on this server: `npm ci` reached 3.8 GB and an
-// `npm test`-style run reached 2.5 GB, while Studio peaks near 1.6 GB.
+// of the server with it. Measured on this server, unconstrained: a dashboard
+// `npm ci` peaked at 4,720,484,352 bytes and Studio at 1,777,201,152 bytes. The
+// ceiling is the npm ci peak plus 5 percent of headroom.
 //
 // The same commands run inside a bubblewrap jail that makes everything outside
 // the card's own copy read only, so an agent cannot build a second checkout
@@ -18,7 +19,7 @@ export const BUILDER_SLICE = 'card-builder.slice';
 
 // Ceilings are whole mebibytes so the numbers here match what `systemctl show`
 // reports for the slice.
-export const BUILDER_MEMORY_MAX = 2700 * 1024 * 1024;
+export const BUILDER_MEMORY_MAX = 4700 * 1024 * 1024;
 export const COMMAND_MEMORY_MAX = BUILDER_MEMORY_MAX;
 
 // Commands that install dependencies or build a tree. They take the shared lock
