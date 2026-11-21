@@ -30,6 +30,7 @@ export const PROGRAMS = [
   ['machine/flow/check.mjs', 'The post-build check: verifies Lead task list in Mastra state before Shipping.'],
   ['machine/flow/task.mjs', 'The task the Lead is given, taken word for word from the card.'],
   ['machine/flow/agents.mjs', 'The agents the stages run, and what the build agent may touch.'],
+  ['machine/flow/access.mjs', 'Shares the service environment from scripts/julia-agents.env across agent workspaces and checks every agent’s access at run start.'],
   ['machine/flow/playbook.mjs', 'Playbook catalog, task seeding, and the choose_playbook tool.'],
   ['machine/flow/graphify.mjs', 'The Graphify graph tools offered to Lead and its helpers.'],
   ['machine/flow/memory.mjs', 'The memory note-takers, run on the free model the card picked.'],

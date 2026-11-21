@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
 
+import { stopIfAccessMissing, verifyRunAccess } from './access.mjs';
 import { realCheck } from './check.mjs';
 import { closeCopy, findLeftoverWork, openCopy } from './copy.mjs';
 import { sendCardCostRecord } from './cost-record.mjs';
@@ -28,7 +29,7 @@ const REQUIRED_TASK_TOOLS = ['task_write', 'task_update', 'task_complete', 'task
 const finishCard = ({ mastra, card, status }) =>
   Promise.allSettled([sendCardCostRecord({ mastra, card, status }), pruneTrace(mastra)]);
 
-export function createStages({ agents, dir, repo, projectRepo = repo, review = realReview, check = realCheck }) {
+export function createStages({ agents, dir, repo, projectRepo = repo, review = realReview, check = realCheck, preflight = verifyRunAccess }) {
   const cardDir = (card) => join(dir, card);
 
   const halt = async ({ inputData, state }) =>
@@ -61,6 +62,10 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
       openRun(dir, inputData.card);
       const short = await stopIfResourcesShort({ inputData, state: { ...state, card: inputData.card, kind: inputData.kind }, setState }, dir);
       if (short) return short;
+      const denied = preflight === verifyRunAccess
+        ? await stopIfAccessMissing({ inputData, state: { ...state, card: inputData.card, kind: inputData.kind }, setState }, { agents, checkout: projectRepo, repo })
+        : await preflight({ agents, checkout: projectRepo, repo }).then(async r => r.ok ? null : (await setState({ ...state, card: inputData.card, kind: inputData.kind, stopPart: 'Access', stopWhy: r.reason, stopped: true }), { card: inputData.card, kind: inputData.kind, stopped: true, detail: r.reason }));
+      if (denied) return denied;
       return { card: inputData.card, kind: inputData.kind };
     },
   });

@@ -64,8 +64,8 @@ const smokeDone = async ({ inputData }) => inputData.smoke === 'PASS' || inputDa
 const answered = async ({ inputData }) => inputData.accepted === true || inputData.stopped === true;
 const buildChecked = async ({ inputData }) => inputData.stopped === true || inputData.checkPassed === true;
 
-export function buildCardPath({ agents, dir, repo, projectRepo = repo, review, check }) {
-  const stage = createStages({ agents, dir, repo, projectRepo, review, check });
+export function buildCardPath({ agents, dir, repo, projectRepo = repo, review, check, preflight }) {
+  const stage = createStages({ agents, dir, repo, projectRepo, review, check, preflight });
 
   const reviewRound = createWorkflow({ ...schema, id: REVIEW_ROUND })
     .then(stage.shipping)

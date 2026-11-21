@@ -41,7 +41,7 @@ test('Shipping workspace loads pstack skills and inherits services from scripts/
 
   const { shipping } = createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' });
   const ws = await shipping.getWorkspace({ requestContext: new RequestContext([['cardCheckout', repo]]) });
-  const skills = await ws.listSkills?.();
+  const skills = await ws.skills?.list?.();
   assert.ok(Array.isArray(skills) && skills.some(s => s.name === 'poteto-mode'), 'Shipping workspace should load poteto-mode skill');
 
   await ws.sandbox.start();
@@ -80,4 +80,95 @@ test('start-of-run check catches missing service access before build spends anyt
   assert.equal(result.ok, false);
   assert.match(result.reason, /Shipping/i);
   assert.match(result.reason, /linear/i);
+});
+
+import { createServer } from 'node:http';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { verifyRunAccess } from './access.mjs';
+
+test('a new service added to scripts/julia-agents.env reaches Lead, helpers, and Shipping', async t => {
+  const dir = temporary(t);
+  const scriptsDir = join(dir, 'scripts');
+  mkdirSync(scriptsDir, { recursive: true });
+  writeFileSync(join(scriptsDir, 'julia-agents.env'), 'LINEAR_CLIENT_ID=op://v/i/k\nCUSTOM_ADDED_SERVICE_KEY=op://v/i/k\n');
+  mkdirSync(join(dir, '.agents/skills/poteto-mode'), { recursive: true });
+  writeFileSync(join(dir, '.agents/skills/poteto-mode/SKILL.md'), '# poteto');
+  const leadModelFile = join(dir, 'lead-model');
+  installLeadModel(leadModelFile);
+
+  const prev = process.env.CUSTOM_ADDED_SERVICE_KEY;
+  t.after(() => {
+    if (prev === undefined) delete process.env.CUSTOM_ADDED_SERVICE_KEY;
+    else process.env.CUSTOM_ADDED_SERVICE_KEY = prev;
+  });
+  process.env.CUSTOM_ADDED_SERVICE_KEY = 'added-service-secret';
+
+  const agents = createAgents({ repo: dir, leadModelFile, model: 'openai/gpt-6.1-sol' });
+  const helper = Object.values(await agents.build.listAgents())[0];
+  for (const [name, agent] of [['Lead', agents.build], ['Helper', helper], ['Shipping', agents.shipping]]) {
+    const ws = await agent.getWorkspace({ requestContext: new RequestContext([['cardCheckout', dir]]) });
+    await ws.sandbox.start();
+    try {
+      const res = await ws.sandbox.executeCommand(process.execPath, ['-e', 'console.log(process.env.CUSTOM_ADDED_SERVICE_KEY ?? "")']);
+      assert.equal(res.exitCode, 0, `${name}: ${res.stderr}`);
+      assert.equal(res.stdout.trim(), 'added-service-secret', `${name} should receive CUSTOM_ADDED_SERVICE_KEY`);
+    } finally {
+      await ws.sandbox.stop();
+    }
+  }
+});
+
+test('verifyRunAccess passes with real browser and local service endpoints, and catches HTTP 401', async t => {
+  const dir = temporary(t);
+  const leadModelFile = join(dir, 'lead-model');
+  installLeadModel(leadModelFile);
+  let stitchStatus = 200;
+  const server = createServer((req, res) => {
+    const status = req.url === '/stitch' ? stitchStatus : 200;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: status === 200 }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+  const base = `http://127.0.0.1:${port}`;
+  const endpoints = {
+    linear: `${base}/linear`,
+    commandcode: `${base}/commandcode`,
+    sentry: `${base}/sentry`,
+    axiom: `${base}/axiom`,
+    stitch: `${base}/stitch`,
+  };
+
+  const keys = {
+    LINEAR_API_KEY: 'Bearer ok',
+    COMMANDCODE_API_KEY: 'ok',
+    SENTRY_AUTH_TOKEN: 'ok',
+    SENTRY_ORG: 'org',
+    SENTRY_PROJECT: 'proj',
+    AXIOM_TOKEN: 'ok',
+    AXIOM_DATASET: 'ds',
+    STITCH_API_KEY: 'ok',
+  };
+  const prev = Object.fromEntries(Object.keys(keys).map(k => [k, process.env[k]]));
+  t.after(() => {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+  Object.assign(process.env, keys);
+
+  const full = createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' });
+  full.build.listAgents = async () => ({});
+  const minimalAgents = { build: full.build, shipping: full.shipping };
+
+  const pass = await verifyRunAccess({ agents: minimalAgents, checkout: repo, repo, checkBrowser: true, endpoints });
+  assert.equal(pass.ok, true, pass.reason);
+
+  stitchStatus = 401;
+  const fail = await verifyRunAccess({ agents: minimalAgents, checkout: repo, repo, checkBrowser: false, endpoints });
+  assert.equal(fail.ok, false);
+  assert.match(fail.reason, /Lead: stitch \(HTTP 401\)/);
+  assert.match(fail.reason, /Shipping: stitch \(HTTP 401\)/);
 });

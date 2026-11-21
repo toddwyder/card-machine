@@ -65,7 +65,7 @@ export function reviewTask({ pr, sha, checkout, card, criteria }) {
     withoutChecked(card.description),
     '--- end card ---',
     '',
-    'For each criterion, run the command it names, exactly as written, inside this checkout. Decide from what the command printed and the exit code it gave. You may also run read-only commands to look around (cat, ls, git show, git diff, git log). Do not run npm ci, npm install, or any installer, and do not edit, commit, push, or otherwise change the checkout.',
+    'For each criterion, verify it on the real surface the criterion names (such as commands in this checkout, reading or testing against Linear with the checkout tools, or opening web pages in a browser). Do not treat unit tests with fakes or mocks as proof of real-service behavior. You may also run read-only commands to look around (cat, ls, git show, git diff, git log). Do not run npm ci, npm install, or any installer, and do not edit, commit, push, or otherwise change the checkout.',
     '',
     `The card lists ${criteria.length} ${criteria.length === 1 ? 'criterion' : 'criteria'}. Judge every one of them.`,
     '',

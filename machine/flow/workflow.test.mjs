@@ -99,6 +99,7 @@ async function openCase({
   answers = ['yes'],
   build,
   check = { run: async () => ({ ok: true }) },
+  preflight = async () => ({ ok: true }),
   untilFirstWait = false,
 }) {
   const dir = givenDir ?? mkdtempSync(join(tmpdir(), 'flow-case-'));
@@ -118,6 +119,7 @@ async function openCase({
     repo,
     review: fake.review,
     check: typeof check === 'function' ? { run: check } : check,
+    preflight,
   });
   const mastra = await openMastra({
     card,
@@ -323,6 +325,7 @@ test('two cards started together each work in their own copy and leave the Studi
     repo,
     review: fake.review,
     check: { run: async () => ({ ok: true }) },
+    preflight: async () => ({ ok: true }),
   });
   const mastra = await openMastra({
     card: '',
@@ -734,4 +737,20 @@ test('a failed card post leaves a record under reports/<card>-post-failures.log'
   assert.match(readFileSync(failureLog, 'utf8'), /Linear API unreachable/);
   await mastra.shutdown();
   try { rmSync(dirCase, { recursive: true, force: true }); } catch {}
+});
+
+test('start-of-run access failure stops the run before build spends anything', async t => {
+  let buildCalls = 0;
+  const countingBuild = buildOn(createMockModel({
+    mockText: () => { buildCalls += 1; return 'built'; },
+  }));
+  const { dir, result, trail } = await openCase({
+    build: countingBuild,
+    preflight: async () => ({ ok: false, reason: 'Start-of-run access check failed: Shipping: linear (missing LINEAR_API_KEY)' }),
+  });
+  assert.equal(buildCalls, 0);
+  assert.equal(result.result.stopped, true);
+  const report = readFileSync(join(dir, CARD, 'reports', `${CARD}.md`), 'utf8');
+  assert.match(report, /Shipping: linear/);
+  assert.ok(!trail.some(s => s === 'flow-build'));
 });
