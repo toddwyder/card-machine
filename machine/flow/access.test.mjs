@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -7,8 +7,15 @@ import test from 'node:test';
 import { RequestContext } from '@mastra/core/request-context';
 import { createAgents } from './agents.mjs';
 import { installLeadModel } from '../../scripts/install-lead-model.mjs';
+import { ROLE_GROUPS } from '../../dashboard/lib/model-settings.js';
 
 const repo = process.cwd();
+
+const ROLE_FILE_TEXT = [
+  '# budget: medium (high)',
+  ...ROLE_GROUPS.flatMap(group => group.roles.map(role => `${role.name}: openai/gpt-6.1-sol`)),
+  '',
+].join('\n');
 
 function temporary(t) {
   const dir = mkdtempSync(join(tmpdir(), 'flow-access-'));
@@ -16,10 +23,17 @@ function temporary(t) {
   return dir;
 }
 
+function setupModels(dir) {
+  const leadModelFile = join(dir, 'lead-model');
+  const roleModelsFile = join(dir, 'lead-role-models.md');
+  installLeadModel(leadModelFile);
+  writeFileSync(roleModelsFile, ROLE_FILE_TEXT);
+  return { leadModelFile, roleModelsFile };
+}
+
 test('Shipping workspace loads pstack skills and inherits services from scripts/julia-agents.env', async t => {
   const dir = temporary(t);
-  const leadModelFile = join(dir, 'lead-model');
-  installLeadModel(leadModelFile);
+  const { leadModelFile, roleModelsFile } = setupModels(dir);
   const previous = {
     LINEAR_API_KEY: process.env.LINEAR_API_KEY,
     SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
@@ -37,7 +51,7 @@ test('Shipping workspace loads pstack skills and inherits services from scripts/
   process.env.AXIOM_TOKEN = 'axiom-repro-token';
   process.env.UNRELATED_SECRET = 'must-not-leak';
 
-  const { shipping } = createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' });
+  const { shipping } = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
   const ws = await shipping.getWorkspace({ requestContext: new RequestContext([['cardCheckout', repo]]) });
   const skills = await ws.skills?.list?.();
   assert.ok(Array.isArray(skills) && skills.some(s => s.name === 'poteto-mode'), 'Shipping workspace should load poteto-mode skill');
@@ -63,8 +77,7 @@ test('Shipping workspace loads pstack skills and inherits services from scripts/
 test('start-of-run check catches missing service access before build spends anything, naming service and agent', async t => {
   const { verifyRunAccess } = await import('./access.mjs');
   const dir = temporary(t);
-  const leadModelFile = join(dir, 'lead-model');
-  installLeadModel(leadModelFile);
+  const { leadModelFile, roleModelsFile } = setupModels(dir);
   const previous = process.env.LINEAR_API_KEY;
   t.after(() => {
     if (previous === undefined) delete process.env.LINEAR_API_KEY;
@@ -72,7 +85,7 @@ test('start-of-run check catches missing service access before build spends anyt
   });
   delete process.env.LINEAR_API_KEY;
 
-  const agents = createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' });
+  const agents = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
   const result = await verifyRunAccess({ agents, checkout: repo, repo, checkBrowser: false });
   assert.equal(result.ok, false);
   assert.match(result.reason, /Shipping/i);
@@ -80,7 +93,6 @@ test('start-of-run check catches missing service access before build spends anyt
 });
 
 import { createServer } from 'node:http';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { verifyRunAccess } from './access.mjs';
 
 test('a new service added to scripts/julia-agents.env reaches Lead, helpers, and Shipping', async t => {
@@ -90,8 +102,7 @@ test('a new service added to scripts/julia-agents.env reaches Lead, helpers, and
   writeFileSync(join(scriptsDir, 'julia-agents.env'), 'LINEAR_CLIENT_ID=op://v/i/k\nCUSTOM_ADDED_SERVICE_KEY=op://v/i/k\n');
   mkdirSync(join(dir, '.agents/skills/poteto-mode'), { recursive: true });
   writeFileSync(join(dir, '.agents/skills/poteto-mode/SKILL.md'), '# poteto');
-  const leadModelFile = join(dir, 'lead-model');
-  installLeadModel(leadModelFile);
+  const { leadModelFile, roleModelsFile } = setupModels(dir);
 
   const prev = process.env.CUSTOM_ADDED_SERVICE_KEY;
   t.after(() => {
@@ -100,7 +111,7 @@ test('a new service added to scripts/julia-agents.env reaches Lead, helpers, and
   });
   process.env.CUSTOM_ADDED_SERVICE_KEY = 'added-service-secret';
 
-  const agents = createAgents({ repo: dir, leadModelFile, model: 'openai/gpt-6.1-sol' });
+  const agents = createAgents({ repo: dir, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
   const helper = Object.values(await agents.build.listAgents())[0];
   const leadWs = await agents.build.getWorkspace({ requestContext: new RequestContext([['cardCheckout', dir]]) });
   assert.equal(leadWs.sandbox, undefined, 'Lead has no sandbox');
@@ -119,8 +130,7 @@ test('a new service added to scripts/julia-agents.env reaches Lead, helpers, and
 
 test('verifyRunAccess passes with real browser and local service endpoints, and catches HTTP 401', async t => {
   const dir = temporary(t);
-  const leadModelFile = join(dir, 'lead-model');
-  installLeadModel(leadModelFile);
+  const { leadModelFile, roleModelsFile } = setupModels(dir);
   let axiomStatus = 200;
   const server = createServer((req, res) => {
     const status = req.url.startsWith('/axiom') ? axiomStatus : 200;
@@ -156,7 +166,7 @@ test('verifyRunAccess passes with real browser and local service endpoints, and 
   });
   Object.assign(process.env, keys);
 
-  const full = createAgents({ repo, leadModelFile, model: 'openai/gpt-6.1-sol' });
+  const full = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
   const helpers = await full.build.listAgents();
   const firstHelper = Object.values(helpers)[0];
   full.build.listAgents = async () => ({ featureRefactoring: firstHelper });

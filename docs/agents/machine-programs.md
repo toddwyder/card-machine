@@ -9,13 +9,13 @@ of any size, not only a change to the sentence beside it.
 
 | Program | What it does | sha256 |
 | --- | --- | --- |
-| `src/mastra/index.ts` | The Studio entry. Registers the card workflow so the run form can start a card. | `7b067668eb00748fb4ac9f8f757d8568898e8edc27bf938c2523a279f5eba7b6` |
+| `src/mastra/index.ts` | The Studio entry. Registers the card workflow so the run form can start a card. | `d4f1245b41e1b8314a9cab200f4494a809badd439b68db35e3bab23cba5d49d0` |
 | `machine/flow/workflow.mjs` | The order of the stages, the loops and the one place a card waits. | `83c3f4acf7c02ba7f0147afb6b436101967b4b57ef96ed6cd8b9e1885ab5cb2c` |
-| `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `24164e2d79f591990ebd51a1e740e88d5de119acbd749e33f64a3befd2a6a247` |
+| `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `5d1ee8650c4ac1a349debf9d9444999fab8d2498c6224b1c87c452017b7ffb6b` |
 | `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `d901ebec78c181644defcbdd4a4eafe48c28e8fd7c91afa820ef7d874ec4c4d0` |
 | `machine/flow/task.mjs` | The task the Lead is given, taken word for word from the card. | `ee7d91a262a8dc0a1664ba03fc5c73f3f19aac19fedb5cd6b9c003b10ff11f2a` |
-| `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `48b107419fdc1fa6853d2f7387121d306cc9e589d09bbaa0faff858dd26496b6` |
-| `machine/flow/access.mjs` | Shares the service environment from scripts/julia-agents.env across agent workspaces and checks every agent’s access at run start. | `06fa83fef74bc58c1796486b15d45dd9fab80a122ea8d6b05fd905155f04f072` |
+| `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `b260f2323f87d7a55cd4999441265ee2f7229ca5dabbb7d996dccb2a1334eb90` |
+| `machine/flow/access.mjs` | Shares the service environment from scripts/julia-agents.env across agent workspaces and checks every agent’s access at run start. | `2f4e98b66d2880c38dfc4edadc2977a69f3dcdf87a4b00b4e0dd8f5c671f7b49` |
 | `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `8b357b1e60870c6eacfb06e87c36805ee62dc96d801ca7d88155dcdf5f43716e` |
 | `machine/flow/graphify.mjs` | The Graphify graph tools offered to Lead and its helpers. | `c502bc49faa96ef1de469764696d1682347679a61a17629766940de5baf546b6` |
 | `machine/flow/memory.mjs` | The memory note-takers, run on the free model the card picked. | `c166620cff305155382848e9e2c7bf09b24641bb14d3a0ed8bca242a852835b1` |
