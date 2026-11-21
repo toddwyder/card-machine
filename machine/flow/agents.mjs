@@ -6,7 +6,9 @@ import { CyberRefusalHandler } from '@mastra/core/processors';
 import { LocalFilesystem, LocalSandbox, Workspace } from '@mastra/core/workspace';
 
 import { sandboxEnv } from './access.mjs';
+import { BoundedLocalSandbox } from './bounded-sandbox.mjs';
 import { CallCostControl } from './call-cost.mjs';
+import { studioUnit } from './interrupted.mjs';
 import { cardMemory } from './memory.mjs';
 import { buildModelReader, leadModelId } from './models.mjs';
 import { createChoosePlaybookTool, createGuardedTaskTools } from './playbook.mjs';
@@ -136,10 +138,15 @@ export function createAgents({ model, leadModel, helperModel, repo = repoRoot(),
       filesystem: new LocalFilesystem({ basePath: folder, ...(readOnly ? { readOnly: true } : {}) }),
       ...(sandbox
         ? {
-            sandbox: new LocalSandbox({
-              workingDirectory: folder,
-              env: sandboxEnv({ repo }),
-            }),
+            // Studio runs card commands inside a builder slice with a measured
+            // ceiling, so a runaway install dies there instead of taking Studio
+            // down, and inside a jail that makes everything but the card's own
+            // copy read only, so a second checkout cannot appear somewhere else.
+            // A plain LocalSandbox appears only outside a Studio unit, where no
+            // slice to bind to exists (tests and checks).
+            sandbox: studioUnit()
+              ? new BoundedLocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }), ownerUnit: studioUnit(), jail: folder })
+              : new LocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }) }),
           }
         : {}),
       ...extra,

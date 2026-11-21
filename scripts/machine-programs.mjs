@@ -46,6 +46,7 @@ export const PROGRAMS = [
   ['machine/flow/run.mjs', 'Answers a waiting card and reads a run. No way to start one.'],
   ['machine/flow/report.mjs', 'Builds the card report and tripwire stop helper.'],
   ['machine/flow/resources.mjs', 'Checks memory and disk before and during every card and clears idle leftovers when short.'],
+  ['machine/flow/bounded-sandbox.mjs', 'Runs a card command inside the builder slice so a runaway install dies there, not Studio.'],
   ['machine/flow/call-cost.mjs', 'Counts each finished model call, keeps the card ledger honest when a lookup fails, and stops the card at $4.'],
   ['machine/flow/crash-stop.mjs', 'Stops a run whose Studio died, and posts the cause on the card.'],
   ['machine/flow/interrupted.mjs', 'At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them.'],
