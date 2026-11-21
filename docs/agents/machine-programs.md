@@ -9,7 +9,7 @@ of any size, not only a change to the sentence beside it.
 
 | Program | What it does | sha256 |
 | --- | --- | --- |
-| `src/mastra/index.ts` | The Studio entry. Registers the card workflow so the run form can start a card. | `d4f1245b41e1b8314a9cab200f4494a809badd439b68db35e3bab23cba5d49d0` |
+| `src/mastra/index.ts` | The Studio entry. Registers the card workflow so the run form can start a card. | `9482a6996510da89c3c621965eb015cad5fe322539af2a6471ebd2edb5c91b84` |
 | `machine/flow/workflow.mjs` | The order of the stages, the loops and the one place a card waits. | `83c3f4acf7c02ba7f0147afb6b436101967b4b57ef96ed6cd8b9e1885ab5cb2c` |
 | `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `5d1ee8650c4ac1a349debf9d9444999fab8d2498c6224b1c87c452017b7ffb6b` |
 | `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `d901ebec78c181644defcbdd4a4eafe48c28e8fd7c91afa820ef7d874ec4c4d0` |
@@ -27,8 +27,10 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/review.mjs` | The Shipping review: finds the card's pull request, names the commit it reviews, builds the reviewer's task, reads the verdict. | `9f9dab7643fa9e3eac10ff78f63006bc5971749f2c84ac1ce345c80e3b6039fa` |
 | `machine/flow/cost-record.mjs` | Builds the per-card cost record from Mastra metrics and sends it to Axiom. | `2b8a1ad2bd83455f13b9cf6715c217d2434b2fc9072717dfd7f8b788569ca1f5` |
 | `machine/flow/mastra.mjs` | Storage, tracing and trace retention, so a run is written down and pruned. | `37ccc5a9f54f89a762746a6234e45a49232bad510c9ff66e5d228fe3bd4a3f74` |
-| `machine/flow/start.mjs` | Assembles a run to read it back and to resume a card. | `05915e9814b5a0efc25e8bfe1c53a327a7e48e5d3278c2f0edb61c8498944250` |
+| `machine/flow/start.mjs` | Assembles a run to read it back and to resume a card. | `12600321e4a0a836f43310749f43aa3d4f22704c9a970260143ec28238cc8f26` |
 | `machine/flow/run.mjs` | Answers a waiting card and reads a run. No way to start one. | `6aa66f1d72561054364ad8ffe90a19d5d3119ebcd8dd3539df3cbb57c14f4338` |
 | `machine/flow/report.mjs` | Builds the card report and tripwire stop helper. | `73092dd6925cba0014dc078e82be1d71686a9c35c1357cec9433f200bcf57499` |
 | `machine/flow/resources.mjs` | Checks memory and disk before and during every card and clears idle leftovers when short. | `4734373a90d3cafd03cfd2d2959d6345b3dba39feaa729da5e3417d3cf450e4a` |
+| `machine/flow/crash-stop.mjs` | Stops a run whose Studio died, and posts the cause on the card. | `cf1c590c3b86813b448131b273434f6bf6fe4152718405cb1a35330f4e515747` |
+| `machine/flow/interrupted.mjs` | At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them. | `518b3442a8ae7ed09d2322942608119bdf64f8d45cb3dbb744f52b31d79c55cb` |
 | `scripts/julia-agents.mjs` | Runs a machine command with the Julia keys it needs. | `b0e522f94f3c02926ddc6542e60b16f8e117dcac5509a84148b141c39dc985f6` |

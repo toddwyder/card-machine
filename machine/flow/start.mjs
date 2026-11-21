@@ -7,8 +7,9 @@
 
 process.env.CMD_API_KEY ??= process.env.COMMANDCODE_API_KEY;
 
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
+import { keepBeat } from './interrupted.mjs';
 import { CARD_PATH } from './schema.mjs';
 
 // The instance opened for this process. The run's spans reach the trace file
@@ -160,10 +161,19 @@ export async function resumeCard({
   const { wf } = await assemble({ dir, card, agents });
   const open = await waiting(wf, runId);
   const run = await wf.createRun({ runId });
-  const result = await run.resume({
-    step: open.step ?? undefined,
-    resumeData: { request: request ?? open.request, answer },
-  });
+  // This process now owns the run, so it keeps a heartbeat while it drives it.
+  // A Studio that starts up meanwhile reads the heartbeat and leaves the run
+  // alone instead of canceling work that is still moving.
+  const beat = keepBeat(resolve(dir, 'interrupted'), runId);
+  let result;
+  try {
+    result = await run.resume({
+      step: open.step ?? undefined,
+      resumeData: { request: request ?? open.request, answer },
+    });
+  } finally {
+    beat();
+  }
 
   const after = result.status === 'suspended' ? await waiting(wf, runId) : null;
 
