@@ -42,13 +42,25 @@ function installLines(calls) {
     .filter(Boolean);
 }
 
-function withPath(bin, run, { only = false } = {}) {
-  const previous = process.env.PATH;
-  process.env.PATH = only ? bin : `${bin}:${previous}`;
+function withPath(bin, run, { only = false, home } = {}) {
+  const previousPath = process.env.PATH;
+  const previousHome = process.env.HOME;
+  const previousBunInstall = process.env.BUN_INSTALL;
+  process.env.PATH = only ? bin : `${bin}:${previousPath}`;
+  if (home !== undefined) {
+    process.env.HOME = home;
+    delete process.env.BUN_INSTALL;
+  }
   try {
     return run();
   } finally {
-    process.env.PATH = previous;
+    process.env.PATH = previousPath;
+    if (home !== undefined) {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousBunInstall === undefined) delete process.env.BUN_INSTALL;
+      else process.env.BUN_INSTALL = previousBunInstall;
+    }
   }
 }
 
@@ -70,7 +82,7 @@ test('a machine without bun installs the same trees with npm and dev dependencie
   const [main, dashboard] = trees(root);
   const { bin, calls } = stub(root, 'npm');
 
-  withPath(bin, () => prepareDependencies(root, { timeoutMs: 10_000 }), { only: true });
+  withPath(bin, () => prepareDependencies(root, { timeoutMs: 10_000 }), { only: true, home: root });
 
   const lines = installLines(calls);
   assert.deepEqual(lines.map(line => line.split(' ')[0]), ['start', 'end', 'start', 'end']);

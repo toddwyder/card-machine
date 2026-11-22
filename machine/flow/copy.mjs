@@ -73,17 +73,47 @@ export function startedFrom(repo) {
   }
 }
 
-function installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit }) {
-  const stamp = join(modulesDir, LOCK_STAMP);
-  const npmCmd = `cd ${quote(treeDir)} && npm ci --no-audit --no-fund`;
-  const runInstall = slice
-    ? boundedCommand(npmCmd, { slice, memoryMax, ownerUnit, description: 'Card dependency install' })
-    : npmCmd;
-  const guarded = `if [ "$(readlink ${quote(stamp)} 2>/dev/null)" = ${quote(hash)} ]; then exit 0; fi; ${runInstall} && mkdir -p ${quote(modulesDir)} && ln -sfn ${quote(hash)} ${quote(stamp)}`;
-  return lock ? `flock --timeout ${LOCK_WAIT_SECONDS} ${quote(lock)} /bin/sh -c ${quote(guarded)}` : guarded;
+export function selectInstaller(env = process.env) {
+  const candidates = ['bun'];
+  const bunHome = env.BUN_INSTALL || (env.HOME ? join(env.HOME, '.bun') : '');
+  if (bunHome) candidates.push(join(bunHome, 'bin', 'bun'));
+
+  for (const candidate of candidates) {
+    if (candidate !== 'bun' && !existsSync(candidate)) continue;
+    try {
+      execFileSync(candidate, ['--version'], { stdio: 'ignore', env });
+      return { command: candidate, args: ['install', '--frozen-lockfile'], env: {} };
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  return {
+    command: 'npm',
+    args: ['ci', '--include=dev', '--no-audit', '--no-fund'],
+    env: {
+      npm_config_omit: '',
+      NODE_OPTIONS: [env.NODE_OPTIONS, '--max-old-space-size=2048'].filter(Boolean).join(' '),
+    },
+  };
 }
 
-export function syncCopyModules({ repo, folder, lock = process.platform === 'linux' ? builderLock() : null, slice, memoryMax, ownerUnit, install } = {}) {
+function installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit, env = process.env }) {
+  const stamp = join(modulesDir, LOCK_STAMP);
+  const run = selectInstaller(env);
+  const envPrefix = Object.entries(run.env)
+    .map(([key, value]) => `${key}=${quote(value)}`)
+    .join(' ');
+  const installLine = [envPrefix, quote(run.command), ...run.args.map(quote)].filter(Boolean).join(' ');
+  const installCmd = `cd ${quote(treeDir)} && rm -rf ${quote(modulesDir)} && ${installLine}`;
+  const runInstall = slice
+    ? boundedCommand(installCmd, { slice, memoryMax, ownerUnit, description: 'Card dependency install' })
+    : installCmd;
+  const guarded = `if [ "$(readlink ${quote(stamp)} 2>/dev/null)" = ${quote(hash)} ]; then exit 0; fi; ${runInstall} && mkdir -p ${quote(modulesDir)} && ln -sfn ${quote(hash)} ${quote(stamp)}`;
+  return lock ? `flock --verbose --timeout ${LOCK_WAIT_SECONDS} ${quote(lock)} /bin/sh -c ${quote(guarded)}` : guarded;
+}
+
+export function syncCopyModules({ repo, folder, lock = process.platform === 'linux' ? builderLock() : null, slice, memoryMax, ownerUnit, install, env = process.env } = {}) {
   for (const tree of MODULE_TREES) {
     const lockFile = join(folder, tree, 'package-lock.json');
     if (!existsSync(lockFile)) continue;
@@ -109,16 +139,18 @@ export function syncCopyModules({ repo, folder, lock = process.platform === 'lin
     }
 
     if (process.platform === 'linux') {
-      const cmd = installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit });
-      execFileSync('/bin/sh', ['-c', cmd], { stdio: 'inherit' });
+      const cmd = installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit, env });
+      execFileSync('/bin/sh', ['-c', cmd], { stdio: 'inherit', env });
     } else {
-      execFileSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: treeDir, stdio: 'inherit' });
+      const run = selectInstaller(env);
+      rmSync(modulesDir, { recursive: true, force: true });
+      execFileSync(run.command, run.args, { cwd: treeDir, stdio: 'inherit', env: { ...env, ...run.env } });
       writeStamp(modulesDir, hash);
     }
   }
 }
 
-export async function ensureCopyModules({ repo, folder, lock = process.platform === 'linux' ? builderLock() : null, slice, memoryMax, ownerUnit } = {}) {
+export async function ensureCopyModules({ repo, folder, lock = process.platform === 'linux' ? builderLock() : null, slice, memoryMax, ownerUnit, env = process.env, log = () => {} } = {}) {
   for (const tree of MODULE_TREES) {
     const lockFile = join(folder, tree, 'package-lock.json');
     if (!existsSync(lockFile)) continue;
@@ -139,8 +171,10 @@ export async function ensureCopyModules({ repo, folder, lock = process.platform 
           writeStamp(modulesDir, hash);
           return;
         }
-        const cmd = installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit });
-        await execFileAsync('/bin/sh', ['-c', cmd]);
+        const cmd = installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit, env });
+        const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', cmd], { env, maxBuffer: 10 * 1024 * 1024 });
+        if (stdout) log(stdout);
+        if (stderr) log(stderr);
       })().finally(() => inflightInstalls.delete(key));
       inflightInstalls.set(key, task);
     }
