@@ -16,7 +16,9 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `PORT=${PORT} node tests/start-server.mjs`,
+    // `next start` serves the built app, so build first: a stale build once let a spec pass
+    // against CSS that no longer existed.
+    command: `npm run build && PORT=${PORT} node tests/start-server.mjs`,
     url: `http://127.0.0.1:${PORT}/control`,
     reuseExistingServer: false,
     timeout: 180_000,

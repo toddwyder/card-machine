@@ -118,18 +118,17 @@ function StageRail({ stages, current, step }) {
   return (
     <ol className={styles.rail}>
       {passed.map(stage => (
-        <li key={stage.id} className={styles.past} data-state={stage.status}>
+        <li key={stage.id} className={styles.past} data-state={stage.id === 'remediation' ? 'sent_back' : stage.status}>
           <Mark state={stage.status === 'failed' ? 'failed' : 'done'} />
           <span>{stage.label}</span>
         </li>
       ))}
       {current ? (
         <li className={styles.now}>
-          <p className={styles.nowKicker}>
+          <div className={styles.nowHead}>
             <Mark state={current.status === 'failed' ? 'failed' : 'working'} />
-            <span>{current.status === 'failed' ? 'Stopped in' : 'Now'}</span>
-          </p>
-          <p className={styles.nowName}>{current.label}</p>
+            <h2 className={styles.nowName}>{current.label}</h2>
+          </div>
           {step ? <p className={styles.nowStep}>{step}</p> : null}
         </li>
       ) : null}

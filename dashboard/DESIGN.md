@@ -124,7 +124,7 @@ The palette is a larder: two greens, one warm paper, one red for trouble, one am
 ### Primary
 
 - **Bottle green** (#1D3B27): the header bar, the run panel, the focus ring, and body ink. It is the darkest and most used colour in the system.
-- **Leaf green** (#3D6B2C): helper card borders, quota bar fills, the "happening now" kicker, and the tiny state marks inside lists.
+- **Leaf green** (#3D6B2C): helper card borders, quota bar fills, the tiny state marks inside lists, and the edge of the current-stage block.
 - **Sapling** (#5E8A4C): quieter green for finished stage chips' edges and the scrollbar thumb.
 
 ### Secondary
@@ -138,7 +138,7 @@ The palette is a larder: two greens, one warm paper, one red for trouble, one am
 - **Soft ink** (#4A4A3E): the step line, the helper's running time and action times.
 - **Faint ink** (#5B5A50): window names, refused reasons, quiet notes.
 - **Track** (#DAD4C4): the empty part of a quota bar.
-- **Lime** (#9FD06E): the single 4px halo that marks the stage happening now.
+- **Lime** (#9FD06E): the 3px border on the current-stage block, the one edge that marks the stage happening now.
 
 ### Named Rules
 
@@ -159,7 +159,7 @@ The palette is a larder: two greens, one warm paper, one red for trouble, one am
 - **Headline** (600, 1.5rem, 1.2): the card title in the run panel, the wordmark in the header, and the "Helpers" and "Against your subscriptions" section titles.
 - **Title** (600, 1.25rem, 1.3): each helper's name, and a warning's title in slab.
 - **Body** (400, 1rem, 1.5, 70ch max): the step line, warning text, and anything read as a sentence.
-- **Label** (700, 0.8rem, 0.06em, uppercase): the "Happening now" kicker and the "5-hour window" / "week" names above a bar.
+- **Label** (700, 0.85rem, 0.04em, uppercase): the "5-hour window" and "week" names above a bar. It is the only uppercase in the system; no eyebrow sits above a heading.
 
 ### Named Rules
 
@@ -181,7 +181,7 @@ Below 640px every one of those grids collapses to one column, the page padding d
 
 Depth is tonal, not shadowed. The sage ground is the floor, ivory cards sit on it as paper, and the bottle-green panel reads as a board laid on top. Only two shadows exist, both tight and green-tinted, and both are contact shadows that stop a card from floating rather than lifting it: `0 10px 22px -18px rgb(29 59 39 / 55%)` under a helper card and `0 14px 30px -18px rgb(29 59 39 / 60%)` under the run panel.
 
-The one halo in the system is the `0 0 0 4px` lime ring on the current-stage block. It is a highlight, not an elevation, and it appears nowhere else.
+The current-stage block carries a 3px lime border rather than a halo, so its highlight is an edge like every other state and never a zero-offset shadow.
 
 ### Named Rules
 
@@ -191,19 +191,19 @@ The one halo in the system is the `0 0 0 4px` lime ring on the current-stage blo
 
 Two radii families. Panels and cards are generously round (20px for the run panel and quota block, 16px for helper cards and the current-stage block, 14px for a warning banner); bars and chips are rounder still (12px on a quota bar, 999px on a past-stage pill, a 6px tick behind an in-progress task, 8px on the unknown-reading tag).
 
-Borders do the talking. Every card and banner has a 3px border whose style is a state: **solid** on a live helper or a stopped run's banner, **dashed** on the stuck banner, a stuck helper, a low-quota bar's ring, and the unknown-reading tag, **dotted** on a helper sent back and on the burning-tokens banner. A given-up run's card title is struck through. No state is carried by colour alone.
+Borders do the talking. Every card and banner has a 3px border whose style is a state: **solid** on a live helper or a stopped run's banner, **dashed** on the stuck banner, a stuck helper, a low-quota bar's ring, and the unknown-reading tag, **dotted** on a sent-back stage pill and on the burning-tokens banner. A given-up run's card title is struck through. No state is carried by colour alone.
 
 ## Components
 
 ### Run panel
 
 - **Shape:** 20px corners, `26px 30px 28px` padding, bottle-green fill with ivory text, no border.
-- **Contents:** card title in headline slab on the left, running time and "824 k tokens" and "about $1.24, estimate" in tabular figures on the right; then the stage rail; then the current stage in an ivory block with a green uppercase kicker reading "Now" (or "Stopped in"), the display-size stage name, and the step line under it.
+- **Contents:** card title in headline slab on the left, running time and "824 k tokens" and "about $1.24, estimate" in tabular figures on the right; then the stage rail; then the current stage in an ivory block, its state mark set beside the display-size stage name rather than above it, and the step line under that.
 - **States:** with no run, the panel is replaced by a quiet card that says nothing is running and how the last run ended.
 
 ### Stage rail
 
-- **Past stages:** 999px pills, transparent fill, 2px sapling border, ivory text at 92%.
+- **Past stages:** 999px pills, transparent fill, 2px solid sapling border, ivory text at 92%. A stage the run was sent back through (`remediation`) takes a 2px dotted amber border instead.
 - **Current stage:** the ivory block above, described in Run panel.
 - **Future stages:** not drawn. The rail grows as the machine reaches each stage, so the rail is a record, not a plan.
 

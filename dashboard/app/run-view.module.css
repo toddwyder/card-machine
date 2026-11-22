@@ -150,29 +150,31 @@
   color: rgb(246 241 228 / 92%);
 }
 
+/* A stage the run was sent back through: dotted, the edge that says so. */
+.past[data-state='sent_back'] {
+  border-style: dotted;
+  border-color: var(--amber);
+}
+
 .now {
   flex: 1 1 320px;
   background: var(--ivory);
   color: var(--bottle);
   border-radius: 16px;
   padding: 14px 18px 16px;
-  box-shadow: 0 0 0 4px var(--lime);
+  border: 3px solid var(--lime);
 }
 
-.nowKicker {
+/* The stage happening now: its mark sits beside the name, not above it. */
+.nowHead {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
   margin: 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--green);
 }
 
 .nowName {
-  margin: 4px 0 0;
+  margin: 0;
   font-family: var(--font-slab), 'Zilla Slab', Georgia, serif;
   font-size: clamp(1.9rem, 4.2vw, 2.9rem);
   line-height: 1.05;

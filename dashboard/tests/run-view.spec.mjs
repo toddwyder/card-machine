@@ -189,6 +189,9 @@ test.describe('the Run view on a laptop', () => {
     await expect(panel.getByText(/Finished · /)).toBeVisible();
     await expect(page.locator('[data-kind]')).toHaveCount(0);
     await expect(panel.getByText('Hold at the end of the run')).toBeVisible();
+    // A stage the run was sent back through keeps the dotted edge, not just a colour.
+    const sentBack = panel.locator('li', { hasText: 'Send it back to the builder' });
+    expect(await borderTopStyle(sentBack)).toBe('dotted');
     // Every task ticked, drawn as a filled mark.
     await expect(page.locator('svg[data-state="done"]').first()).toBeVisible();
 

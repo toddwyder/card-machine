@@ -18,7 +18,7 @@ const MODEL = 'commandcode/moonshotai/Kimi-K3.1-Pro';
 // Every stage the machine has, in order, so a finished run in a test ends where a real one does.
 const ALL_STAGES = Object.freeze([
   'start', 'start-build', 'flow-build', 'finish-build', 'build-check', 'shipping', 'verdict',
-  'pass-note', 'gate', 'acceptance', 'machine-accept', 'land', 'smoke', 'smoke-pass',
+  'remediation', 'pass-note', 'gate', 'acceptance', 'machine-accept', 'land', 'smoke', 'smoke-pass',
   'stop-report', 'retro', 'cleanup', 'hold',
 ]);
 
