@@ -24,15 +24,36 @@ export const COMMAND_MEMORY_MAX = BUILDER_MEMORY_MAX;
 
 // Commands that install dependencies or build a tree. They take the shared lock
 // so a card's install and another card's test never overlap.
-export const HEAVY_COMMAND = /(?:^|[;&|()\n])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:exec\s+)?(?:[^\s;&|()]*\/)?(?:(?:npm|bun|pnpm)\s+(?:-(?:-[A-Za-z0-9][A-Za-z0-9_-]*|[A-Za-z0-9])(?:=[^\s;&|()]+)?(?:\s+[^\s;&|()-][^\s;&|()]*)?\s+)*(?:ci|install|add|update|test|run)\b|npx\s+(?:next|playwright|stryker|vitest|tsc|eslint)\b|yarn(?:\s|$)|next\s+build\b|node\s+--test\b|playwright\s+test\b|chrome(?:-headless-shell)?(?:\s|$)|chromium(?:\s|$)|stryker\s+run\b)/;
-
 export const LOCK_WAIT_SECONDS = 1800;
 
-const INSTALLER_SUBCOMMANDS = new Set(['ci', 'install', 'i', 'add', 'update', 'up', 'upgrade']);
+const INSTALLER_SUBCOMMANDS = new Set([
+  'ci', 'clean-install', 'ic', 'cit', 'install-ci-test',
+  'install', 'i', 'it', 'install-test',
+  'add', 'update', 'up', 'upgrade',
+]);
 const YARN_SUBCOMMANDS = new Set(['install', 'add', 'up', 'upgrade']);
-const WRAPPER_BINARIES = new Set(['exec', 'nohup', 'command', 'env', 'nice', 'timeout', 'stdbuf']);
+const HEAVY_NPM_SUBCOMMANDS = new Set([...INSTALLER_SUBCOMMANDS, 'test', 't', 'run', 'run-script', 'exec', 'build']);
+const HEAVY_RUNNERS = new Set(['npx', 'bunx', 'pnpx']);
+const HEAVY_RUNNER_TOOLS = new Set(['next', 'playwright', 'stryker', 'vitest', 'tsc', 'eslint']);
+const HEAVY_BROWSERS = new Set(['chrome', 'chrome-headless-shell', 'chromium']);
+const WRAPPER_BINARIES = new Set(['exec', 'nohup', 'command', 'env', 'nice', 'timeout', 'stdbuf', 'time']);
 const SHELL_BINARIES = new Set(['sh', 'bash', 'dash', 'zsh']);
-const FLAG_WITH_VALUE = new Set(['--prefix', '-C', '--cwd', '--dir', '--userconfig', '--cache', '--registry', '-n', '-k', '-s', '--kill-after', '--signal']);
+const FLAG_WITH_VALUE = new Set([
+  '--prefix', '-C', '--cwd', '--dir', '--userconfig', '--cache', '--registry',
+  '--workspace', '-w', '--loglevel', '--filter', '-F', '--config', '--globalconfig',
+  '--script-shell', '--tag', '--otp', '--scope', '--color', '--package', '-p',
+  '--chdir', '-u', '--unset', '--adjustment',
+  '-n', '-k', '-s', '--kill-after', '--signal',
+  '-i', '-o', '-e', '--input', '--output', '--error',
+  '-r', '--require', '--import', '--loader', '--conditions',
+]);
+const SPAWN_CALL_RE = /\b(?:child_process|exec|execSync|execFile|execFileSync|spawn|spawnSync|fork|subprocess|Popen|os\.system)\b/;
+
+const splitChains = command =>
+  command.match(/(?:'[^']*'|"[^"]*"|(?<!\|)\|(?!\|)|[^;&|(){}\n`])+/g) ?? [];
+
+const splitPipeline = chain =>
+  chain.match(/(?:'[^']*'|"[^"]*"|[^|])+/g) ?? [];
 
 const splitTokens = segment =>
   (segment.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map(token => token.replace(/^(['"])(.*)\1$/, '$2'));
@@ -53,20 +74,60 @@ const skipWrappers = tokens => {
   if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(head)) return skipWrappers(rest);
   const bin = head.split('/').at(-1);
   if (bin === 'timeout') return skipWrappers(skipLeadingFlags(rest).slice(1));
-  if (bin === 'env' || bin === 'nice' || bin === 'stdbuf') return skipWrappers(skipLeadingFlags(rest));
+  if (bin === 'env' || bin === 'nice' || bin === 'stdbuf' || bin === 'time') return skipWrappers(skipLeadingFlags(rest));
   if (WRAPPER_BINARIES.has(bin)) return skipWrappers(rest);
   return tokens;
 };
 
-const segmentIsInstaller = segment => {
-  const tokens = skipWrappers(splitTokens(segment));
+const inlineScriptArg = (bin, rest) => {
+  const isFlag = bin === 'python' || bin === 'python3'
+    ? token => token === '-c'
+    : token => token === '-e' || token === '--eval' || token === '-p' || token === '--print';
+  const index = rest.findIndex(isFlag);
+  return index >= 0 ? rest[index + 1] ?? '' : '';
+};
+
+const extractQuotedStrings = code =>
+  Array.from(code.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g), m => m[1] ?? m[2] ?? m[3] ?? '');
+
+const matchStage = (tokens, checkTokens) => {
   if (tokens.length === 0) return false;
   const [head, ...rest] = tokens;
   const bin = head.split('/').at(-1);
   if (SHELL_BINARIES.has(bin)) {
     const cIndex = rest.findIndex(token => token === '-c' || /^-[a-z]*c[a-z]*$/.test(token));
-    return cIndex >= 0 && rest[cIndex + 1] ? isInstallerCommand(rest[cIndex + 1]) : false;
+    return cIndex >= 0 && rest[cIndex + 1] ? matchCommand(rest[cIndex + 1], checkTokens) : false;
   }
+  if (bin === 'eval') {
+    return rest.length > 0 ? matchCommand(rest.join(' '), checkTokens) : false;
+  }
+  if (bin === 'node' || bin === 'bun' || bin === 'python' || bin === 'python3') {
+    const code = inlineScriptArg(bin, rest);
+    if (code && SPAWN_CALL_RE.test(code)) {
+      const literals = extractQuotedStrings(code);
+      if (literals.some(lit => matchCommand(lit, checkTokens))) return true;
+      if (literals.length > 1 && matchCommand(literals.join(' '), checkTokens)) return true;
+    }
+  }
+  return checkTokens(bin, rest);
+};
+
+const matchCommand = (command, checkTokens) => {
+  if (typeof command !== 'string') return false;
+  return splitChains(command).some(chain => {
+    const stages = splitPipeline(chain).map(seg => skipWrappers(splitTokens(seg)));
+    if (stages.some(stage => matchStage(stage, checkTokens))) return true;
+    return stages.some((stage, index) => {
+      if (index === 0 || stage.length === 0) return false;
+      const bin = stage[0].split('/').at(-1);
+      if (!SHELL_BINARIES.has(bin)) return false;
+      const prev = stages[index - 1];
+      return prev.length > 1 && matchCommand(prev.slice(1).join(' '), checkTokens);
+    });
+  });
+};
+
+const checkInstallerTokens = (bin, rest) => {
   if (bin === 'npm' || bin === 'pnpm' || bin === 'bun') {
     const [sub] = skipLeadingFlags(rest);
     return Boolean(sub && INSTALLER_SUBCOMMANDS.has(sub));
@@ -78,11 +139,32 @@ const segmentIsInstaller = segment => {
   return false;
 };
 
+const checkHeavyTokens = (bin, rest) => {
+  if (bin === 'npm' || bin === 'pnpm' || bin === 'bun') {
+    const [sub] = skipLeadingFlags(rest);
+    return Boolean(sub && HEAVY_NPM_SUBCOMMANDS.has(sub));
+  }
+  if (HEAVY_RUNNERS.has(bin)) {
+    const [sub] = skipLeadingFlags(rest);
+    return Boolean(sub && HEAVY_RUNNER_TOOLS.has(sub.split('/').at(-1)));
+  }
+  if (bin === 'yarn') return true;
+  if (bin === 'node') return rest.includes('--test');
+  if (bin === 'next') return skipLeadingFlags(rest)[0] === 'build';
+  if (bin === 'playwright') return skipLeadingFlags(rest)[0] === 'test';
+  if (bin === 'stryker') return skipLeadingFlags(rest)[0] === 'run';
+  return HEAVY_BROWSERS.has(bin);
+};
+
 export function isInstallerCommand(command) {
-  if (typeof command !== 'string') return false;
-  const segments = command.match(/(?:'[^']*'|"[^"]*"|[^;&|()\n`])+/g) ?? [];
-  return segments.some(segmentIsInstaller);
+  return matchCommand(command, checkInstallerTokens);
 }
+
+export function isHeavyCommand(command) {
+  return matchCommand(command, checkHeavyTokens);
+}
+
+export const HEAVY_COMMAND = Object.freeze({ test: isHeavyCommand });
 
 const INSTALLER_REFUSAL = 'Package installers are refused during a card run. Dependencies are managed by the card copy; report missing dependencies to the Lead instead.';
 
