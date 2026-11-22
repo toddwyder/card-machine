@@ -12,6 +12,7 @@ export const JULIA_SKILLS = new Set([
   'playwright-cli',
   'tighten',
   'verify-julia',
+  'verify-mission-control',
   'verify-recipes-formally',
   'verify-slice-latch',
 ]);

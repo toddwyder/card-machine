@@ -1,0 +1,123 @@
+{
+  "now": "2026-11-22T18:35:00.000Z",
+  "sourceStatus": "fixture",
+  "rawRun": null,
+  "rawLastRun": {
+    "title": "Mission control Run view",
+    "outcome": "Finished",
+    "tokensLabel": "182 k tokens",
+    "estimatedDollarsLabel": "about $0.84, estimate",
+    "endedAt": "2026-11-22T18:30:00.000Z"
+  },
+  "subscriptions": [
+    {
+      "id": "commandcode",
+      "name": "CommandCode",
+      "status": "ok",
+      "percentLeft": 62,
+      "resetLabel": "resets Tue 14:00",
+      "windowLabel": "weekly"
+    },
+    {
+      "id": "chatgpt",
+      "name": "ChatGPT",
+      "status": "ok",
+      "percentLeft": 14,
+      "resetLabel": "resets in 2h",
+      "windowLabel": "5-hour"
+    },
+    {
+      "id": "claude",
+      "name": "Claude",
+      "status": "unknown",
+      "percentLeft": null,
+      "resetLabel": null,
+      "windowLabel": null
+    }
+  ],
+  "scenarios": {
+    "stopped": {
+      "now": "2026-11-22T18:35:00.000Z",
+      "sourceStatus": "fixture",
+      "cardTitle": "Mission control Run view",
+      "rawRun": {
+        "runId": "run-stopped-361",
+        "status": "failed",
+        "startedAt": "2026-11-22T18:10:00.000Z",
+        "endedAt": "2026-11-22T18:22:00.000Z",
+        "estimatedDollars": 0.42,
+        "tokens": 64000,
+        "state": {
+          "stopped": true,
+          "stopWhy": "Tests failed twice on the build check."
+        },
+        "steps": {
+          "start-build": { "status": "success" },
+          "flow-build": { "status": "failed" }
+        }
+      }
+    },
+    "waitingForYou": {
+      "now": "2026-11-22T18:35:00.000Z",
+      "sourceStatus": "fixture",
+      "cardTitle": "Mission control Run view",
+      "rawRun": {
+        "runId": "run-waiting-361",
+        "status": "suspended",
+        "startedAt": "2026-11-22T18:20:00.000Z",
+        "updatedAt": "2026-11-22T18:34:00.000Z",
+        "estimatedDollars": 0.51,
+        "tokens": 71000,
+        "steps": {
+          "start-build": { "status": "success" },
+          "plan-slices": { "status": "success" },
+          "flow-build": { "status": "success" },
+          "finish-build": { "status": "success" },
+          "check-conflicts": { "status": "success" },
+          "answer-comments": { "status": "success" },
+          "get-checks-green": { "status": "success" },
+          "shipping": { "status": "success" },
+          "pass-note": { "status": "success" },
+          "recheck-verdict": { "status": "success" },
+          "land": { "status": "success" },
+          "watch-land": { "status": "success" },
+          "stop-at-ceiling": { "status": "success" },
+          "wait-main-checks": { "status": "success" },
+          "smoke": { "status": "success" },
+          "acceptance": { "status": "suspended" }
+        }
+      }
+    },
+    "running": {
+      "now": "2026-11-22T18:35:00.000Z",
+      "sourceStatus": "fixture",
+      "cardTitle": "Mission control Run view",
+      "rawRun": {
+        "runId": "run-running-361",
+        "status": "running",
+        "startedAt": "2026-11-22T18:25:00.000Z",
+        "updatedAt": "2026-11-22T18:34:30.000Z",
+        "estimatedDollars": 0.35,
+        "tokens": 48000,
+        "steps": {
+          "start-build": { "status": "success" },
+          "plan-slices": { "status": "success" },
+          "flow-build": { "status": "success" },
+          "finish-build": { "status": "success" },
+          "check-conflicts": { "status": "success" },
+          "answer-comments": { "status": "success" },
+          "get-checks-green": { "status": "success" },
+          "shipping": { "status": "success" },
+          "pass-note": {
+            "status": "success",
+            "output": { "verdict": "PASS+NOTES", "detail": "Minor note" }
+          },
+          "recheck-verdict": {
+            "status": "running",
+            "startedAt": "2026-11-22T18:34:00.000Z"
+          }
+        }
+      }
+    }
+  }
+}
