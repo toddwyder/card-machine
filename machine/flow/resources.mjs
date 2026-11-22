@@ -71,7 +71,7 @@ export function measureShortages({
   return { availableMemoryMb, availableDiskGb, minMemoryMb, minDiskGb, short };
 }
 
-export async function defaultCleanIdle({ card, studioUrl = process.env.FLOW_STUDIO_URL ?? 'http://127.0.0.1:4111' } = {}) {
+export async function defaultCleanIdle({ card, studioUrl = process.env.FLOW_STUDIO_URL ?? `http://127.0.0.1:${process.env.PORT ?? '4111'}` } = {}) {
   try {
     const snapshot = await collectSnapshotAsync({
       local: true,
