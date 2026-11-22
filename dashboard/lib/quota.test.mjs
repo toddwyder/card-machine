@@ -92,28 +92,52 @@ test('Claude retries once with a refreshed token; ChatGPT does not retry', async
     'Bearer test-token',
     'Bearer test-token-refreshed',
   ]);
-  assert.equal(readings.get('claude').status, 'unknown');
+  assert.deepEqual(readings.get('claude'), {
+    id: 'claude',
+    name: 'Claude subscription',
+    status: 'unknown',
+    readAt: 1,
+    reason: 'sign-in expired',
+  });
 
   const chatgpt = fakeFetch({ ...allFresh(), [url('chatgpt')]: failure(401) });
   await readSubscriptions({ fetch: chatgpt.fetch, now: () => 1, credentials: credentials(chatgpt.fetch), cache: new Map() });
   assert.equal(chatgpt.calls.filter(call => call.url === url('chatgpt')).length, 1);
 });
 
-test('A failed status, a thrown error, a timeout and a missing field each answer unknown', async () => {
+// Each way a reading fails names its own short reason, so an expired sign-in reads differently
+// from a network blip. No provider text ever joins it.
+test('Every failed reading carries the one reason that explains it', async () => {
   const replies = {
     [url('chatgpt')]: failure(500),
     [url('claude')]: () => { throw new Error('socket hang up'); },
     [url('commandcode')]: () => { throw Object.assign(new Error('aborted'), { name: 'TimeoutError' }); },
   };
   const { fetch } = fakeFetch(replies);
-  const readings = await readSubscriptions({ fetch, now: () => 7, credentials: credentials(fetch), cache: new Map() });
-  for (const reading of readings) assert.deepEqual(reading, { id: reading.id, name: reading.name, status: 'unknown', readAt: 7 });
+  const readings = byId(await readSubscriptions({ fetch, now: () => 7, credentials: credentials(fetch), cache: new Map() }));
+  assert.deepEqual(readings.get('chatgpt'), { id: 'chatgpt', name: 'ChatGPT plan', status: 'unknown', readAt: 7, reason: 'reading failed' });
+  assert.equal(readings.get('claude').reason, 'reading failed');
+  assert.equal(readings.get('commandcode').reason, 'timed out');
 
+  // A missing field is a reading the server could not make sense of.
   const missing = fixture('chatgpt');
   delete missing.rate_limit.secondary_window;
   const partial = fakeFetch({ ...allFresh(), [url('chatgpt')]: ok(missing) });
-  const partialReadings = await readSubscriptions({ fetch: partial.fetch, now: () => 8, credentials: credentials(partial.fetch), cache: new Map() });
-  assert.equal(byId(partialReadings).get('chatgpt').status, 'unknown');
+  const partialReadings = byId(await readSubscriptions({ fetch: partial.fetch, now: () => 8, credentials: credentials(partial.fetch), cache: new Map() }));
+  assert.equal(partialReadings.get('chatgpt').status, 'unknown');
+  assert.equal(partialReadings.get('chatgpt').reason, 'reading failed');
+
+  // No stored sign-in for any of the three, one of them by throwing rather than answering null.
+  const bare = fakeFetch({});
+  const bareCredentials = {
+    chatgpt: async () => { throw new Error('no stored sign-in'); },
+    anthropic: async () => null,
+    refreshAnthropic: async () => null,
+    commandcode: async () => null,
+  };
+  const signedOut = await readSubscriptions({ fetch: bare.fetch, now: () => 9, credentials: bareCredentials, cache: new Map() });
+  assert.deepEqual(signedOut.map(reading => reading.reason), ['no stored sign-in', 'no stored sign-in', 'no stored sign-in']);
+  assert.equal(bare.calls.length, 0);
 });
 
 test('A fresh reading is reused for a minute, and a failed read never shows the old one', async () => {
@@ -131,6 +155,7 @@ test('A fresh reading is reused for a minute, and a failed read never shows the 
   clock += 2_000;
   const stale = byId(await readSubscriptions({ fetch: failing.fetch, now: () => clock, credentials: credentials(failing.fetch), cache }));
   assert.equal(stale.get('chatgpt').status, 'unknown');
+  assert.equal(stale.get('chatgpt').reason, 'reading failed');
   assert.equal(failing.calls.filter(call => call.url === url('claude')).length, 1);
 });
 
@@ -140,6 +165,10 @@ test('The result never carries a credential', async () => {
   const text = JSON.stringify(readings);
   assert.equal(text.includes('sk-secret-value'), false);
   assert.equal(/token|bearer|apiKey/i.test(text), false);
+
+  const failing = fakeFetch({ [url('chatgpt')]: failure(500), [url('claude')]: failure(500), [url('commandcode')]: failure(500) });
+  const unknowns = await readSubscriptions({ fetch: failing.fetch, now: () => 1, credentials: credentials(failing.fetch, 'sk-secret-value'), cache: new Map() });
+  assert.deepEqual([...new Set(JSON.stringify(unknowns).match(/"(?:[a-z ]+)"/g).filter(part => part.includes(' ')))], ['"reading failed"']);
 });
 
 test('The registry covers the account list and carries no id the accounts do not have', () => {

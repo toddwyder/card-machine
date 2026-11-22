@@ -377,6 +377,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The caption under a failed reading: why it is unknown, in a few words. */
+.quotaReason {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  max-width: 46ch;
+}
+
 .quotaUnknown {
   font-size: 0.95rem;
   font-weight: 600;

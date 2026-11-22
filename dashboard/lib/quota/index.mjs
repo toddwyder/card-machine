@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import ACCOUNTS from '../../config/accounts.json' with { type: 'json' };
+import { READING_REASON } from '../reading-reasons.mjs';
 import { parseWindows as parseCommandCode } from './commandcode.mjs';
 import { parseWindows as parseClaude } from './claude.mjs';
 import { parseWindows as parseChatgpt } from './chatgpt.mjs';
@@ -12,8 +13,8 @@ const CACHE_MS = 60_000;
 const ACCOUNT_NAMES = new Map(ACCOUNTS.accounts.map(account => [account.id, account.name]));
 
 // One entry per subscription the machine can spend. auth returns the send function and the
-// headers for one read, or null when there is no second attempt. A second call with
-// {fresh: true} is the single retry after a 401.
+// headers for one read, or null when there is no stored sign-in or no second attempt. A second
+// call with {fresh: true} is the single retry after a 401.
 export const SUBSCRIPTIONS = [
   { id: 'chatgpt', url: 'https://chatgpt.com/backend-api/wham/usage', auth: chatgptAuth, parse: parseChatgpt },
   { id: 'claude', url: 'https://api.anthropic.com/api/oauth/usage', auth: claudeAuth, parse: parseClaude },
@@ -25,19 +26,21 @@ export const SUBSCRIPTIONS = [
 // second attempt: the wrapper already refreshes the token.
 async function chatgptAuth({ credentials }, { fresh = false } = {}) {
   if (fresh) return null;
-  return { fetch: await credentials.chatgpt(), headers: {} };
+  try {
+    return { fetch: await credentials.chatgpt(), headers: {} };
+  } catch {
+    return null;
+  }
 }
 
 async function claudeAuth({ fetch, credentials }, { fresh = false } = {}) {
   const token = fresh ? await credentials.refreshAnthropic() : await credentials.anthropic();
-  if (!token) throw new Error('no stored Claude sign-in');
-  return { fetch, headers: { authorization: `Bearer ${token}` } };
+  return token ? { fetch, headers: { authorization: `Bearer ${token}` } } : null;
 }
 
 async function commandCodeAuth({ fetch, credentials }) {
   const key = await credentials.commandcode();
-  if (!key) throw new Error('no stored CommandCode key');
-  return { fetch, headers: { authorization: `Bearer ${key}` } };
+  return key ? { fetch, headers: { authorization: `Bearer ${key}` } } : null;
 }
 
 // What the server already has on disk: Mastra Code's stored sign-ins, and the CommandCode
@@ -66,14 +69,21 @@ export function defaultCredentials() {
 // minute. A failed read is never cached and never replaces an old fresh one.
 const sharedCache = new Map();
 
-function unknown(entry, readAt) {
-  return { id: entry.id, name: entry.name, status: 'unknown', readAt };
+// An unknown reading always says why in one of four short words, so the screen can tell an
+// expired sign-in from a network blip without ever showing provider text.
+function unknown(entry, readAt, reason) {
+  return { id: entry.id, name: entry.name, status: 'unknown', readAt, reason };
 }
 
+// null means there is nothing to send a request with: no stored sign-in, or no retry attempt.
 async function request(entry, ctx, fresh) {
   const auth = await entry.auth(ctx, { fresh });
   if (!auth) return null;
   return auth.fetch(entry.url, { headers: auth.headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+}
+
+function timedOut(error) {
+  return error?.name === 'TimeoutError' || error?.name === 'AbortError';
 }
 
 async function readOne(entry, ctx) {
@@ -81,21 +91,31 @@ async function readOne(entry, ctx) {
   const cached = ctx.cache.get(entry.id);
   if (cached && cached.until > readAt) return cached.reading;
   try {
-    let response = await request(entry, ctx, false);
-    if (response?.status === 401) response = await request(entry, ctx, true);
-    if (!response?.ok) return unknown(entry, readAt);
-    const windows = entry.parse(await response.json());
-    if (!windows) return unknown(entry, readAt);
-    const reading = { id: entry.id, name: entry.name, status: 'fresh', readAt, windows };
-    ctx.cache.set(entry.id, { reading, until: readAt + CACHE_MS });
-    return reading;
-  } catch {
-    return unknown(entry, readAt);
+    const first = await request(entry, ctx, false);
+    if (first === null) return unknown(entry, readAt, READING_REASON.noSignIn);
+    if (first.status === 401) {
+      const retry = await request(entry, ctx, true);
+      if (retry === null || retry.status === 401) return unknown(entry, readAt, READING_REASON.expired);
+      return read(entry, ctx, retry, readAt);
+    }
+    return read(entry, ctx, first, readAt);
+  } catch (error) {
+    return unknown(entry, readAt, timedOut(error) ? READING_REASON.timedOut : READING_REASON.failed);
   }
 }
 
+async function read(entry, ctx, response, readAt) {
+  if (!response.ok) return unknown(entry, readAt, READING_REASON.failed);
+  const windows = entry.parse(await response.json());
+  if (!windows) return unknown(entry, readAt, READING_REASON.failed);
+  const reading = { id: entry.id, name: entry.name, status: 'fresh', readAt, windows };
+  ctx.cache.set(entry.id, { reading, until: readAt + CACHE_MS });
+  return reading;
+}
+
 // Each subscription read on the server, in one type: a fresh value with a window list, or
-// "unknown". A non-200, a missing or invalid field, a throw and a timeout are all unknown.
+// "unknown" with a short reason. A non-200, a missing or invalid field, a throw and a timeout
+// are all unknown; the reason never carries provider text.
 export async function readSubscriptions({ fetch = globalThis.fetch, now = Date.now, credentials = defaultCredentials(), cache = sharedCache } = {}) {
   const ctx = { fetch, now, credentials, cache };
   return Promise.all(SUBSCRIPTIONS.map(entry => readOne(entry, ctx)));

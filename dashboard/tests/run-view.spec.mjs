@@ -26,6 +26,15 @@ function warning(page, kind) {
 const borderTopStyle = locator => locator.evaluate(node => getComputedStyle(node).borderTopStyle);
 const borderTopColour = locator => locator.evaluate(node => getComputedStyle(node).borderTopColor);
 
+// The words the Run view puts under a failed reading, by reason. The reason itself is one of
+// four short values the server picks; anything else reads as "reading failed".
+const REASON_WORDS = {
+  'no stored sign-in': 'No sign-in is stored for this subscription.',
+  'sign-in expired': 'The stored sign-in has expired.',
+  'reading failed': 'The server could not read this subscription.',
+  'timed out': 'The reading took too long to answer.',
+};
+
 test.describe('the Run view on a laptop', () => {
   test('shows where a running card is, what it used, and each helper', async ({ page }) => {
     await prepare({ scene: 'running' });
@@ -144,7 +153,8 @@ test.describe('the Run view on a laptop', () => {
       await expect(row).toBeVisible();
       if (subscription.status !== 'fresh') {
         await expect(row).toContainText('Reading failed, unknown');
-        await expect(row).toContainText('no reading');
+        // The caption says which failure it was, so an expired sign-in reads differently from a blip.
+        await expect(row).toContainText(REASON_WORDS[subscription.reason]);
         continue;
       }
       for (const window of subscription.windows) {

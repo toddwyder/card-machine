@@ -136,11 +136,21 @@ test('one reading keeps every window it read, each with its own number and reset
   assert.equal(subscription.windows[1].resetsAt === subscription.windows[0].resetsAt, false);
 });
 
-test('a failed reading is unknown, with no number and no warning', () => {
-  const snapshot = fold({ subscriptions: [{ id: 'claude', name: 'Claude', status: 'unknown', readAt: NOW, reason: '401' }] });
+test('a failed reading is unknown, with no number and no warning, and says why', () => {
+  const snapshot = fold({ subscriptions: [{ id: 'claude', name: 'Claude', status: 'unknown', readAt: NOW, reason: 'sign-in expired' }] });
   assert.equal(snapshot.subscriptions[0].status, 'unknown');
+  assert.equal(snapshot.subscriptions[0].reason, 'sign-in expired');
   assert.equal(snapshot.subscriptions[0].windows, undefined);
   assert.deepEqual(snapshot.warnings, []);
+});
+
+// The reason is a closed set, so an error message or a status code from a caller cannot ride
+// along into the browser.
+test('a reason outside the four short ones becomes "reading failed"', () => {
+  for (const offered of ['401', 'socket hang up', undefined, null, 42]) {
+    const snapshot = fold({ subscriptions: [{ id: 'claude', name: 'Claude', status: 'unknown', readAt: NOW, reason: offered }] });
+    assert.equal(snapshot.subscriptions[0].reason, 'reading failed');
+  }
 });
 
 test('one model call over the burning limit names the agent that made it', () => {

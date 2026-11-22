@@ -177,14 +177,24 @@ function HelperCard({ helper, observedAt }) {
 
 const WINDOW_WORDS = { five_hour: '5-hour window', weekly: 'week' };
 
+// Why a subscription reads "unknown", in Todd's words. The reason is one of four short values
+// the server picked; anything it does not recognise still names a caption.
+const UNKNOWN_REASONS = {
+  'no stored sign-in': 'No sign-in is stored for this subscription.',
+  'sign-in expired': 'The stored sign-in has expired.',
+  'reading failed': 'The server could not read this subscription.',
+  'timed out': 'The reading took too long to answer.',
+};
+
 function QuotaBar({ subscription }) {
   if (subscription.status !== 'fresh') {
+    const reason = subscription.reason ?? 'reading failed';
     return (
-      <li className={styles.quotaRow} data-state="unknown" data-subscription={subscription.id}>
+      <li className={styles.quotaRow} data-state="unknown" data-subscription={subscription.id} data-reason={reason}>
         <span className={styles.quotaName}>{subscription.name}</span>
         <div className={styles.windows}>
           <span className={styles.quotaUnknown}>Reading failed, unknown</span>
-          <span className={styles.quotaReset}>no reading</span>
+          <span className={styles.quotaReason}>{UNKNOWN_REASONS[reason] ?? UNKNOWN_REASONS['reading failed']}</span>
         </div>
       </li>
     );

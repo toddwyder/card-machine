@@ -25,7 +25,7 @@ const READINGS = {
       { window: 'five_hour', percentLeft: 51, resetsAt: now + 3 * hours },
       { window: 'weekly', percentLeft: 72, resetsAt: now + 4 * 24 * hours },
     ] },
-    { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'the reading failed' },
+    { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'reading failed' },
   ],
   low: now => [
     { id: 'claude', name: 'Claude', status: 'fresh', readAt: now, windows: [
@@ -36,7 +36,7 @@ const READINGS = {
       { window: 'five_hour', percentLeft: 64, resetsAt: now + 3 * hours },
       { window: 'weekly', percentLeft: 88, resetsAt: now + 4 * 24 * hours },
     ] },
-    { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'the reading failed' },
+    { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'reading failed' },
   ],
 };
 

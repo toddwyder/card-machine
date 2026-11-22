@@ -3,6 +3,7 @@
 // and every warning without a browser or a run.
 
 import { liveType } from '../../machine/flow/live-schema.mjs';
+import { readingReason } from './reading-reasons.mjs';
 import { stageLabel } from './stage-labels.mjs';
 
 // A run is in one of these at a time. The table is the only place a state becomes a word or a
@@ -186,7 +187,10 @@ function currentStep(helpers) {
 function foldSubscriptions(subscriptions, settings) {
   return (subscriptions ?? []).map(subscription => {
     const base = { id: String(subscription.id ?? ''), name: String(subscription.name ?? subscription.id ?? 'Subscription'), status: subscription.status === 'fresh' ? 'fresh' : 'unknown', readAt: number(subscription.readAt) || null };
-    if (base.status === 'unknown') return base;
+    // An unknown reading says why, in one of the four short reasons. Anything else a caller
+    // offers (an error message, a status code) becomes "reading failed", so no provider text
+    // can reach the browser through this field.
+    if (base.status === 'unknown') return { ...base, reason: readingReason(subscription.reason) };
     return {
       ...base,
       windows: (subscription.windows ?? []).map(window => ({

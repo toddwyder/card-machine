@@ -8,6 +8,7 @@ import { findRunLog, stateDbIn } from './run-log.mjs';
 import { readRunStatus } from './run-status.mjs';
 import { readRunViewSettings } from './run-view-settings.mjs';
 import { createUsdEstimator } from './run-estimate.mjs';
+import { READING_REASON } from './reading-reasons.mjs';
 
 // The three subscriptions the machine spends against, in the order the screen shows them.
 export const SUBSCRIPTIONS = Object.freeze([
@@ -24,9 +25,10 @@ async function readText(file) {
   }
 }
 
-function unknownReadings(reason) {
+// When no reading can be had at all, every subscription says so in the same short word.
+function unknownReadings() {
   const at = Date.now();
-  return SUBSCRIPTIONS.map(({ id, name }) => ({ id, name, status: 'unknown', readAt: at, reason }));
+  return SUBSCRIPTIONS.map(({ id, name }) => ({ id, name, status: 'unknown', readAt: at, reason: READING_REASON.failed }));
 }
 
 // A reading that fails is a reading of "unknown"; the screen never shows a number it did not just
@@ -39,16 +41,16 @@ async function readReadings() {
       const readings = JSON.parse(await readFile(saved, 'utf8'));
       if (Array.isArray(readings) && readings.length) return readings;
     } catch (error) {
-      return unknownReadings(error?.message ?? 'no saved reading');
+      return unknownReadings();
     }
-    return unknownReadings('no reading returned');
+    return unknownReadings();
   }
   try {
     const quota = await import('./quota/index.mjs');
     const readings = await quota.readSubscriptions();
-    return Array.isArray(readings) && readings.length ? readings : unknownReadings('no reading returned');
+    return Array.isArray(readings) && readings.length ? readings : unknownReadings();
   } catch (error) {
-    return unknownReadings(error?.message ?? 'no reader');
+    return unknownReadings();
   }
 }
 
