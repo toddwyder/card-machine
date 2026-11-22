@@ -198,7 +198,7 @@ Borders do the talking. Every card and banner has a 3px border whose style is a 
 ### Run panel
 
 - **Shape:** 20px corners, `26px 30px 28px` padding, bottle-green fill with ivory text, no border.
-- **Contents:** card title in headline slab on the left, running time and "824 k tokens" and "about $1.24, estimate" in tabular figures on the right; then the stage rail; then the current stage in an ivory block, its state mark set beside the display-size stage name rather than above it, and the step line under that.
+- **Contents:** card title in headline slab on the left, running time and "824 k tokens" and "about $1.24, estimate" in tabular figures on the right; then the stage rail; then the current stage in an ivory block, its state mark set beside the display-size stage name rather than above it, then the step row, and the current step's full name under that.
 - **States:** with no run, the panel is replaced by a quiet card that says nothing is running and how the last run ended.
 
 ### Stage rail
@@ -206,6 +206,12 @@ Borders do the talking. Every card and banner has a 3px border whose style is a 
 - **Past stages:** 999px pills, transparent fill, 2px solid sapling border, ivory text at 92%. A stage the run was sent back through (`remediation`) takes a 2px dotted amber border instead.
 - **Current stage:** the ivory block above, described in Run panel.
 - **Future stages:** not drawn. The rail grows as the machine reaches each stage, so the rail is a record, not a plan.
+
+### Step row
+
+- **Shape:** under the stage name, a wrapped row of 999px pills, each a 15px state mark and a short label; "step N of M" sits to their right in 0.8rem uppercase with tabular figures, and wraps to its own line on a phone.
+- **Contents:** the Lead's own task list as the machine publishes it, ordered by the number in the step's id. Labels are cut to their first sentence and 42 characters so the row stays a row; the full name stays on the step line below.
+- **States:** done is a sapling edge with a tick; the step in hand is sage fill, a 2px solid green edge and 600 weight, marked with a ring and centre dot; pending is a track edge with a faint ring; a step carrying `skip:` in its title takes a dotted edge with its name struck through and a slashed ring. No state relies on colour alone.
 
 ### Warning banner
 
