@@ -30,6 +30,28 @@ const credentials = (fetch, token = 'test-token') => ({
   commandcode: async () => token,
 });
 
+// A stored account record whose token cannot be produced is an expired sign-in; no account at all
+// is a missing one. The two read differently on screen, so the reader must tell them apart.
+const staleCredentials = (fetch, stored) => ({
+  chatgpt: async () => fetch,
+  anthropic: async () => undefined,
+  refreshAnthropic: async () => undefined,
+  anthropicStored: async () => stored,
+  commandcode: async () => 'test-token',
+});
+
+test('a sign-in that can no longer produce a token reads as expired, and no sign-in reads as missing', async () => {
+  const { fetch } = fakeFetch(allFresh());
+  const now = () => 1_700_000_000_000;
+  const expired = byId(await readSubscriptions({ fetch, now, credentials: staleCredentials(fetch, true), cache: new Map() }));
+  assert.equal(expired.get('claude').status, 'unknown');
+  assert.equal(expired.get('claude').reason, 'sign-in expired');
+
+  const missing = byId(await readSubscriptions({ fetch, now, credentials: staleCredentials(fetch, false), cache: new Map() }));
+  assert.equal(missing.get('claude').status, 'unknown');
+  assert.equal(missing.get('claude').reason, 'no stored sign-in');
+});
+
 const allFresh = () => ({
   [url('chatgpt')]: ok(fixture('chatgpt')),
   [url('claude')]: ok(fixture('claude')),

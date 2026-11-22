@@ -38,6 +38,15 @@ const READINGS = {
     ] },
     { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'reading failed' },
   ],
+  // A stored sign-in whose token no longer works: not the same as no sign-in at all.
+  stale: now => [
+    { id: 'claude', name: 'Claude', status: 'unknown', readAt: now, reason: 'sign-in expired' },
+    { id: 'chatgpt', name: 'ChatGPT', status: 'fresh', readAt: now, windows: [
+      { window: 'five_hour', percentLeft: 51, resetsAt: now + 3 * hours },
+      { window: 'weekly', percentLeft: 72, resetsAt: now + 4 * 24 * hours },
+    ] },
+    { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'no stored sign-in' },
+  ],
 };
 
 /** Rebuild the run directory as one scene with one set of readings, and return its path. */

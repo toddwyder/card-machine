@@ -13,8 +13,8 @@ const CACHE_MS = 60_000;
 const ACCOUNT_NAMES = new Map(ACCOUNTS.accounts.map(account => [account.id, account.name]));
 
 // One entry per subscription the machine can spend. auth returns the send function and the
-// headers for one read, or null when there is no stored sign-in or no second attempt. A second
-// call with {fresh: true} is the single retry after a 401.
+// headers for one read, or { reason } saying why it cannot send one. A second call with
+// {fresh: true} is the single retry after a 401.
 export const SUBSCRIPTIONS = [
   { id: 'chatgpt', url: 'https://chatgpt.com/backend-api/wham/usage', auth: chatgptAuth, parse: parseChatgpt },
   { id: 'claude', url: 'https://api.anthropic.com/api/oauth/usage', auth: claudeAuth, parse: parseClaude },
@@ -25,22 +25,26 @@ export const SUBSCRIPTIONS = [
 // provider's transport comes from credentials rather than the plain fetch. There is no
 // second attempt: the wrapper already refreshes the token.
 async function chatgptAuth({ credentials }, { fresh = false } = {}) {
-  if (fresh) return null;
+  if (fresh) return { reason: READING_REASON.noSignIn };
   try {
     return { fetch: await credentials.chatgpt(), headers: {} };
   } catch {
-    return null;
+    return { reason: READING_REASON.noSignIn };
   }
 }
 
+// A stored account whose token cannot be produced is an expired sign-in; no account at all is a
+// missing one. The storage keeps the account record after its token expires, so it answers which.
 async function claudeAuth({ fetch, credentials }, { fresh = false } = {}) {
   const token = fresh ? await credentials.refreshAnthropic() : await credentials.anthropic();
-  return token ? { fetch, headers: { authorization: `Bearer ${token}` } } : null;
+  if (token) return { fetch, headers: { authorization: `Bearer ${token}` } };
+  const stored = await credentials.anthropicStored?.();
+  return { reason: stored ? READING_REASON.expired : READING_REASON.noSignIn };
 }
 
 async function commandCodeAuth({ fetch, credentials }) {
   const key = await credentials.commandcode();
-  return key ? { fetch, headers: { authorization: `Bearer ${key}` } } : null;
+  return key ? { fetch, headers: { authorization: `Bearer ${key}` } } : { reason: READING_REASON.noSignIn };
 }
 
 // What the server already has on disk: Mastra Code's stored sign-ins, and the CommandCode
@@ -61,6 +65,7 @@ export function defaultCredentials() {
     },
     anthropic: async () => (await authStorage()).getApiKey('anthropic'),
     refreshAnthropic: async () => (await authStorage()).forceRefreshActiveAccount('anthropic'),
+    anthropicStored: async () => (await authStorage()).listAccounts('anthropic').length > 0,
     commandcode: async () => JSON.parse(await readFile(join(homedir(), '.commandcode', 'auth.json'), 'utf8')).apiKey,
   };
 }
@@ -75,11 +80,11 @@ function unknown(entry, readAt, reason) {
   return { id: entry.id, name: entry.name, status: 'unknown', readAt, reason };
 }
 
-// null means there is nothing to send a request with: no stored sign-in, or no retry attempt.
+// Either the answer to read, or the short reason the server has nothing to send a request with.
 async function request(entry, ctx, fresh) {
   const auth = await entry.auth(ctx, { fresh });
-  if (!auth) return null;
-  return auth.fetch(entry.url, { headers: auth.headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  if (!auth?.fetch) return { reason: auth?.reason ?? READING_REASON.noSignIn };
+  return { response: await auth.fetch(entry.url, { headers: auth.headers, signal: AbortSignal.timeout(TIMEOUT_MS) }) };
 }
 
 function timedOut(error) {
@@ -92,13 +97,13 @@ async function readOne(entry, ctx) {
   if (cached && cached.until > readAt) return cached.reading;
   try {
     const first = await request(entry, ctx, false);
-    if (first === null) return unknown(entry, readAt, READING_REASON.noSignIn);
-    if (first.status === 401) {
+    if (first.reason) return unknown(entry, readAt, first.reason);
+    if (first.response.status === 401) {
       const retry = await request(entry, ctx, true);
-      if (retry === null || retry.status === 401) return unknown(entry, readAt, READING_REASON.expired);
-      return read(entry, ctx, retry, readAt);
+      if (retry.reason || retry.response.status === 401) return unknown(entry, readAt, READING_REASON.expired);
+      return read(entry, ctx, retry.response, readAt);
     }
-    return read(entry, ctx, first, readAt);
+    return read(entry, ctx, first.response, readAt);
   } catch (error) {
     return unknown(entry, readAt, timedOut(error) ? READING_REASON.timedOut : READING_REASON.failed);
   }

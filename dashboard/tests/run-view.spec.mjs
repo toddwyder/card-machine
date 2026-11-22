@@ -200,6 +200,19 @@ test.describe('the Run view on a laptop', () => {
     await page.screenshot({ path: `${SHOTS}/quota-low.png`, fullPage: true });
   });
 
+  test('tells an expired sign-in from no sign-in at all', async ({ page }) => {
+    await prepare({ scene: 'running', readings: 'stale' });
+    await openRunView(page);
+
+    for (const id of ['claude', 'commandcode']) {
+      const row = page.locator(`li[data-subscription="${id}"]`);
+      await expect(row).toBeVisible();
+      await expect(row).toContainText('Reading failed, unknown');
+    }
+    await expect(page.locator('li[data-subscription="claude"]')).toContainText('The stored sign-in has expired.');
+    await expect(page.locator('li[data-subscription="commandcode"]')).toContainText('No sign-in is stored for this subscription.');
+  });
+
   test('says nothing is running and how the last run ended', async ({ page }) => {
     await prepare({ scene: 'quiet' });
     await openRunView(page);
