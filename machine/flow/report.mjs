@@ -4,11 +4,17 @@ import { writePostFailure } from './scratch.mjs';
 export function tripwireStop({ reason, processorId, metadata } = {}) {
   const id = metadata?.processorId ?? processorId ?? '';
   if (id === 'token-cost-control') {
-    const limit = Number(metadata?.maxCost ?? 0);
-    const spend = Number(metadata?.usage?.estimatedCost ?? 0);
+    if (metadata?.maxCost != null && metadata?.usage?.estimatedCost != null) {
+      const limit = Number(metadata.maxCost);
+      const spend = Number(metadata.usage.estimatedCost);
+      return {
+        stopPart: 'Spending',
+        stopWhy: `Card cost limit $${limit.toFixed(2)} reached (card spend: $${spend.toFixed(4)})`,
+      };
+    }
     return {
       stopPart: 'Spending',
-      stopWhy: `Card cost limit $${limit.toFixed(2)} reached (card spend: $${spend.toFixed(4)})`,
+      stopWhy: String(reason || 'Cost check unavailable'),
     };
   }
   if (metadata?.part === 'Playbook' || metadata?.part === 'Resources') {

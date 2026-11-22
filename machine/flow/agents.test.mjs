@@ -7,7 +7,7 @@ import test from 'node:test';
 import { RequestContext } from '@mastra/core/request-context';
 import { MastraLanguageModelV2Mock, simulateReadableStream } from '@mastra/core/test-utils/llm-mock';
 
-import { createAgents, repoRoot } from './agents.mjs';
+import { createAgents, repoRoot, resolveCostLimit } from './agents.mjs';
 import { openMastra } from './mastra.mjs';
 import { buildCardPath } from './workflow.mjs';
 import { helperKey, readRoleModels } from './role-models.mjs';
@@ -527,4 +527,20 @@ test('Lead refuses to mark a playbook step completed with a flag: and lets the r
   const store = await mastra.getStorage().getStore('threadState');
   const tasks = await store.getState({ threadId: 'JUL-407/flag-test', type: 'task' });
   assert.equal(tasks.find(item => item.id === 'playbook_5')?.status, 'completed');
+});
+
+test('FLOW_CARD_LIMIT_DOLLARS overrides the default card cost limit', t => {
+  const previous = process.env.FLOW_CARD_LIMIT_DOLLARS;
+  t.after(() => {
+    if (previous === undefined) delete process.env.FLOW_CARD_LIMIT_DOLLARS;
+    else process.env.FLOW_CARD_LIMIT_DOLLARS = previous;
+  });
+  delete process.env.FLOW_CARD_LIMIT_DOLLARS;
+  assert.equal(resolveCostLimit(), 4);
+  process.env.FLOW_CARD_LIMIT_DOLLARS = '7.48';
+  assert.equal(resolveCostLimit(), 7.48);
+  process.env.FLOW_CARD_LIMIT_DOLLARS = 'not-a-number';
+  assert.equal(resolveCostLimit(), 4);
+  process.env.FLOW_CARD_LIMIT_DOLLARS = '0';
+  assert.equal(resolveCostLimit(), 4);
 });

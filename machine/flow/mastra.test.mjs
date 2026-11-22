@@ -393,3 +393,140 @@ test('restartAllActiveWorkflowRuns leaves outer and nested step counters untouch
   const controlCounts = readCounts(controlCountsFile);
   assert.ok(controlCounts.nested >= 2, `control nested step counter rises when autoRestartActiveRuns is left on (got ${controlCounts.nested})`);
 });
+
+test('openMastra bounds DuckDB trace memory and threads by default', async t => {
+  const dir = tempDir(t);
+  const workflow = makeCountingWorkflow({
+    id: 'wf-duckdb-cap',
+    autoRestartActiveRuns: false,
+    countsFile: join(dir, 'counts.json'),
+  });
+  const mastra = await openMastra({
+    card: 'JUL-361',
+    agents: {},
+    workflow,
+    stateDb: join(dir, 'state.db'),
+    traceDb: join(dir, 'trace.duckdb'),
+  });
+  t.after(async () => {
+    await mastra.shutdown().catch(() => null);
+  });
+  const obs = await mastra.getStorage().getStore('observability');
+  const rows = await obs.db.query("SELECT name, value FROM duckdb_settings() WHERE name IN ('memory_limit', 'threads')");
+  const settings = Object.fromEntries(rows.map(row => [row.name, row.value]));
+  assert.equal(settings.memory_limit, '244.1 MiB');
+  assert.equal(settings.threads, '1');
+});
+
+test('openMastra bounds span payloads so large processor histories cannot blow DuckDB 244.1 MiB checkpoint', async t => {
+  const dir = tempDir(t);
+  const workflow = makeCountingWorkflow({
+    id: 'wf-span-bound',
+    autoRestartActiveRuns: false,
+    countsFile: join(dir, 'counts.json'),
+  });
+  const mastra = await openMastra({
+    card: 'JUL-361',
+    agents: {},
+    workflow,
+    stateDb: join(dir, 'state.db'),
+    traceDb: join(dir, 'trace.duckdb'),
+  });
+  t.after(async () => {
+    await mastra.shutdown().catch(() => null);
+  });
+  await mastra.getStorage().init();
+  const obsInstance = mastra.observability.getDefaultInstance();
+  const hugeMessage = 'x'.repeat(12_000);
+  const hugeHistory = Array.from({ length: 35 }, (_, i) => ({ role: 'user', content: `${i}:${hugeMessage}` }));
+
+  for (let i = 0; i < 4; i++) {
+    const span = obsInstance.startSpan({
+      type: 'processor_run',
+      name: 'llm request processor: provider-history-compat',
+      input: { messages: hugeHistory },
+      metadata: { resourceId: 'JUL-361' },
+    });
+    span.end({ output: { messages: hugeHistory } });
+  }
+  await mastra.observability.flush();
+
+  const obs = await mastra.getStorage().getStore('observability');
+  await obs.db.query('CHECKPOINT');
+  const [{ maxIn, maxOut }] = await obs.db.query(
+    'SELECT max(length(cast(input as varchar)))::INTEGER AS maxIn, max(length(cast(output as varchar)))::INTEGER AS maxOut FROM span_events',
+  );
+  assert.ok(maxIn <= 65_536, `expected bounded span input <= 64 KiB, got ${maxIn} bytes`);
+  assert.ok(maxOut <= 65_536, `expected bounded span output <= 64 KiB, got ${maxOut} bytes`);
+});
+
+test('openMastra caps total stored bytes per span while keeping normal 21 KB spans unchanged', async t => {
+  const dir = tempDir(t);
+  const workflow = makeCountingWorkflow({
+    id: 'wf-span-total-cap',
+    autoRestartActiveRuns: false,
+    countsFile: join(dir, 'counts.json'),
+  });
+  const mastra = await openMastra({
+    card: 'JUL-361',
+    agents: {},
+    workflow,
+    stateDb: join(dir, 'state.db'),
+    traceDb: join(dir, 'trace.duckdb'),
+  });
+  t.after(async () => {
+    await mastra.shutdown().catch(() => null);
+  });
+  await mastra.getStorage().init();
+  const obsInstance = mastra.observability.getDefaultInstance();
+
+  const wide = Object.fromEntries(
+    Array.from({ length: 25 }, (_, k) => [
+      `k${k}`,
+      Array.from({ length: 20 }, (_, i) => ({
+        a: 'a'.repeat(1024),
+        b: 'b'.repeat(1024),
+        c: 'c'.repeat(1024),
+        d: 'd'.repeat(1024),
+        e: `${k}-${i}-${'e'.repeat(1000)}`,
+      })),
+    ]),
+  );
+  const wideSpan = obsInstance.startSpan({
+    type: 'processor_run',
+    name: 'wide-span',
+    input: wide,
+    metadata: { blob: 'm'.repeat(500_000) },
+  });
+  wideSpan.end({ output: wide });
+
+  const normalPayload = {
+    messages: Array.from({ length: 20 }, (_, i) => ({ role: 'user', content: `${i}:${'n'.repeat(1000)}` })),
+  };
+  const expectedNormalInputBytes = Buffer.byteLength(JSON.stringify(normalPayload), 'utf8');
+  const normalSpan = obsInstance.startSpan({
+    type: 'processor_run',
+    name: 'normal-21kb',
+    input: normalPayload,
+    metadata: { resourceId: 'JUL-361' },
+  });
+  normalSpan.end({ output: { ok: true } });
+
+  await mastra.observability.flush();
+  const obs = await mastra.getStorage().getStore('observability');
+  await obs.db.query('CHECKPOINT');
+  const rows = await obs.db.query(`
+    SELECT name,
+      length(coalesce(cast(input as varchar), ''))::INTEGER AS inBytes,
+      length(coalesce(cast(output as varchar), ''))::INTEGER AS outBytes,
+      length(coalesce(cast(metadata as varchar), ''))::INTEGER AS metaBytes,
+      length(coalesce(cast(attributes as varchar), ''))::INTEGER AS attrBytes
+    FROM span_events
+    WHERE name IN ('wide-span', 'normal-21kb') AND endedAt IS NOT NULL
+    ORDER BY name
+  `);
+  const byName = Object.fromEntries(rows.map(row => [row.name, row]));
+  const wideTotal = byName['wide-span'].inBytes + byName['wide-span'].outBytes + byName['wide-span'].metaBytes + byName['wide-span'].attrBytes;
+  assert.ok(wideTotal <= 65_536, 65_536, `expected wide span total <= ${65_536} bytes, got ${wideTotal}`);
+  assert.equal(byName['normal-21kb'].inBytes, expectedNormalInputBytes, '21 KB normal span input is stored unchanged');
+});

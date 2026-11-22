@@ -24,9 +24,149 @@ export const COMMAND_MEMORY_MAX = BUILDER_MEMORY_MAX;
 
 // Commands that install dependencies or build a tree. They take the shared lock
 // so a card's install and another card's test never overlap.
-export const HEAVY_COMMAND = /(?:^|[\s;&|()])(?:npm\s+(?:ci|install|add|update|test|run)|npx\s+(?:next|playwright)|bun\s+(?:install|add|test|run)|pnpm\s+(?:install|add|test|run)|yarn(?:\s|$)|next\s+build|node\s+--test|playwright\s+test)/;
-
 export const LOCK_WAIT_SECONDS = 1800;
+
+const INSTALLER_SUBCOMMANDS = new Set([
+  'ci', 'clean-install', 'ic', 'cit', 'install-ci-test',
+  'install', 'i', 'it', 'install-test',
+  'add', 'update', 'up', 'upgrade',
+]);
+const YARN_SUBCOMMANDS = new Set(['install', 'add', 'up', 'upgrade']);
+const HEAVY_NPM_SUBCOMMANDS = new Set([...INSTALLER_SUBCOMMANDS, 'test', 't', 'run', 'run-script', 'exec', 'build']);
+const HEAVY_RUNNERS = new Set(['npx', 'bunx', 'pnpx']);
+const HEAVY_RUNNER_TOOLS = new Set(['next', 'playwright', 'stryker', 'vitest', 'tsc', 'eslint']);
+const HEAVY_BROWSERS = new Set(['chrome', 'chrome-headless-shell', 'chromium']);
+const WRAPPER_BINARIES = new Set(['exec', 'nohup', 'command', 'env', 'nice', 'timeout', 'stdbuf', 'time']);
+const SHELL_BINARIES = new Set(['sh', 'bash', 'dash', 'zsh']);
+const FLAG_WITH_VALUE = new Set([
+  '--prefix', '-C', '--cwd', '--dir', '--userconfig', '--cache', '--registry',
+  '--workspace', '-w', '--loglevel', '--filter', '-F', '--config', '--globalconfig',
+  '--script-shell', '--tag', '--otp', '--scope', '--color', '--package', '-p',
+  '--chdir', '-u', '--unset', '--adjustment',
+  '-n', '-k', '-s', '--kill-after', '--signal',
+  '-i', '-o', '-e', '--input', '--output', '--error',
+  '-r', '--require', '--import', '--loader', '--conditions',
+]);
+const SPAWN_CALL_RE = /\b(?:child_process|exec|execSync|execFile|execFileSync|spawn|spawnSync|fork|subprocess|Popen|os\.system)\b/;
+
+const splitChains = command =>
+  command.match(/(?:'[^']*'|"[^"]*"|(?<!\|)\|(?!\|)|[^;&|(){}\n`])+/g) ?? [];
+
+const splitPipeline = chain =>
+  chain.match(/(?:'[^']*'|"[^"]*"|[^|])+/g) ?? [];
+
+const splitTokens = segment =>
+  (segment.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map(token => token.replace(/^(['"])(.*)\1$/, '$2'));
+
+const skipLeadingFlags = tokens => {
+  if (tokens.length === 0) return tokens;
+  const [head, ...rest] = tokens;
+  if (head === '--') return rest;
+  if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(head)) return skipLeadingFlags(rest);
+  if (FLAG_WITH_VALUE.has(head)) return skipLeadingFlags(rest.slice(1));
+  if (head.startsWith('-')) return skipLeadingFlags(rest);
+  return tokens;
+};
+
+const skipWrappers = tokens => {
+  if (tokens.length === 0) return tokens;
+  const [head, ...rest] = tokens;
+  if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(head)) return skipWrappers(rest);
+  const bin = head.split('/').at(-1);
+  if (bin === 'timeout') return skipWrappers(skipLeadingFlags(rest).slice(1));
+  if (bin === 'env' || bin === 'nice' || bin === 'stdbuf' || bin === 'time') return skipWrappers(skipLeadingFlags(rest));
+  if (WRAPPER_BINARIES.has(bin)) return skipWrappers(rest);
+  return tokens;
+};
+
+const inlineScriptArg = (bin, rest) => {
+  const isFlag = bin === 'python' || bin === 'python3'
+    ? token => token === '-c'
+    : token => token === '-e' || token === '--eval' || token === '-p' || token === '--print';
+  const index = rest.findIndex(isFlag);
+  return index >= 0 ? rest[index + 1] ?? '' : '';
+};
+
+const extractQuotedStrings = code =>
+  Array.from(code.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g), m => m[1] ?? m[2] ?? m[3] ?? '');
+
+const matchStage = (tokens, checkTokens) => {
+  if (tokens.length === 0) return false;
+  const [head, ...rest] = tokens;
+  const bin = head.split('/').at(-1);
+  if (SHELL_BINARIES.has(bin)) {
+    const cIndex = rest.findIndex(token => token === '-c' || /^-[a-z]*c[a-z]*$/.test(token));
+    return cIndex >= 0 && rest[cIndex + 1] ? matchCommand(rest[cIndex + 1], checkTokens) : false;
+  }
+  if (bin === 'eval') {
+    return rest.length > 0 ? matchCommand(rest.join(' '), checkTokens) : false;
+  }
+  if (bin === 'node' || bin === 'bun' || bin === 'python' || bin === 'python3') {
+    const code = inlineScriptArg(bin, rest);
+    if (code && SPAWN_CALL_RE.test(code)) {
+      const literals = extractQuotedStrings(code);
+      if (literals.some(lit => matchCommand(lit, checkTokens))) return true;
+      if (literals.length > 1 && matchCommand(literals.join(' '), checkTokens)) return true;
+    }
+  }
+  return checkTokens(bin, rest);
+};
+
+const matchCommand = (command, checkTokens) => {
+  if (typeof command !== 'string') return false;
+  return splitChains(command).some(chain => {
+    const stages = splitPipeline(chain).map(seg => skipWrappers(splitTokens(seg)));
+    if (stages.some(stage => matchStage(stage, checkTokens))) return true;
+    return stages.some((stage, index) => {
+      if (index === 0 || stage.length === 0) return false;
+      const bin = stage[0].split('/').at(-1);
+      if (!SHELL_BINARIES.has(bin)) return false;
+      const prev = stages[index - 1];
+      return prev.length > 1 && matchCommand(prev.slice(1).join(' '), checkTokens);
+    });
+  });
+};
+
+const checkInstallerTokens = (bin, rest) => {
+  if (bin === 'npm' || bin === 'pnpm' || bin === 'bun') {
+    const [sub] = skipLeadingFlags(rest);
+    return Boolean(sub && INSTALLER_SUBCOMMANDS.has(sub));
+  }
+  if (bin === 'yarn') {
+    const [sub] = skipLeadingFlags(rest);
+    return !sub || YARN_SUBCOMMANDS.has(sub);
+  }
+  return false;
+};
+
+const checkHeavyTokens = (bin, rest) => {
+  if (bin === 'npm' || bin === 'pnpm' || bin === 'bun') {
+    const [sub] = skipLeadingFlags(rest);
+    return Boolean(sub && HEAVY_NPM_SUBCOMMANDS.has(sub));
+  }
+  if (HEAVY_RUNNERS.has(bin)) {
+    const [sub] = skipLeadingFlags(rest);
+    return Boolean(sub && HEAVY_RUNNER_TOOLS.has(sub.split('/').at(-1)));
+  }
+  if (bin === 'yarn') return true;
+  if (bin === 'node') return rest.includes('--test');
+  if (bin === 'next') return skipLeadingFlags(rest)[0] === 'build';
+  if (bin === 'playwright') return skipLeadingFlags(rest)[0] === 'test';
+  if (bin === 'stryker') return skipLeadingFlags(rest)[0] === 'run';
+  return HEAVY_BROWSERS.has(bin);
+};
+
+export function isInstallerCommand(command) {
+  return matchCommand(command, checkInstallerTokens);
+}
+
+export function isHeavyCommand(command) {
+  return matchCommand(command, checkHeavyTokens);
+}
+
+export const HEAVY_COMMAND = Object.freeze({ test: isHeavyCommand });
+
+const INSTALLER_REFUSAL = 'Package installers are refused during a card run. Dependencies are managed by the card copy; report missing dependencies to the Lead instead.';
 
 const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
 
@@ -75,7 +215,7 @@ export function boundedCommand(command, { slice = BUILDER_SLICE, memoryMax = COM
     ...(ownerUnit
       ? [`--property=BindsTo=${unitName(ownerUnit, 'service')}`, `--property=Requisite=${unitName(ownerUnit, 'service')}`, `--property=PartOf=${unitName(ownerUnit, 'service')}`, `--property=After=${unitName(ownerUnit, 'service')}`]
       : []),
-    '--', '/bin/sh', '-c', command,
+    '--', 'env', '-u', 'DBUS_SESSION_BUS_ADDRESS', '/bin/sh', '-c', command,
   ];
   const scoped = parts.map(quote).join(' ');
   return lock ? `flock --timeout ${LOCK_WAIT_SECONDS} ${quote(lock)} /bin/sh -c ${quote(scoped)}` : scoped;
@@ -98,7 +238,7 @@ export function jailedCommand(command, folder) {
 }
 
 export class BoundedLocalSandbox extends LocalSandbox {
-  constructor({ slice = BUILDER_SLICE, sliceMemoryMax: expected = BUILDER_MEMORY_MAX, commandMemoryMax = COMMAND_MEMORY_MAX, ownerUnit, jail, lock = builderLock(), env, ...options }) {
+  constructor({ slice = BUILDER_SLICE, sliceMemoryMax: expected = BUILDER_MEMORY_MAX, commandMemoryMax = COMMAND_MEMORY_MAX, ownerUnit, jail, lock = builderLock(), prepare = null, env, ...options }) {
     if (process.platform !== 'linux' || (options.isolation && options.isolation !== 'none')) {
       throw new Error('BoundedLocalSandbox requires Linux and the local isolation backend');
     }
@@ -114,10 +254,18 @@ export class BoundedLocalSandbox extends LocalSandbox {
     }
     const runtimeDir = `/run/user/${process.getuid()}`;
     super({ ...options, env: { ...env, XDG_RUNTIME_DIR: runtimeDir, DBUS_SESSION_BUS_ADDRESS: `unix:path=${runtimeDir}/bus` } });
-    Object.assign(this, { slice, sliceMemoryMax: expected, commandMemoryMax, ownerUnit, jail: jail && existsSync(jail) ? jail : null, lock });
+    Object.assign(this, { slice, sliceMemoryMax: expected, commandMemoryMax, ownerUnit, jail: jail && existsSync(jail) ? jail : null, lock, prepare });
+    const runCommand = this.executeCommand.bind(this);
+    this.executeCommand = async (command, args = [], executeOptions = {}) => {
+      const full = Array.isArray(args) && args.length > 0 ? `${command} ${args.join(' ')}` : command;
+      if (isInstallerCommand(full)) throw new Error(INSTALLER_REFUSAL);
+      if (typeof this.prepare === 'function') await this.prepare();
+      return runCommand(command, args, executeOptions);
+    };
   }
 
   wrapCommandForIsolation(command) {
+    if (isInstallerCommand(command)) throw new Error(INSTALLER_REFUSAL);
     const slice = quote(this.slice);
     let inner = this.jail ? jailedCommand(command, this.jail) : command;
     if (this.lock && HEAVY_COMMAND.test(command)) {

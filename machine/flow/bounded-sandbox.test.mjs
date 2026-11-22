@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { BoundedLocalSandbox } from './bounded-sandbox.mjs';
+import { BoundedLocalSandbox, HEAVY_COMMAND, isInstallerCommand } from './bounded-sandbox.mjs';
 
 const systemctl = (...args) => execFileSync('systemctl', ['--user', ...args], { encoding: 'utf8' }).trim();
 const bestEffort = (...args) => {
@@ -146,12 +146,135 @@ test('a command writes inside the card copy and nowhere else', { timeout: 60000 
   }
 });
 
-test('an install or build takes the shared lock and a read does not', { timeout: 60000 }, async () => {
+test('a build or test takes the shared lock and a read does not', { timeout: 60000 }, async () => {
   const sandbox = await sandboxOn({ lock: '/run/user/1000/card-builder.lock' });
   try {
-    assert.match(sandbox.wrapCommandForIsolation('npm ci').command, /flock --timeout 1800 .*card-builder\.lock/);
+    assert.match(sandbox.wrapCommandForIsolation('npm run build').command, /flock --timeout 1800 .*card-builder\.lock/);
     assert.match(sandbox.wrapCommandForIsolation('node --test machine/flow').command, /flock --timeout 1800/);
+    assert.match(sandbox.wrapCommandForIsolation('timeout 300 npm run build').command, /flock --timeout 1800/);
     assert.doesNotMatch(sandbox.wrapCommandForIsolation('cat package.json').command, /flock --timeout/);
+    assert.doesNotMatch(sandbox.wrapCommandForIsolation('echo npm test').command, /flock --timeout/);
+  } finally {
+    await sandbox?.stop().catch(() => {});
+  }
+});
+
+test('isInstallerCommand catches wrapped and flagged installers and ignores non-installers', () => {
+  const installers = [
+    'npm ci',
+    'cd /home/ubuntu/card-machine-worktrees/JUL-361/dashboard && timeout 300 npm ci --prefer-offline',
+    '{ echo 500 >/proc/self/oom_score_adj; } 2>/dev/null; timeout 300 npm ci',
+    '/usr/local/bin/npm --prefix /tmp/x --no-audit ci',
+    'npm install lodash',
+    'npm i',
+    'pnpm add zod',
+    'bun install',
+    'yarn',
+    'yarn add react',
+    'sh -c "cd dashboard; timeout 60 npm ci"',
+    'npm clean-install',
+    'npm cit',
+    'npm it',
+    'npm --workspace dashboard ci',
+    'npm -w dashboard ci',
+    'npm --loglevel silent ci',
+    '{ npm ci; }',
+    'time npm ci',
+    'eval "npm ci"',
+    'echo "npm ci" | sh',
+    "node -e \"require('child_process').execSync('npm ci')\"",
+  ];
+  const allowed = [
+    'npm test',
+    'npm run build',
+    'node --test machine/flow',
+    'echo "npm ci"',
+    'echo "foo; npm ci"',
+    'grep -r "npm ci" docs/',
+    'git status',
+    'yarn test',
+    'echo "npm ci" | grep ci',
+    "node -e \"console.log('npm ci')\"",
+  ];
+  for (const cmd of installers) assert.equal(isInstallerCommand(cmd), true, `expected installer: ${cmd}`);
+  for (const cmd of allowed) assert.equal(isInstallerCommand(cmd), false, `expected allowed: ${cmd}`);
+});
+
+test('BoundedLocalSandbox refuses installer commands before spawning a process', { timeout: 60000 }, async () => {
+  const sandbox = await sandboxOn();
+  try {
+    assert.throws(
+      () => sandbox.wrapCommandForIsolation('cd dashboard && timeout 300 npm ci --prefer-offline'),
+      /refused/i,
+    );
+    await assert.rejects(
+      () => sandbox.executeCommand('timeout 300 npm ci --dry-run', []),
+      /refused/i,
+    );
+  } finally {
+    await sandbox?.stop().catch(() => {});
+  }
+});
+
+test('HEAVY_COMMAND matches flagged installs and browsers, skips non-heavy args, and avoids backtracking', () => {
+  const heavy = [
+    'npm ci',
+    'npm --prefix /tmp/x ci',
+    'cd /tmp/x && npm ci --no-audit',
+    'npx playwright test',
+    '/usr/local/bin/npm --prefix /tmp/x --no-audit ci',
+    'chromium --headless',
+    '/home/ubuntu/.cache/ms-playwright/chromium-1243/chrome-linux/chrome --headless',
+    'timeout 300 npm run build',
+    'timeout 300 node --test machine/flow',
+    'env NODE_ENV=production npm run build',
+    'nice -n 10 npm test',
+    'sh -c "npm run build"',
+    'npx --no-install playwright test',
+    '{ npm run build; }',
+    'bunx playwright test',
+    'node --test-concurrency=1 --test machine/flow',
+  ];
+  const light = [
+    'echo chrome',
+    'pkill chromium',
+    'grep -r chromium src',
+    'which chrome',
+    'git status',
+    'ls',
+    'echo npm test',
+    'cat package.json',
+  ];
+  for (const cmd of heavy) assert.equal(HEAVY_COMMAND.test(cmd), true, `expected heavy: ${cmd}`);
+  for (const cmd of light) assert.equal(HEAVY_COMMAND.test(cmd), false, `expected light: ${cmd}`);
+
+  const slow = 'npm ' + '--ab '.repeat(22) + 'config';
+  const start = process.hrtime.bigint();
+  const matched = HEAVY_COMMAND.test(slow);
+  const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.equal(matched, false);
+  assert.ok(elapsedMs < 10, `expected < 10 ms, got ${elapsedMs.toFixed(2)} ms`);
+});
+
+test('a command inside the builder slice does not inherit DBUS_SESSION_BUS_ADDRESS', { timeout: 60000 }, async () => {
+  let sandbox;
+  try {
+    let active = false;
+    try { active = systemctl('is-active', owner) === 'active'; } catch {}
+    if (!active) {
+      bestEffort('stop', owner);
+      bestEffort('reset-failed', owner);
+      execFileSync('systemd-run', [
+        '--user', '--quiet', `--unit=${owner}`, `--slice=${slice}`,
+        '--property=MemoryMax=64M', '--property=MemorySwapMax=0', '--property=Restart=always', '--property=RestartSec=1s',
+        '/usr/bin/sleep', '120',
+      ]);
+      systemctl('set-property', '--runtime', slice, `MemoryMax=${sliceMemory}`, 'MemorySwapMax=0');
+    }
+    sandbox = await sandboxOn();
+    const result = await sandbox.executeCommand('python3', ['-c', 'import os; print(os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""))']);
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout.trim(), '');
   } finally {
     await sandbox?.stop().catch(() => {});
   }

@@ -8,7 +8,8 @@ import { Agent } from '@mastra/core/agent';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
 
-import { ensureCardResources, readAvailableMemoryMb, stopIfResourcesShort } from './resources.mjs';
+import http from 'node:http';
+import { defaultCleanIdle, ensureCardResources, readAvailableMemoryMb, stopIfResourcesShort } from './resources.mjs';
 import { CARD_PATH } from './schema.mjs';
 import { buildCardPath } from './workflow.mjs';
 
@@ -160,4 +161,30 @@ test('card-path stops cleanly with a stop report naming memory when memory stays
   const report = readFileSync(reportFile, 'utf8');
   assert.match(report, /Part: Resources/);
   assert.match(report, /memory/);
+});
+
+test('defaultCleanIdle uses PORT when FLOW_STUDIO_URL is unset', async t => {
+  let hits = 0;
+  const server = http.createServer((req, res) => {
+    hits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+
+  const { port } = server.address();
+  const prevUrl = process.env.FLOW_STUDIO_URL;
+  const prevPort = process.env.PORT;
+  delete process.env.FLOW_STUDIO_URL;
+  process.env.PORT = String(port);
+  t.after(() => {
+    if (prevUrl === undefined) delete process.env.FLOW_STUDIO_URL;
+    else process.env.FLOW_STUDIO_URL = prevUrl;
+    if (prevPort === undefined) delete process.env.PORT;
+    else process.env.PORT = prevPort;
+  });
+
+  await defaultCleanIdle({ card: 'JUL-999' });
+  assert.ok(hits > 0, `expected defaultCleanIdle to query 127.0.0.1:${port}, got ${hits} requests`);
 });
