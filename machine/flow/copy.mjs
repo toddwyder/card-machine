@@ -1,9 +1,33 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 
+import { boundedCommand, builderLock, LOCK_WAIT_SECONDS } from './bounded-sandbox.mjs';
+
+const execFileAsync = promisify(execFile);
 const SCRATCH = join(homedir(), '.local/state/julia-scratch');
+const MODULE_TREES = ['', 'dashboard'];
+const LOCK_STAMP = '.card-lock-sha';
+const inflightInstalls = new Map();
+
+const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
+const lockHash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+const readStamp = modulesDir => {
+  try {
+    return readlinkSync(join(modulesDir, LOCK_STAMP));
+  } catch {
+    return '';
+  }
+};
+const writeStamp = (modulesDir, hash) => {
+  mkdirSync(modulesDir, { recursive: true });
+  const stamp = join(modulesDir, LOCK_STAMP);
+  rmSync(stamp, { force: true });
+  symlinkSync(hash, stamp);
+};
 
 const git = (cwd, args) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -49,16 +73,78 @@ export function startedFrom(repo) {
   }
 }
 
-function linkModules(repo, folder) {
-  for (const tree of ['', 'dashboard']) {
-    const lock = join(tree, 'package-lock.json');
-    const modules = join(repo, tree, 'node_modules');
-    const sameLock = existsSync(join(repo, lock)) && existsSync(join(folder, lock)) &&
-      readFileSync(join(repo, lock)).equals(readFileSync(join(folder, lock)));
-    if (sameLock && existsSync(join(modules, '.package-lock.json'))) {
-      rmSync(join(folder, tree, 'node_modules'), { recursive: true, force: true });
-      execFileSync('cp', ['-al', modules, join(folder, tree, 'node_modules')]);
+function installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit }) {
+  const stamp = join(modulesDir, LOCK_STAMP);
+  const npmCmd = `cd ${quote(treeDir)} && npm ci --no-audit --no-fund`;
+  const runInstall = slice
+    ? boundedCommand(npmCmd, { slice, memoryMax, ownerUnit, description: 'Card dependency install' })
+    : npmCmd;
+  const guarded = `if [ "$(readlink ${quote(stamp)} 2>/dev/null)" = ${quote(hash)} ]; then exit 0; fi; ${runInstall} && mkdir -p ${quote(modulesDir)} && ln -sfn ${quote(hash)} ${quote(stamp)}`;
+  return lock ? `flock --timeout ${LOCK_WAIT_SECONDS} ${quote(lock)} /bin/sh -c ${quote(guarded)}` : guarded;
+}
+
+export function syncCopyModules({ repo, folder, lock = process.platform === 'linux' ? builderLock() : null, slice, memoryMax, ownerUnit, install } = {}) {
+  for (const tree of MODULE_TREES) {
+    const lockFile = join(folder, tree, 'package-lock.json');
+    if (!existsSync(lockFile)) continue;
+    const hash = lockHash(lockFile);
+    const treeDir = join(folder, tree);
+    const modulesDir = join(treeDir, 'node_modules');
+    if (readStamp(modulesDir) === hash) continue;
+
+    const repoLock = repo ? join(repo, tree, 'package-lock.json') : '';
+    const repoModules = repo ? join(repo, tree, 'node_modules') : '';
+    const sameLock = Boolean(repo && existsSync(repoLock) && readFileSync(repoLock).equals(readFileSync(lockFile)));
+    if (sameLock && existsSync(join(repoModules, '.package-lock.json'))) {
+      rmSync(modulesDir, { recursive: true, force: true });
+      execFileSync('cp', ['-al', repoModules, modulesDir]);
+      writeStamp(modulesDir, hash);
+      continue;
     }
+
+    if (typeof install === 'function') {
+      install(treeDir, hash);
+      writeStamp(modulesDir, hash);
+      continue;
+    }
+
+    if (process.platform === 'linux') {
+      const cmd = installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit });
+      execFileSync('/bin/sh', ['-c', cmd], { stdio: 'inherit' });
+    } else {
+      execFileSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: treeDir, stdio: 'inherit' });
+      writeStamp(modulesDir, hash);
+    }
+  }
+}
+
+export async function ensureCopyModules({ repo, folder, lock = process.platform === 'linux' ? builderLock() : null, slice, memoryMax, ownerUnit } = {}) {
+  for (const tree of MODULE_TREES) {
+    const lockFile = join(folder, tree, 'package-lock.json');
+    if (!existsSync(lockFile)) continue;
+    const hash = lockHash(lockFile);
+    const treeDir = join(folder, tree);
+    const modulesDir = join(treeDir, 'node_modules');
+    if (readStamp(modulesDir) === hash) continue;
+
+    const key = `${treeDir}:${hash}`;
+    if (!inflightInstalls.has(key)) {
+      const task = (async () => {
+        const repoLock = repo ? join(repo, tree, 'package-lock.json') : '';
+        const repoModules = repo ? join(repo, tree, 'node_modules') : '';
+        const sameLock = Boolean(repo && existsSync(repoLock) && readFileSync(repoLock).equals(readFileSync(lockFile)));
+        if (sameLock && existsSync(join(repoModules, '.package-lock.json'))) {
+          rmSync(modulesDir, { recursive: true, force: true });
+          await execFileAsync('cp', ['-al', repoModules, modulesDir]);
+          writeStamp(modulesDir, hash);
+          return;
+        }
+        const cmd = installShellCommand({ treeDir, modulesDir, hash, lock, slice, memoryMax, ownerUnit });
+        await execFileAsync('/bin/sh', ['-c', cmd]);
+      })().finally(() => inflightInstalls.delete(key));
+      inflightInstalls.set(key, task);
+    }
+    await inflightInstalls.get(key);
   }
 }
 
@@ -103,11 +189,14 @@ export function findLeftoverWork({ repo, card, findPr, env = process.env }) {
 // The copy is its own repository, not a worktree of the studio's. A card's commands
 // run in a jail where only the copy is writable, so the git folder the helpers commit
 // with has to live inside it.
-export function openCopy({ repo, card, env = process.env }) {
+export function openCopy({ repo, card, env = process.env, install } = {}) {
   const folder = copyFolder(card, env);
   if (existsSync(folder)) {
     const base = baseOf(folder, card);
-    if (base) return { folder, base, fresh: false };
+    if (base) {
+      syncCopyModules({ repo, folder, install });
+      return { folder, base, fresh: false };
+    }
   }
   const remote = findExistingRemoteBranch(repo, card);
   if (remote) {
@@ -120,7 +209,7 @@ export function openCopy({ repo, card, env = process.env }) {
   git(repo, ['clone', '--quiet', '--shared', '--no-checkout', repo, folder]);
   git(folder, ['checkout', '--quiet', '-B', branch(card), base]);
   git(folder, ['update-ref', baseRef(card), base]);
-  linkModules(repo, folder);
+  syncCopyModules({ repo, folder, install });
   return { folder, base, fresh: true };
 }
 

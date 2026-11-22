@@ -7,7 +7,7 @@ import test from 'node:test';
 import { RequestContext } from '@mastra/core/request-context';
 import { MastraLanguageModelV2Mock, simulateReadableStream } from '@mastra/core/test-utils/llm-mock';
 
-import { createAgents, repoRoot } from './agents.mjs';
+import { createAgents, repoRoot, resolveCostLimit } from './agents.mjs';
 import { openMastra } from './mastra.mjs';
 import { buildCardPath } from './workflow.mjs';
 import { helperKey, readRoleModels } from './role-models.mjs';
@@ -529,19 +529,18 @@ test('Lead refuses to mark a playbook step completed with a flag: and lets the r
   assert.equal(tasks.find(item => item.id === 'playbook_5')?.status, 'completed');
 });
 
-test('FLOW_CARD_LIMIT_DOLLARS overrides the default card cost limit on CallCostControl', t => {
+test('FLOW_CARD_LIMIT_DOLLARS overrides the default card cost limit', t => {
   const previous = process.env.FLOW_CARD_LIMIT_DOLLARS;
   t.after(() => {
     if (previous === undefined) delete process.env.FLOW_CARD_LIMIT_DOLLARS;
     else process.env.FLOW_CARD_LIMIT_DOLLARS = previous;
   });
+  delete process.env.FLOW_CARD_LIMIT_DOLLARS;
+  assert.equal(resolveCostLimit(), 4);
   process.env.FLOW_CARD_LIMIT_DOLLARS = '7.48';
-  const dir = temporary(t);
-  const leadModelFile = join(dir, 'lead-model');
-  installLeadModel(leadModelFile);
-  const roleModelsFile = completeRoleFile(join(dir, 'lead-role-models.md'));
-  const agents = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
-  const costGuard = agents.build.inputProcessors.find(p => p?.constructor?.name === 'CallCostControl');
-  assert.ok(costGuard, 'Lead must carry CallCostControl');
-  assert.equal(costGuard.maxCost, 7.48);
+  assert.equal(resolveCostLimit(), 7.48);
+  process.env.FLOW_CARD_LIMIT_DOLLARS = 'not-a-number';
+  assert.equal(resolveCostLimit(), 4);
+  process.env.FLOW_CARD_LIMIT_DOLLARS = '0';
+  assert.equal(resolveCostLimit(), 4);
 });

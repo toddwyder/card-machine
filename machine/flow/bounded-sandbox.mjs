@@ -28,6 +28,64 @@ export const HEAVY_COMMAND = /(?:^|[;&|()\n])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+
 
 export const LOCK_WAIT_SECONDS = 1800;
 
+const INSTALLER_SUBCOMMANDS = new Set(['ci', 'install', 'i', 'add', 'update', 'up', 'upgrade']);
+const YARN_SUBCOMMANDS = new Set(['install', 'add', 'up', 'upgrade']);
+const WRAPPER_BINARIES = new Set(['exec', 'nohup', 'command', 'env', 'nice', 'timeout', 'stdbuf']);
+const SHELL_BINARIES = new Set(['sh', 'bash', 'dash', 'zsh']);
+const FLAG_WITH_VALUE = new Set(['--prefix', '-C', '--cwd', '--dir', '--userconfig', '--cache', '--registry', '-n', '-k', '-s', '--kill-after', '--signal']);
+
+const splitTokens = segment =>
+  (segment.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map(token => token.replace(/^(['"])(.*)\1$/, '$2'));
+
+const skipLeadingFlags = tokens => {
+  if (tokens.length === 0) return tokens;
+  const [head, ...rest] = tokens;
+  if (head === '--') return rest;
+  if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(head)) return skipLeadingFlags(rest);
+  if (FLAG_WITH_VALUE.has(head)) return skipLeadingFlags(rest.slice(1));
+  if (head.startsWith('-')) return skipLeadingFlags(rest);
+  return tokens;
+};
+
+const skipWrappers = tokens => {
+  if (tokens.length === 0) return tokens;
+  const [head, ...rest] = tokens;
+  if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(head)) return skipWrappers(rest);
+  const bin = head.split('/').at(-1);
+  if (bin === 'timeout') return skipWrappers(skipLeadingFlags(rest).slice(1));
+  if (bin === 'env' || bin === 'nice' || bin === 'stdbuf') return skipWrappers(skipLeadingFlags(rest));
+  if (WRAPPER_BINARIES.has(bin)) return skipWrappers(rest);
+  return tokens;
+};
+
+const segmentIsInstaller = segment => {
+  const tokens = skipWrappers(splitTokens(segment));
+  if (tokens.length === 0) return false;
+  const [head, ...rest] = tokens;
+  const bin = head.split('/').at(-1);
+  if (SHELL_BINARIES.has(bin)) {
+    const cIndex = rest.findIndex(token => token === '-c' || /^-[a-z]*c[a-z]*$/.test(token));
+    return cIndex >= 0 && rest[cIndex + 1] ? isInstallerCommand(rest[cIndex + 1]) : false;
+  }
+  if (bin === 'npm' || bin === 'pnpm' || bin === 'bun') {
+    const [sub] = skipLeadingFlags(rest);
+    return Boolean(sub && INSTALLER_SUBCOMMANDS.has(sub));
+  }
+  if (bin === 'yarn') {
+    const [sub] = skipLeadingFlags(rest);
+    return !sub || YARN_SUBCOMMANDS.has(sub);
+  }
+  return false;
+};
+
+export function isInstallerCommand(command) {
+  if (typeof command !== 'string') return false;
+  const segments = command.match(/(?:'[^']*'|"[^"]*"|[^;&|()\n`])+/g) ?? [];
+  return segments.some(segmentIsInstaller);
+}
+
+const INSTALLER_REFUSAL = 'Package installers are refused during a card run. Dependencies are managed by the card copy; report missing dependencies to the Lead instead.';
+
 const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
 
 const unitName = (value, suffix) => {
@@ -98,7 +156,7 @@ export function jailedCommand(command, folder) {
 }
 
 export class BoundedLocalSandbox extends LocalSandbox {
-  constructor({ slice = BUILDER_SLICE, sliceMemoryMax: expected = BUILDER_MEMORY_MAX, commandMemoryMax = COMMAND_MEMORY_MAX, ownerUnit, jail, lock = builderLock(), env, ...options }) {
+  constructor({ slice = BUILDER_SLICE, sliceMemoryMax: expected = BUILDER_MEMORY_MAX, commandMemoryMax = COMMAND_MEMORY_MAX, ownerUnit, jail, lock = builderLock(), prepare = null, env, ...options }) {
     if (process.platform !== 'linux' || (options.isolation && options.isolation !== 'none')) {
       throw new Error('BoundedLocalSandbox requires Linux and the local isolation backend');
     }
@@ -114,10 +172,18 @@ export class BoundedLocalSandbox extends LocalSandbox {
     }
     const runtimeDir = `/run/user/${process.getuid()}`;
     super({ ...options, env: { ...env, XDG_RUNTIME_DIR: runtimeDir, DBUS_SESSION_BUS_ADDRESS: `unix:path=${runtimeDir}/bus` } });
-    Object.assign(this, { slice, sliceMemoryMax: expected, commandMemoryMax, ownerUnit, jail: jail && existsSync(jail) ? jail : null, lock });
+    Object.assign(this, { slice, sliceMemoryMax: expected, commandMemoryMax, ownerUnit, jail: jail && existsSync(jail) ? jail : null, lock, prepare });
+    const runCommand = this.executeCommand.bind(this);
+    this.executeCommand = async (command, args = [], executeOptions = {}) => {
+      const full = Array.isArray(args) && args.length > 0 ? `${command} ${args.join(' ')}` : command;
+      if (isInstallerCommand(full)) throw new Error(INSTALLER_REFUSAL);
+      if (typeof this.prepare === 'function') await this.prepare();
+      return runCommand(command, args, executeOptions);
+    };
   }
 
   wrapCommandForIsolation(command) {
+    if (isInstallerCommand(command)) throw new Error(INSTALLER_REFUSAL);
     const slice = quote(this.slice);
     let inner = this.jail ? jailedCommand(command, this.jail) : command;
     if (this.lock && HEAVY_COMMAND.test(command)) {

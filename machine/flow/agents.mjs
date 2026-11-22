@@ -6,8 +6,9 @@ import { CyberRefusalHandler } from '@mastra/core/processors';
 import { LocalFilesystem, LocalSandbox, Workspace } from '@mastra/core/workspace';
 
 import { sandboxEnv } from './access.mjs';
-import { BoundedLocalSandbox } from './bounded-sandbox.mjs';
+import { BoundedLocalSandbox, BUILDER_SLICE, COMMAND_MEMORY_MAX, builderLock } from './bounded-sandbox.mjs';
 import { CallCostControl } from './call-cost.mjs';
+import { ensureCopyModules } from './copy.mjs';
 import { studioUnit } from './interrupted.mjs';
 import { cardMemory } from './memory.mjs';
 import { buildModelReader, leadModelId } from './models.mjs';
@@ -23,8 +24,13 @@ export const COST_LIMIT_DOLLARS = 4;
 const HELPER_CONCURRENCY = 4;
 const POTETO_SKILL = '.agents/skills/poteto-mode/SKILL.md';
 
+export const resolveCostLimit = () => {
+  const fromEnv = Number(process.env.FLOW_CARD_LIMIT_DOLLARS);
+  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : COST_LIMIT_DOLLARS;
+};
+
 const cardCostControl = () =>
-  new CallCostControl({ maxCost: COST_LIMIT_DOLLARS, scope: 'resource', window: '365d', includeBreakdown: true });
+  new CallCostControl({ maxCost: resolveCostLimit(), scope: 'resource', window: '365d', includeBreakdown: true });
 
 function repositoryContaining(directory) {
   if (existsSync(join(directory, POTETO_SKILL))) return directory;
@@ -148,7 +154,20 @@ export function createAgents({ model, leadModel, helperModel, repo = repoRoot(),
             // it has no slice to bind to, and a generic service name must never
             // turn the jail on where the server has no such unit.
             sandbox: studio
-              ? new BoundedLocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }), ownerUnit: unit, jail: folder })
+              ? new BoundedLocalSandbox({
+                  workingDirectory: folder,
+                  env: sandboxEnv({ repo }),
+                  ownerUnit: unit,
+                  jail: folder,
+                  prepare: () => ensureCopyModules({
+                    repo: process.env.FLOW_PROJECT_REPO?.trim() || repo,
+                    folder,
+                    lock: builderLock(),
+                    slice: BUILDER_SLICE,
+                    memoryMax: COMMAND_MEMORY_MAX,
+                    ownerUnit: unit,
+                  }),
+                })
               : new LocalSandbox({ workingDirectory: folder, env: sandboxEnv({ repo }) }),
           }
         : {}),
