@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BUILDER_SLICE, COMMAND_MEMORY_MAX, boundedCommand, builderLock, sliceMemoryMax } from '../flow/bounded-sandbox.mjs';
+import { selectInstaller } from '../flow/copy.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,19 +72,6 @@ function installInvocation(run) {
   return `test "$(systemctl --user show ${quote(BUILDER_SLICE)} --property=MemoryMax --value)" = ${quote(ceiling)} && exec ${scoped}`;
 }
 
-function installer() {
-  try {
-    execFileSync('bun', ['--version'], { stdio: 'ignore' });
-    return { command: 'bun', args: ['install', '--frozen-lockfile'], env: {} };
-  } catch {
-    return {
-      command: 'npm',
-      args: ['ci', '--include=dev', '--no-audit', '--no-fund'],
-      env: { npm_config_omit: '', NODE_OPTIONS: [process.env.NODE_OPTIONS, '--max-old-space-size=2048'].filter(Boolean).join(' ') },
-    };
-  }
-}
-
 function lockHash(file) {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
@@ -140,7 +128,7 @@ export function prepareDependencies(checkout, { log = () => {}, timeoutMs = 15 *
     } catch {
       // No installed tree yet, or one from a different lockfile; install it.
     }
-    const run = installer();
+    const run = selectInstaller();
     log(`Installing ${relative || 'root'} dependencies once with ${run.command}, from the lockfile.`);
     execFileSync('/bin/sh', ['-c', installInvocation(run)], {
       cwd,

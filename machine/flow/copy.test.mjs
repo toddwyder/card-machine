@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { closeCopy, copyFolder, copiesRoot, findLeftoverWork, openCopy, startedFrom } from './copy.mjs';
+import { closeCopy, copyFolder, copiesRoot, findLeftoverWork, openCopy, selectInstaller, startedFrom, syncCopyModules } from './copy.mjs';
 
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
@@ -126,4 +126,69 @@ test('a card whose dependency list differs from main installs once per change an
   writeFileSync(join(copy.folder, 'package-lock.json'), JSON.stringify({ name: 'app', lockfileVersion: 3, packages: { 'node_modules/demo-lib': { version: '2.0.0' } } }));
   openCopy({ repo, card: 'JUL-361-DEPS', env, install: fakeInstall });
   assert.equal(installs, 2, 'second dependency change installs once more');
+});
+
+test('selectInstaller picks bun on PATH, falls back to HOME/.bun/bin/bun, and falls back to npm when absent', { skip: process.platform === 'win32' }, t => {
+  const dir = mkdtempSync(join(tmpdir(), 'copy-installer-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const pathBin = join(dir, 'path-bin');
+  const homeDir = join(dir, 'home');
+  const homeBunDir = join(homeDir, '.bun', 'bin');
+  mkdirSync(pathBin, { recursive: true });
+  mkdirSync(homeBunDir, { recursive: true });
+
+  const stub = '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "1.4.5"; exit 0; fi\nexit 0\n';
+  writeFileSync(join(pathBin, 'bun'), stub, { mode: 0o755 });
+  writeFileSync(join(homeBunDir, 'bun'), stub, { mode: 0o755 });
+
+  const fromPath = selectInstaller({ PATH: pathBin, HOME: dir });
+  assert.equal(fromPath.command, 'bun');
+  assert.deepEqual(fromPath.args, ['install', '--frozen-lockfile']);
+
+  const fromHome = selectInstaller({ PATH: '/nonexistent', HOME: homeDir });
+  assert.equal(fromHome.command, join(homeBunDir, 'bun'));
+  assert.deepEqual(fromHome.args, ['install', '--frozen-lockfile']);
+
+  const fallback = selectInstaller({ PATH: '/nonexistent', HOME: dir });
+  assert.equal(fallback.command, 'npm');
+  assert.deepEqual(fallback.args, ['ci', '--include=dev', '--no-audit', '--no-fund']);
+  assert.equal(fallback.env.npm_config_omit, '');
+  assert.match(fallback.env.NODE_OPTIONS, /--max-old-space-size=2048/);
+});
+
+test('syncCopyModules runs bun install --frozen-lockfile when bun is available and clears hardlinked modules without touching main', { skip: process.platform === 'win32' }, t => {
+  const { dir, repo, env } = studio(t);
+  writeFileSync(join(repo, 'package.json'), '{"name":"app"}\n');
+  writeFileSync(join(repo, 'package-lock.json'), '{"lockfileVersion":3,"v":1}\n');
+  mkdirSync(join(repo, 'node_modules', 'main-only'), { recursive: true });
+  writeFileSync(join(repo, 'node_modules', '.package-lock.json'), '{"lockfileVersion":3}\n');
+  writeFileSync(join(repo, 'node_modules', 'main-only', 'index.js'), 'module.exports = "main";\n');
+  git(repo, ['add', 'package.json', 'package-lock.json']);
+  git(repo, ['-c', 'user.email=copy@test', '-c', 'user.name=copy', 'commit', '--quiet', '-m', 'lock']);
+
+  const copy = openCopy({ repo, card: 'JUL-BUN-TEST', env });
+  assert.equal(existsSync(join(copy.folder, 'node_modules', 'main-only', 'index.js')), true);
+
+  const bin = join(dir, 'bin');
+  const logFile = join(dir, 'bun.log');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(
+    join(bin, 'bun'),
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "1.4.5"; exit 0; fi\nprintf '%s %s\\n' "$PWD" "$*" >> ${JSON.stringify(logFile)}\nmkdir -p node_modules/new-lib\n`,
+    { mode: 0o755 }
+  );
+
+  writeFileSync(join(copy.folder, 'package-lock.json'), '{"lockfileVersion":3,"v":2}\n');
+  syncCopyModules({
+    repo,
+    folder: copy.folder,
+    lock: null,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  });
+
+  const logged = execFileSync('cat', [logFile], { encoding: 'utf8' }).trim();
+  assert.equal(logged, `${copy.folder} install --frozen-lockfile`);
+  assert.equal(existsSync(join(copy.folder, 'node_modules', 'new-lib')), true);
+  assert.equal(existsSync(join(copy.folder, 'node_modules', 'main-only')), false, 'stale hardlinked package from main was cleared');
+  assert.equal(existsSync(join(repo, 'node_modules', 'main-only', 'index.js')), true, 'main node_modules stayed intact');
 });
