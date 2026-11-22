@@ -1,6 +1,7 @@
 // The machine writes one event log per card inside the run directory, with the run's state
-// database beside them. The newest log is the run the screen shows, so finding it is one rule in
-// one place.
+// database beside them. Several cards can share one run directory, so the screen chooses one log
+// and keeps choosing it while that run is live: picking the newest on every poll swaps the run
+// under Todd the moment another card is appended to.
 
 import { readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -35,6 +36,28 @@ export function findRunLog(flowDir) {
     }
   }
   return newest;
+}
+
+// The log each run directory is showing, so a second card's log cannot take the screen mid-run.
+const chosen = new Map();
+
+/**
+ * The log the screen shows for this run directory: the one already chosen while it is still
+ * there, and otherwise the newest. A run that ends, or a log that goes away, is re-picked.
+ */
+export function chosenRunLog(flowDir) {
+  if (!flowDir) return null;
+  const held = chosen.get(flowDir);
+  if (held && modifiedAt(held) !== null) return held;
+  const file = findRunLog(flowDir);
+  if (file) chosen.set(flowDir, file);
+  else chosen.delete(flowDir);
+  return file;
+}
+
+/** Let go of this run directory's choice, so the next read picks the newest log again. */
+export function releaseRunLog(flowDir) {
+  chosen.delete(flowDir);
 }
 
 /** Where the run's state database lives, given the directory the logs sit in. */

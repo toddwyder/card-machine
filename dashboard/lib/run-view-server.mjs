@@ -4,7 +4,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { foldRunView, readLiveEvents } from './run-view.mjs';
-import { findRunLog, stateDbIn } from './run-log.mjs';
+import { chosenRunLog, releaseRunLog, stateDbIn } from './run-log.mjs';
 import { readRunStatus } from './run-status.mjs';
 import { readRunViewSettings } from './run-view-settings.mjs';
 import { createUsdEstimator } from './run-estimate.mjs';
@@ -60,13 +60,13 @@ async function readReadings() {
  */
 export async function readRunViewSnapshot({ flowDir = process.env.FLOW_DIR ?? null, now = Date.now(), subscriptions, estimateUsd } = {}) {
   const settings = readRunViewSettings();
-  const logFile = findRunLog(flowDir);
+  const logFile = chosenRunLog(flowDir);
   const [events, readings] = await Promise.all([
     logFile ? readText(logFile) : Promise.resolve(''),
     subscriptions ? Promise.resolve(subscriptions) : readReadings(),
   ]);
   const runStatus = flowDir ? readRunStatus(stateDbIn(flowDir)) : null;
-  return foldRunView({
+  const snapshot = foldRunView({
     events: readLiveEvents(events),
     runStatus,
     subscriptions: readings,
@@ -74,4 +74,7 @@ export async function readRunViewSnapshot({ flowDir = process.env.FLOW_DIR ?? nu
     now,
     estimateUsd: estimateUsd ?? createUsdEstimator(),
   });
+  // Once the run on screen has ended, the next read is free to pick up a newer card.
+  if (snapshot.run?.ended) releaseRunLog(flowDir);
+  return snapshot;
 }
