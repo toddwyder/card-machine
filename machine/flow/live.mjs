@@ -83,13 +83,18 @@ export function createLiveFeed({ file, now = Date.now, append = appendFileSync, 
     return true;
   };
 
+  // Which agent a span belongs to, by the id the screen knows. Mastra names an agent span
+  // `agent run: 'flow-build'` and keeps the id on entityId, so the name is a label, not an id.
+  const agentIdOf = (span) =>
+    [span?.entityId, span?.name, span?.entityName].find((value) => typeof value === 'string' && value) ?? 'machine';
+
   // A tool or model span belongs to the nearest agent above it, because a helper's work
   // hangs under the helper's own agent span.
   const agentOf = (span) => {
     if (!span) return 'machine';
-    if (span.type === AGENT_SPAN) return span.name ?? span.entityName ?? 'machine';
+    if (span.type === AGENT_SPAN) return agentIdOf(span);
     if (span.parent) return agentOf(span.parent);
-    return span.entityName ?? 'machine';
+    return span.entityId ?? span.entityName ?? 'machine';
   };
 
   // A span without an end time has started; one with an error has failed.
@@ -98,7 +103,7 @@ export function createLiveFeed({ file, now = Date.now, append = appendFileSync, 
   const observeSpan = (span) => {
     if (!span || typeof span !== 'object') return;
     if (span.type === AGENT_SPAN) {
-      write('agent', { agent: span.name ?? span.entityName ?? 'agent', spanId: span.id, status: outcome(span) });
+      write('agent', { agent: agentIdOf(span), spanId: span.id, status: outcome(span) });
       return;
     }
     if (span.type === TOOL_SPAN) {

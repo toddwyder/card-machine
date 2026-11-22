@@ -70,21 +70,31 @@ function stagePair({ feed, advance }, stage, ms = 20000) {
   feed.stage({ stage, status: 'done' });
 }
 
+// A span as Mastra hands it to the live processor: the name is the label and entityId is the
+// agent the screen knows, so the scenes exercise the same path a real run does.
+const agentSpan = ({ agent, id, entityName, parent = null }) => ({
+  id, type: 'agent_run', name: `agent run: '${agent}'`, entityId: agent, entityName, parent,
+});
+
 // The work every scene shows: the plan stage, the builder's first slice with three tool calls,
 // one model call, and the two lists of tasks.
 function buildSlice({ feed, advance }, { tokens = 80000, tail = 3000 } = {}) {
-  feed.agent({ agent: LEAD, spanId: 'lead-1', status: 'started' });
+  const lead = agentSpan({ agent: LEAD, id: 'lead-1', entityName: 'Flow build' });
+  feed.observeSpan(lead);
   stagePair({ feed, advance }, 'start', 12000);
   stagePair({ feed, advance }, 'start-build', 24000);
-  feed.agent({ agent: HELPER, spanId: 'helper-1', status: 'started' });
+  const helper = agentSpan({ agent: HELPER, id: 'helper-1', entityName: 'Feature refactoring', parent: lead });
+  feed.observeSpan(helper);
   feed.stage({ stage: 'flow-build', status: 'started' });
   for (const [index, name] of ['mastra_workspace_read_file', 'mastra_workspace_execute_command', 'skill'].entries()) {
-    feed.tool({ agent: HELPER, callId: `call-${index + 1}`, name, status: 'started' });
+    const call = { id: `call-${index + 1}`, type: 'tool_call', name, parent: helper, attributes: {} };
+    feed.observeSpan(call);
     advance(1800);
-    feed.tool({ agent: HELPER, callId: `call-${index + 1}`, name, status: 'done' });
+    feed.observeSpan({ ...call, endTime: new Date() });
     advance(900);
   }
-  feed.model({ agent: HELPER, model: MODEL, spanId: 'model-1', inputTokens: tokens, outputTokens: 2400 });
+  const usage = { inputTokens: tokens, outputTokens: 2400 };
+  feed.observeSpan({ id: 'model-1', type: 'model_inference', parent: helper, endTime: new Date(), attributes: { model: MODEL, usage } });
   advance(tail);
   feed.tasks({ agent: LEAD, tasks: TASK_LIST.lead });
   advance(500);

@@ -61,8 +61,13 @@ test('the same event seen twice writes one line and a second attempt is its own 
 test('a span is read as the agent that ran it, with the span own end and error', () => {
   const dir = scratch();
   const feed = feedIn(dir);
-  const lead = { id: 'span-a', type: 'agent_run', name: 'flow-build', parent: null };
-  const helper = { id: 'span-h', type: 'agent_run', name: 'pstack-feature-refactoring-1', parent: lead };
+  // The shape Mastra hands the processor: the name is a label ("agent run: '<id>'") and the
+  // id the screen knows is on entityId.
+  const lead = { id: 'span-a', type: 'agent_run', name: "agent run: 'flow-build'", entityId: 'flow-build', entityName: 'Flow build', parent: null };
+  const helper = {
+    id: 'span-h', type: 'agent_run', name: "agent run: 'pstack-feature-refactoring-1'",
+    entityId: 'pstack-feature-refactoring-1', entityName: 'Feature refactoring', parent: lead,
+  };
   const tool = { id: 'span-t', type: 'tool_call', name: 'skill', parent: helper, attributes: {} };
   const model = { id: 'span-m', type: 'model_inference', parent: helper, endTime: new Date(), attributes: { model: 'cc/lead', usage: { inputTokens: 10, outputTokens: 2 } } };
   const failed = { id: 'span-f', type: 'tool_call', name: 'skill', endTime: new Date(), errorInfo: { message: 'no' }, parent: helper };
