@@ -3,8 +3,8 @@
 // snapshot the screen draws, so the page and the route can never show different things.
 
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { foldRunView, readLiveEvents } from './run-view.mjs';
+import { findRunLog, stateDbIn } from './run-log.mjs';
 import { readRunStatus } from './run-status.mjs';
 import { readRunViewSettings } from './run-view-settings.mjs';
 import { createUsdEstimator } from './run-estimate.mjs';
@@ -58,11 +58,12 @@ async function readReadings() {
  */
 export async function readRunViewSnapshot({ flowDir = process.env.FLOW_DIR ?? null, now = Date.now(), subscriptions, estimateUsd } = {}) {
   const settings = readRunViewSettings();
+  const logFile = findRunLog(flowDir);
   const [events, readings] = await Promise.all([
-    flowDir ? readText(join(flowDir, 'live.jsonl')) : Promise.resolve(''),
+    logFile ? readText(logFile) : Promise.resolve(''),
     subscriptions ? Promise.resolve(subscriptions) : readReadings(),
   ]);
-  const runStatus = flowDir ? readRunStatus(join(flowDir, 'state.db')) : null;
+  const runStatus = flowDir ? readRunStatus(stateDbIn(flowDir)) : null;
   return foldRunView({
     events: readLiveEvents(events),
     runStatus,

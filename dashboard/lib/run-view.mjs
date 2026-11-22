@@ -2,6 +2,7 @@
 // Everything here is pure. No file reads, no clock, no network, so a test can pin every state
 // and every warning without a browser or a run.
 
+import { liveType } from '../../machine/flow/live-schema.mjs';
 import { stageLabel } from './stage-labels.mjs';
 
 // A run is in one of these at a time. The table is the only place a state becomes a word or a
@@ -113,7 +114,7 @@ function foldStages(events) {
   const order = [];
   const byId = new Map();
   for (const event of events) {
-    if (event.kind !== 'stage' || !event.stage) continue;
+    if (liveType(event) !== 'stage' || !event.stage) continue;
     let row = byId.get(event.stage);
     if (!row) {
       row = { id: event.stage, label: stageLabel(event.stage), status: 'started' };
@@ -141,20 +142,20 @@ function foldHelpers(events, { settings, now }) {
   for (const event of events) {
     if (!event.agent) continue;
     const row = helper(event.agent, moment(event));
-    if (event.kind === 'agent') {
+    if (liveType(event) === 'agent') {
       if (event.status === 'done') row.status = 'done';
       else if (event.status === 'failed') row.status = 'failed';
       else if (event.status === 'started') row.status = 'working';
     }
-    if (event.kind === 'model') row.tokens += tokensIn(event);
-    if (event.kind === 'tasks' && Array.isArray(event.tasks)) {
+    if (liveType(event) === 'model') row.tokens += tokensIn(event);
+    if (liveType(event) === 'tasks' && Array.isArray(event.tasks)) {
       row.tasks = event.tasks.map(task => ({
         id: String(task?.id ?? ''),
         title: String(task?.title ?? ''),
         status: ['pending', 'in_progress', 'completed'].includes(task?.status) ? task.status : 'pending',
       }));
     }
-    if (event.kind === 'tool') {
+    if (liveType(event) === 'tool') {
       const key = `${event.agent}\u0000${event.callId ?? event.id}`;
       const action = calls.get(key) ?? { id: String(event.callId ?? event.id), name: toolName(event.name), status: 'started', at: moment(event) };
       action.at = Math.min(action.at, moment(event));
@@ -200,8 +201,13 @@ function foldSubscriptions(subscriptions, settings) {
 
 function deriveWarnings({ state, stages, helpers, subscriptions, modelEvents, idleMs, settings }) {
   const warnings = [];
+  const failedStage = stages.find(stage => stage.status === 'failed');
   if (state === 'stopped') {
-    warnings.push({ kind: 'stopped', title: WARNING_TITLES.stopped, text: 'The run stopped before it finished.' });
+    warnings.push({
+      kind: 'stopped',
+      title: WARNING_TITLES.stopped,
+      text: failedStage ? `The run stopped at “${failedStage.label}”.` : 'The run stopped before it finished.',
+    });
   }
   if (state === 'stuck') {
     const minutes = Math.max(1, Math.round((idleMs ?? settings.stuckAfterMs) / 60000));
@@ -225,11 +231,17 @@ function deriveWarnings({ state, stages, helpers, subscriptions, modelEvents, id
     const name = helperName(event.agent);
     warnings.push({ kind: 'burning_fast', title: WARNING_TITLES.burning_fast, agent: name, text: `${name} used ${used.toLocaleString('en-GB')} tokens in one model call.` });
   }
-  if (stages.some(stage => stage.status === 'failed')) {
-    const failed = stages.find(stage => stage.status === 'failed');
-    if (!warnings.some(warning => warning.kind === 'stopped')) warnings.push({ kind: 'stopped', title: WARNING_TITLES.stopped, text: `The run stopped at “${failed.label}”.` });
-  }
   return warnings;
+}
+
+// The log's own verdict on whether the run has ended, used when the machine has no row to ask:
+// the last stage it reached either failed or was the last one the machine has.
+function endedFromLog(stages) {
+  const last = stages.at(-1);
+  if (!last) return null;
+  if (last.status === 'failed') return 'stopped';
+  if (last.id === 'hold' && last.status === 'done') return 'finished';
+  return null;
 }
 
 export function runState({ ended = null, currentStage = null, idleMs = null, settings }) {
@@ -246,10 +258,11 @@ export function runState({ ended = null, currentStage = null, idleMs = null, set
 export function foldRunView({ events = [], runStatus = null, subscriptions = [], settings, now = Date.now(), estimateUsd = null }) {
   const stages = foldStages(events);
   const helpers = foldHelpers(events, { settings, now });
-  const modelEvents = events.filter(event => event.kind === 'model');
-  const started = events.find(event => event.kind === 'run');
+  const modelEvents = events.filter(event => liveType(event) === 'model');
+  const started = events.find(event => liveType(event) === 'run');
   const createdAt = number(runStatus?.createdAt) || moment(started) || null;
-  const ended = ENDED[String(runStatus?.status ?? '').toLowerCase()] ?? null;
+  // The stored row decides when it has an answer; the log speaks for itself when it does not.
+  const ended = ENDED[String(runStatus?.status ?? '').toLowerCase()] ?? (runStatus ? null : endedFromLog(stages));
   const lastActivityAt = events.reduce((last, event) => Math.max(last, moment(event)), createdAt ?? 0) || null;
   const idleMs = lastActivityAt === null ? null : Math.max(0, now - lastActivityAt);
   const currentStage = stages.at(-1) ?? null;
@@ -264,10 +277,12 @@ export function foldRunView({ events = [], runStatus = null, subscriptions = [],
   const dollars = prices.length ? prices.reduce((total, price) => total + price, 0) : null;
   const card = started?.card ?? null;
 
-  const run = card || createdAt !== null
+  // A run exists because its own log says so. The stored row only says how it ended, so an
+  // old row with no log is a result to report, never a run to draw.
+  const run = started
     ? {
       card,
-      title: String(started?.title ?? card ?? 'A card'),
+      title: String(started.title || card || 'A card'),
       status: state,
       startedAt: createdAt,
       runningMs: createdAt === null ? null : Math.max(0, (ended ? (lastActivityAt ?? now) : now) - createdAt),

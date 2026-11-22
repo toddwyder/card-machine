@@ -1,7 +1,0 @@
-{"id":"run-start","at":1763700000000,"kind":"run","card":"JUL-361","title":"Mission control's Run view"}
-{"id":"stage-build-1","at":1763700016000,"kind":"stage","stage":"flow-build","status":"started"}
-{"id":"agent-lead-1","at":1763700017000,"kind":"agent","agent":"flow-build","status":"started"}
-{"id":"model-lead-1","at":1763700023000,"kind":"model","agent":"flow-build","model":"commandcode/moonshotai/Kimi-K3.1-Pro","inputTokens":132000,"outputTokens":6000,"cachedInputTokens":0}
-{"id":"tool-lead-1","at":1763700024000,"kind":"tool","agent":"flow-build","callId":"call-lead-1","name":"mastra_workspace_execute_command","status":"started"}
-{"id":"tool-lead-1","at":1763700029000,"kind":"tool","agent":"flow-build","callId":"call-lead-1","name":"mastra_workspace_execute_command","status":"done"}
-{"id":"model-lead-2","at":1763700030000,"kind":"model","agent":"flow-build","model":"commandcode/moonshotai/Kimi-K3.1-Pro","inputTokens":9000,"outputTokens":800,"cachedInputTokens":0}

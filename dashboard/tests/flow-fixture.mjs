@@ -1,75 +1,58 @@
-// A run directory the Run view can be pointed at, built from committed fixtures so the screen
-// has something real to fold while no card is running. Both the server under test and the spec
-// use the same paths, so the spec can grow the event log and watch the page keep up.
+// A run directory the Run view can be pointed at. Every log here is written by the machine's
+// own live writer, so the screen under test reads exactly the file a real run produces.
 
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { createLiveFeed, liveFileIn } from '../../machine/flow/live.mjs';
+import { writeScene } from '../scripts/live-scenes.mjs';
 
 const here = new URL('.', import.meta.url);
 export const FLOW_DIR = new URL('./test-results/flow', here).pathname;
-export const LIVE_FILE = join(FLOW_DIR, 'live.jsonl');
+export const LIVE_FILE = liveFileIn(FLOW_DIR, 'JUL-361');
 export const SUBSCRIPTIONS_FILE = join(FLOW_DIR, 'subscriptions.json');
 
-const SOURCE_EVENTS = new URL('../lib/fixtures/live/running.jsonl', here).pathname;
-// The fixture's own clock, so a card built months ago still reads as running now.
-const SOURCE_NOW = 1763700050000;
+const hours = 60 * 60 * 1000;
 
-export function buildFixture(now = Date.now()) {
+// What the three subscriptions read: two fresh, one that failed to read, and a set whose
+// five-hour window is nearly gone.
+const READINGS = {
+  normal: now => [
+    { id: 'claude', name: 'Claude', status: 'fresh', readAt: now, windows: [
+      { window: 'five_hour', percentLeft: 64, resetsAt: now + 3 * hours },
+      { window: 'weekly', percentLeft: 88, resetsAt: now + 4 * 24 * hours },
+    ] },
+    { id: 'chatgpt', name: 'ChatGPT', status: 'fresh', readAt: now, windows: [
+      { window: 'five_hour', percentLeft: 51, resetsAt: now + 3 * hours },
+      { window: 'weekly', percentLeft: 72, resetsAt: now + 4 * 24 * hours },
+    ] },
+    { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'the reading failed' },
+  ],
+  low: now => [
+    { id: 'claude', name: 'Claude', status: 'fresh', readAt: now, windows: [
+      { window: 'five_hour', percentLeft: 11, resetsAt: now + 2 * hours },
+      { window: 'weekly', percentLeft: 98, resetsAt: now + 4 * 24 * hours },
+    ] },
+    { id: 'chatgpt', name: 'ChatGPT', status: 'fresh', readAt: now, windows: [
+      { window: 'five_hour', percentLeft: 64, resetsAt: now + 3 * hours },
+      { window: 'weekly', percentLeft: 88, resetsAt: now + 4 * 24 * hours },
+    ] },
+    { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'the reading failed' },
+  ],
+};
+
+/** Rebuild the run directory as one scene with one set of readings, and return its path. */
+export function prepare({ scene = 'running', readings = 'normal', now = Date.now() } = {}) {
   rmSync(FLOW_DIR, { recursive: true, force: true });
   mkdirSync(FLOW_DIR, { recursive: true });
-
-  const shift = now - SOURCE_NOW;
-  const lines = readFileSync(SOURCE_EVENTS, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map(line => {
-      const event = JSON.parse(line);
-      event.at += shift;
-      return JSON.stringify(event);
-    });
-  writeFileSync(LIVE_FILE, `${lines.join('\n')}\n`);
-
-  const resetsSoon = now + 3 * 60 * 60 * 1000;
-  const resetsLater = now + 4 * 24 * 60 * 60 * 1000;
-  writeFileSync(
-    SUBSCRIPTIONS_FILE,
-    JSON.stringify(
-      [
-        {
-          id: 'claude',
-          name: 'Claude',
-          status: 'fresh',
-          readAt: now,
-          windows: [
-            { window: 'five_hour', percentLeft: 11, resetsAt: resetsSoon },
-            { window: 'weekly', percentLeft: 98, resetsAt: resetsLater },
-          ],
-        },
-        {
-          id: 'chatgpt',
-          name: 'ChatGPT',
-          status: 'fresh',
-          readAt: now,
-          windows: [
-            { window: 'five_hour', percentLeft: 64, resetsAt: resetsSoon },
-            { window: 'weekly', percentLeft: 88, resetsAt: resetsLater },
-          ],
-        },
-        { id: 'commandcode', name: 'CommandCode', status: 'unknown', readAt: now, reason: 'the reading failed' },
-      ],
-      null,
-      2,
-    ),
-  );
-
-  const db = new DatabaseSync(join(FLOW_DIR, 'state.db'));
-  db.exec('CREATE TABLE mastra_workflow_runs (workflow_name text, run_id text, status text, createdAt integer, updatedAt integer)');
-  db.prepare('INSERT INTO mastra_workflow_runs VALUES (?, ?, ?, ?, ?)').run('card-path', 'fixture-run', 'running', now - 50 * 60 * 1000, now - 1000);
-  db.close();
+  writeScene(FLOW_DIR, scene, { now });
+  writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(READINGS[readings](now), null, 2));
   return FLOW_DIR;
 }
 
-export function appendEvent(event) {
-  appendFileSync(LIVE_FILE, `${JSON.stringify(event)}\n`);
+export const buildFixture = (now = Date.now()) => prepare({ now });
+
+/** Append one model call through the machine's own writer, the way a real run's tokens grow. */
+export function appendModelCall({ agent = 'pstack-feature-refactoring-1', inputTokens = 240000, outputTokens = 1200 } = {}) {
+  const feed = createLiveFeed({ file: LIVE_FILE, append: appendFileSync, logger: { warn() {} } });
+  feed.model({ agent, model: 'commandcode/moonshotai/Kimi-K3.1-Pro', spanId: `spec-${Date.now()}`, inputTokens, outputTokens });
 }

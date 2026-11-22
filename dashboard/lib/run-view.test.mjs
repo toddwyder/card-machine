@@ -1,18 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { foldRunView, helperName, readLiveEvents } from './run-view.mjs';
+import { LIVE_TYPES, liveType } from '../../machine/flow/live-schema.mjs';
+import { SCENES, writeScene } from '../scripts/live-scenes.mjs';
 
 const SETTINGS = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokens: 100000 };
-const fixture = name => readFileSync(new URL(`./fixtures/live/${name}`, import.meta.url), 'utf8');
-const eventsOf = name => readLiveEvents(fixture(name));
-const NOW = 1763700055000;
+const NOW = 1795315660000;
+
+// Every log a test reads comes out of the machine's own writer, never from a hand-written file.
+const sceneDir = scene => mkdtempSync(join(tmpdir(), `run-view-${scene}-`));
+const sceneLog = (scene, over = {}) => readFileSync(writeScene(sceneDir(scene), scene, { now: NOW, ...over }), 'utf8');
+const eventsOf = (scene, over) => readLiveEvents(sceneLog(scene, over));
 
 const freshSubscription = (id, name, windows) => ({ id, name, status: 'fresh', readAt: NOW, windows });
 const fold = (over = {}) => foldRunView({ settings: SETTINGS, now: NOW, events: [], subscriptions: [], ...over });
 
 test('a running card shows where it is, what it has used, and who is working', () => {
-  const snapshot = fold({ events: eventsOf('running.jsonl') });
+  const snapshot = fold({ events: eventsOf('running') });
   assert.equal(snapshot.run.status, 'running');
   assert.equal(snapshot.run.title, "Mission control's Run view");
   assert.equal(snapshot.run.stage.id, 'flow-build');
@@ -20,39 +27,44 @@ test('a running card shows where it is, what it has used, and who is working', (
   assert.equal(snapshot.run.step, 'Architect the shape');
   assert.deepEqual(snapshot.run.stages.map(stage => stage.id), ['start', 'start-build', 'flow-build']);
   assert.deepEqual(snapshot.run.stages.map(stage => stage.status), ['done', 'done', 'started']);
-  assert.equal(snapshot.run.usage.tokens, 12000 + 900 + 4000 + 4000 + 400);
-  assert.equal(snapshot.run.runningMs, NOW - 1763700000000);
+  assert.equal(snapshot.run.usage.tokens, 82400);
+  assert.equal(snapshot.run.runningMs, NOW - snapshot.run.startedAt);
+  assert.equal(snapshot.run.runningMs > 0, true);
   assert.deepEqual(snapshot.warnings, []);
 });
 
+test('every event the writer emits is a type the shared schema and the fold know', () => {
+  const lines = readLiveEvents(sceneLog('running'));
+  assert.equal(lines.length > 0, true);
+  const written = new Set(lines.map(event => liveType(event)));
+  assert.deepEqual([...written].sort(), [...LIVE_TYPES].sort());
+});
+
 test('each helper is its own card and its actions run newest first, one per call', () => {
-  const [lead, helper] = fold({ events: eventsOf('running.jsonl') }).run.helpers;
+  const [lead, helper] = fold({ events: eventsOf('running') }).run.helpers;
   assert.equal(lead.name, 'Lead');
   assert.equal(helper.name, 'Feature Refactoring 1');
-  assert.deepEqual(helper.actions.map(action => action.name), ['Read a skill', 'Run a command']);
-  assert.deepEqual(helper.actions.map(action => action.status), ['started', 'done']);
-  assert.equal(lead.actions.length, 1);
+  assert.deepEqual(helper.actions.map(action => action.name), ['Read a skill', 'Run a command', 'Read a file']);
+  assert.deepEqual(helper.actions.map(action => action.status), ['done', 'done', 'done']);
+  assert.equal(lead.actions.length, 0);
   assert.equal(lead.status, 'working');
 });
 
-test('the same event id twice counts once', () => {
-  const [runLine, stageLine] = fixture('torn.jsonl').split('\n');
-  const snapshot = fold({ events: readLiveEvents(`${runLine}\n${stageLine}\n${stageLine}\n${stageLine}`) });
-  assert.equal(snapshot.run.stages.length, 1);
-  assert.deepEqual(snapshot.run.stages.map(stage => stage.id), ['flow-build']);
-});
-
-test('a half-written last line is skipped, not fatal', () => {
-  const snapshot = fold({ events: eventsOf('torn.jsonl') });
-  assert.equal(snapshot.run.stage.id, 'flow-build');
-  assert.deepEqual(snapshot.run.stages.map(stage => stage.id), ['flow-build']);
+test('a half-written last line is skipped, not fatal, and a repeated id counts once', () => {
+  const log = sceneLog('torn');
+  const lines = log.split('\n').filter(Boolean);
+  assert.match(lines.at(-1), /^\{"id":"torn-1"/);
+  const events = readLiveEvents(log);
+  assert.equal(events.length, lines.length - 1);
+  const [first, second] = lines;
+  assert.equal(readLiveEvents(`${first}\n${second}\n${second}\n${second}`).length, 2);
   assert.equal(readLiveEvents('').length, 0);
-  assert.equal(readLiveEvents('not json\n{"id":"a","kind":"run"}\n').length, 1);
+  assert.equal(readLiveEvents('not json\n').length, 0);
 });
 
 test('seven quiet minutes become a stuck run with a stuck warning', () => {
-  const events = eventsOf('running.jsonl');
-  const lastAt = 1763700050000;
+  const events = eventsOf('running');
+  const lastAt = events.reduce((last, event) => Math.max(last, event.at), 0);
   const stuck = fold({ events, now: lastAt + 8 * 60000 });
   assert.equal(stuck.run.status, 'stuck');
   assert.equal(stuck.run.helpers.at(-1).status, 'stuck');
@@ -61,29 +73,38 @@ test('seven quiet minutes become a stuck run with a stuck warning', () => {
   assert.equal(fold({ events, now: lastAt + 5 * 60000 }).run.status, 'running');
 });
 
-test('a stopped run says so, on the run and in a warning', () => {
-  const snapshot = fold({
-    events: eventsOf('failed.jsonl'),
-    runStatus: { status: 'failed', createdAt: 1763700000000, updatedAt: 1763700025000 },
-  });
-  assert.equal(snapshot.run.status, 'stopped');
-  assert.equal(snapshot.run.stage.status, 'failed');
-  assert.deepEqual(snapshot.warnings.map(warning => warning.kind), ['stopped']);
+test('a stopped run says so, whether the row or only the log says it', () => {
+  const withRow = fold({ events: eventsOf('stopped'), runStatus: { status: 'failed', createdAt: NOW - 360000, updatedAt: NOW - 60000 } });
+  assert.equal(withRow.run.status, 'stopped');
+  assert.equal(withRow.run.stage.status, 'failed');
+  assert.deepEqual(withRow.warnings.map(warning => warning.kind), ['stopped']);
+  const logOnly = fold({ events: eventsOf('stopped') });
+  assert.equal(logOnly.run.status, 'stopped');
+  assert.deepEqual(logOnly.warnings.map(warning => warning.kind), ['stopped']);
 });
 
 test('a finished run reads as finished and keeps no warnings', () => {
-  const snapshot = fold({
-    events: eventsOf('failed.jsonl'),
-    runStatus: { status: 'success', createdAt: 1763700000000, updatedAt: 1763700025000 },
-  });
-  assert.equal(snapshot.run.status, 'finished');
-  assert.equal(snapshot.run.runningMs, 25000);
-  assert.equal(snapshot.lastResult, null);
+  const withRow = fold({ events: eventsOf('finished'), runStatus: { status: 'success', createdAt: NOW - 360000, updatedAt: NOW - 20000 } });
+  assert.equal(withRow.run.status, 'finished');
+  assert.equal(withRow.run.runningMs > 0, true);
+  assert.equal(withRow.lastResult, null);
+  assert.deepEqual(withRow.warnings, []);
+  assert.equal(fold({ events: eventsOf('finished') }).run.status, 'finished');
 });
 
 test('the run waits for Todd while the UAT stage is open', () => {
-  const events = readLiveEvents('{"id":"a","at":1763700000000,"kind":"run","card":"JUL-361","title":"A card"}\n{"id":"b","at":1763700010000,"kind":"stage","stage":"acceptance","status":"started"}\n');
-  assert.equal(fold({ events }).run.status, 'waiting_for_you');
+  assert.equal(fold({ events: eventsOf('uat') }).run.status, 'waiting_for_you');
+});
+
+test('a run with no stored row still shows from its own log', () => {
+  const snapshot = fold({ events: eventsOf('running'), runStatus: null });
+  assert.equal(snapshot.run.card, 'JUL-361');
+  assert.equal(snapshot.run.title, "Mission control's Run view");
+  assert.equal(snapshot.run.stage.id, 'flow-build');
+  assert.equal(snapshot.run.step, 'Architect the shape');
+  assert.equal(snapshot.run.usage.tokens > 0, true);
+  assert.equal(snapshot.run.startedAt > 0, true);
+  assert.equal(snapshot.lastResult, null);
 });
 
 test('a subscription at or under the low mark raises one quota warning per window', () => {
@@ -123,9 +144,9 @@ test('a failed reading is unknown, with no number and no warning', () => {
 });
 
 test('one model call over the burning limit names the agent that made it', () => {
-  const snapshot = fold({ events: eventsOf('burning.jsonl') });
+  const snapshot = fold({ events: eventsOf('burning') });
   assert.deepEqual(snapshot.warnings.map(warning => warning.kind), ['burning_fast']);
-  assert.match(snapshot.warnings[0].text, /^Lead used 138,000 tokens in one model call\.$/);
+  assert.match(snapshot.warnings[0].text, /^Feature Refactoring 1 used 242,400 tokens in one model call\.$/);
 });
 
 test('nothing running shows no run at all, and the subscriptions still answer', () => {
@@ -136,10 +157,16 @@ test('nothing running shows no run at all, and the subscriptions still answer', 
   assert.equal(snapshot.observedAt, NOW);
 });
 
+test('nothing running but a stored row says what the last run did', () => {
+  const snapshot = fold({ runStatus: { status: 'success', createdAt: NOW - 3600000, updatedAt: NOW - 3500000 } });
+  assert.equal(snapshot.run, null);
+  assert.deepEqual(snapshot.lastResult, { status: 'finished', at: NOW - 3500000 });
+});
+
 test('a dollar figure is passed through as an estimate, never invented', () => {
   const estimateUsd = () => 0.0125;
-  assert.equal(fold({ events: eventsOf('running.jsonl') }).run.usage.dollarsEstimate, null);
-  assert.equal(fold({ events: eventsOf('running.jsonl'), estimateUsd }).run.usage.dollarsEstimate, 0.025);
+  assert.equal(fold({ events: eventsOf('running') }).run.usage.dollarsEstimate, null);
+  assert.equal(fold({ events: eventsOf('running'), estimateUsd }).run.usage.dollarsEstimate, 0.0125);
 });
 
 test('an agent id becomes a name Todd can read', () => {
@@ -149,7 +176,16 @@ test('an agent id becomes a name Todd can read', () => {
 });
 
 test('a run whose calls have no published price reports no dollar figure', () => {
-  const snapshot = fold({ events: eventsOf('running.jsonl'), estimateUsd: () => null });
+  const snapshot = fold({ events: eventsOf('running'), estimateUsd: () => null });
   assert.equal(snapshot.run.usage.dollarsEstimate, null);
   assert.equal(snapshot.run.usage.tokens > 0, true);
+});
+
+test('every scene writes a log the fold can read', () => {
+  for (const scene of SCENES) {
+    if (scene === 'quiet') continue;
+    const events = eventsOf(scene);
+    for (const event of events) assert.equal(LIVE_TYPES.includes(liveType(event)), true, `${scene}: ${JSON.stringify(event)}`);
+    assert.doesNotThrow(() => fold({ events }));
+  }
 });

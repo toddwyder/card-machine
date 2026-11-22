@@ -1,7 +1,0 @@
-{"id":"run-start","at":1763700000000,"kind":"run","card":"JUL-361","title":"Mission control's Run view"}
-{"id":"stage-build-1","at":1763700016000,"kind":"stage","stage":"flow-build","status":"started"}
-{"id":"agent-lead-1","at":1763700017000,"kind":"agent","agent":"flow-build","status":"started"}
-{"id":"tasks-lead-1","at":1763700018000,"kind":"tasks","agent":"flow-build","tasks":[{"id":"playbook_1","title":"Trace the affected subsystem","status":"in_progress"}]}
-{"id":"tool-lead-1","at":1763700019000,"kind":"tool","agent":"flow-build","callId":"call-lead-1","name":"mastra_workspace_read_file","status":"started"}
-{"id":"tool-lead-2","at":1763700020000,"kind":"tool","agent":"flow-build","callId":"call-lead-1","name":"mastra_workspace_read_file","status":"done"}
-{"id":"torn","at":1763700021000,"kind":"stage","stage":"flow-bl

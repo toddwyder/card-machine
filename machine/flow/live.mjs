@@ -9,6 +9,7 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isLiveType } from './live-schema.mjs';
 
 export const LIVE_FILE = 'live.jsonl';
 
@@ -62,6 +63,7 @@ export function createLiveFeed({ file, now = Date.now, append = appendFileSync, 
 
   const write = (type, fields) => {
     const shape = EVENTS[type];
+    if (!isLiveType(type) || !shape) throw new Error(`live event type ${type} is not in the shared schema`);
     const id = shape.id(fields);
     if (seen.has(id)) return false;
     seen.add(id);
