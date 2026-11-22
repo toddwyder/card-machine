@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readRunViewSnapshot } from '../../../lib/run-source.js';
+import { readRunViewSnapshot } from '#lib/run-source.js';
 
 export const dynamic = 'force-dynamic';
 

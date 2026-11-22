@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { buildRunViewSnapshot } from '../lib/run-view-model.js';
+import { buildRunViewSnapshot } from '#lib/run-view-model.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const stoppedWaitingFixture = JSON.parse(
