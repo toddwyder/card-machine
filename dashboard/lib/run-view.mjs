@@ -200,7 +200,10 @@ function foldSubscriptions(subscriptions, settings) {
 
 function deriveWarnings({ state, stages, helpers, subscriptions, modelEvents, idleMs, settings }) {
   const warnings = [];
-  if (state === 'stopped') warnings.push({ kind: 'stopped', title: WARNING_TITLES.stopped, text: 'The run stopped before it finished.' });  if (state === 'stuck') {
+  if (state === 'stopped') {
+    warnings.push({ kind: 'stopped', title: WARNING_TITLES.stopped, text: 'The run stopped before it finished.' });
+  }
+  if (state === 'stuck') {
     const minutes = Math.max(1, Math.round((idleMs ?? settings.stuckAfterMs) / 60000));
     warnings.push({ kind: 'stuck', title: WARNING_TITLES.stuck, text: `Nothing has happened in the run for ${minutes} minutes.` });
   }
