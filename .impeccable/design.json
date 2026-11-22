@@ -1,0 +1,531 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-22T18:43:37Z",
+  "title": "Design System: Julia Machine â€” Mission Control",
+  "extensions": {
+    "colorMeta": {
+      "bottle-forest": {
+        "role": "primary",
+        "displayName": "Bottle Forest",
+        "canonical": "#1D3B27",
+        "tonalRamp": [
+          "oklch(16% 0.025 149)",
+          "oklch(26% 0.04 149)",
+          "oklch(38% 0.051 149)",
+          "oklch(50% 0.055 149)",
+          "oklch(63% 0.051 149)",
+          "oklch(76% 0.038 149)",
+          "oklch(87% 0.023 149)",
+          "oklch(95% 0.012 149)"
+        ]
+      },
+      "larder-leaf": {
+        "role": "primary",
+        "displayName": "Larder Leaf",
+        "canonical": "#3D6B2C",
+        "tonalRamp": [
+          "oklch(16% 0.044 136)",
+          "oklch(26% 0.071 136)",
+          "oklch(38% 0.09 136)",
+          "oklch(50% 0.098 136)",
+          "oklch(63% 0.09 136)",
+          "oklch(76% 0.069 136)",
+          "oklch(87% 0.041 136)",
+          "oklch(95% 0.016 136)"
+        ]
+      },
+      "sprout-highlight": {
+        "role": "primary",
+        "displayName": "Sprout Highlight",
+        "canonical": "#9FD06E",
+        "tonalRamp": [
+          "oklch(16% 0.061 129)",
+          "oklch(26% 0.097 129)",
+          "oklch(38% 0.124 129)",
+          "oklch(50% 0.135 129)",
+          "oklch(63% 0.124 129)",
+          "oklch(76% 0.095 129)",
+          "oklch(87% 0.057 129)",
+          "oklch(95% 0.02 129)"
+        ]
+      },
+      "forest-edge": {
+        "role": "primary",
+        "displayName": "Forest Edge",
+        "canonical": "#5E8A4C",
+        "tonalRamp": [
+          "oklch(16% 0.04 136)",
+          "oklch(26% 0.063 136)",
+          "oklch(38% 0.081 136)",
+          "oklch(50% 0.088 136)",
+          "oklch(63% 0.081 136)",
+          "oklch(76% 0.062 136)",
+          "oklch(87% 0.037 136)",
+          "oklch(95% 0.015 136)"
+        ]
+      },
+      "forest-deep": {
+        "role": "primary",
+        "displayName": "Forest Deep",
+        "canonical": "#13281A",
+        "tonalRamp": [
+          "oklch(16% 0.02 149)",
+          "oklch(26% 0.032 149)",
+          "oklch(38% 0.041 149)",
+          "oklch(50% 0.045 149)",
+          "oklch(63% 0.041 149)",
+          "oklch(76% 0.032 149)",
+          "oklch(87% 0.019 149)",
+          "oklch(95% 0.01 149)"
+        ]
+      },
+      "ochre-amber": {
+        "role": "secondary",
+        "displayName": "Ochre Amber",
+        "canonical": "#B4540A",
+        "tonalRamp": [
+          "oklch(16% 0.07 52)",
+          "oklch(26% 0.112 52)",
+          "oklch(38% 0.143 52)",
+          "oklch(50% 0.155 52)",
+          "oklch(63% 0.143 52)",
+          "oklch(76% 0.108 52)",
+          "oklch(87% 0.065 52)",
+          "oklch(95% 0.018 52)"
+        ]
+      },
+      "sent-back-gold": {
+        "role": "secondary",
+        "displayName": "Sent-Back Gold",
+        "canonical": "#D8A236",
+        "tonalRamp": [
+          "oklch(16% 0.059 82)",
+          "oklch(26% 0.095 82)",
+          "oklch(38% 0.121 82)",
+          "oklch(50% 0.132 82)",
+          "oklch(63% 0.121 82)",
+          "oklch(76% 0.092 82)",
+          "oklch(87% 0.055 82)",
+          "oklch(95% 0.018 82)"
+        ]
+      },
+      "sent-back-rim": {
+        "role": "secondary",
+        "displayName": "Sent-Back Rim",
+        "canonical": "#F2C96B",
+        "tonalRamp": [
+          "oklch(16% 0.056 86)",
+          "oklch(26% 0.09 86)",
+          "oklch(38% 0.115 86)",
+          "oklch(50% 0.125 86)",
+          "oklch(63% 0.115 86)",
+          "oklch(76% 0.087 86)",
+          "oklch(87% 0.052 86)",
+          "oklch(95% 0.018 86)"
+        ]
+      },
+      "warm-amber-wash": {
+        "role": "secondary",
+        "displayName": "Warm Amber Wash",
+        "canonical": "#FFF1DC",
+        "tonalRamp": [
+          "oklch(16% 0.025 72)",
+          "oklch(26% 0.04 72)",
+          "oklch(38% 0.051 72)",
+          "oklch(50% 0.055 72)",
+          "oklch(63% 0.051 72)",
+          "oklch(76% 0.038 72)",
+          "oklch(87% 0.023 72)",
+          "oklch(95% 0.014 72)"
+        ]
+      },
+      "amber-highlight": {
+        "role": "secondary",
+        "displayName": "Amber Highlight",
+        "canonical": "#F7D9B0",
+        "tonalRamp": [
+          "oklch(16% 0.035 70)",
+          "oklch(26% 0.056 70)",
+          "oklch(38% 0.072 70)",
+          "oklch(50% 0.078 70)",
+          "oklch(63% 0.072 70)",
+          "oklch(76% 0.055 70)",
+          "oklch(87% 0.033 70)",
+          "oklch(95% 0.016 70)"
+        ]
+      },
+      "amber-ink": {
+        "role": "secondary",
+        "displayName": "Amber Ink",
+        "canonical": "#5E2904",
+        "tonalRamp": [
+          "oklch(16% 0.043 49)",
+          "oklch(26% 0.068 49)",
+          "oklch(38% 0.087 49)",
+          "oklch(50% 0.095 49)",
+          "oklch(63% 0.087 49)",
+          "oklch(76% 0.066 49)",
+          "oklch(87% 0.04 49)",
+          "oklch(95% 0.014 49)"
+        ]
+      },
+      "madder-red": {
+        "role": "tertiary",
+        "displayName": "Madder Red",
+        "canonical": "#A3212D",
+        "tonalRamp": [
+          "oklch(16% 0.074 19)",
+          "oklch(26% 0.119 19)",
+          "oklch(38% 0.152 19)",
+          "oklch(50% 0.165 19)",
+          "oklch(63% 0.152 19)",
+          "oklch(76% 0.115 19)",
+          "oklch(87% 0.069 19)",
+          "oklch(95% 0.016 19)"
+        ]
+      },
+      "madder-wash": {
+        "role": "tertiary",
+        "displayName": "Madder Wash",
+        "canonical": "#FBE6E7",
+        "tonalRamp": [
+          "oklch(16% 0.022 16)",
+          "oklch(26% 0.035 16)",
+          "oklch(38% 0.044 16)",
+          "oklch(50% 0.048 16)",
+          "oklch(63% 0.044 16)",
+          "oklch(76% 0.034 16)",
+          "oklch(87% 0.02 16)",
+          "oklch(95% 0.01 16)"
+        ]
+      },
+      "madder-ink": {
+        "role": "tertiary",
+        "displayName": "Madder Ink",
+        "canonical": "#66101A",
+        "tonalRamp": [
+          "oklch(16% 0.052 18)",
+          "oklch(26% 0.083 18)",
+          "oklch(38% 0.106 18)",
+          "oklch(50% 0.115 18)",
+          "oklch(63% 0.106 18)",
+          "oklch(76% 0.081 18)",
+          "oklch(87% 0.048 18)",
+          "oklch(95% 0.014 18)"
+        ]
+      },
+      "sage-ground": {
+        "role": "neutral",
+        "displayName": "Sage Ground",
+        "canonical": "#DCEBCB",
+        "tonalRamp": [
+          "oklch(16% 0.022 132)",
+          "oklch(26% 0.035 132)",
+          "oklch(38% 0.044 132)",
+          "oklch(50% 0.048 132)",
+          "oklch(63% 0.044 132)",
+          "oklch(76% 0.034 132)",
+          "oklch(87% 0.02 132)",
+          "oklch(95% 0.012 132)"
+        ]
+      },
+      "sage-deep": {
+        "role": "neutral",
+        "displayName": "Sage Deep",
+        "canonical": "#C7D6BE",
+        "tonalRamp": [
+          "oklch(16% 0.016 134)",
+          "oklch(26% 0.026 134)",
+          "oklch(38% 0.033 134)",
+          "oklch(50% 0.036 134)",
+          "oklch(63% 0.033 134)",
+          "oklch(76% 0.025 134)",
+          "oklch(87% 0.015 134)",
+          "oklch(95% 0.01 134)"
+        ]
+      },
+      "larder-ivory": {
+        "role": "neutral",
+        "displayName": "Larder Ivory",
+        "canonical": "#F6F1E4",
+        "tonalRamp": [
+          "oklch(16% 0.011 88)",
+          "oklch(26% 0.017 88)",
+          "oklch(38% 0.022 88)",
+          "oklch(50% 0.024 88)",
+          "oklch(63% 0.022 88)",
+          "oklch(76% 0.017 88)",
+          "oklch(87% 0.01 88)",
+          "oklch(95% 0.008 88)"
+        ]
+      },
+      "ivory-track": {
+        "role": "neutral",
+        "displayName": "Ivory Track",
+        "canonical": "#DAD4C4",
+        "tonalRamp": [
+          "oklch(16% 0.01 86)",
+          "oklch(26% 0.016 86)",
+          "oklch(38% 0.02 86)",
+          "oklch(50% 0.022 86)",
+          "oklch(63% 0.02 86)",
+          "oklch(76% 0.015 86)",
+          "oklch(87% 0.009 86)",
+          "oklch(95% 0.008 86)"
+        ]
+      },
+      "pine-ink": {
+        "role": "neutral",
+        "displayName": "Pine Ink",
+        "canonical": "#1A2A1E",
+        "tonalRamp": [
+          "oklch(16% 0.013 146)",
+          "oklch(26% 0.02 146)",
+          "oklch(38% 0.026 146)",
+          "oklch(50% 0.028 146)",
+          "oklch(63% 0.026 146)",
+          "oklch(76% 0.02 146)",
+          "oklch(87% 0.012 146)",
+          "oklch(95% 0.008 146)"
+        ]
+      },
+      "moss-ink": {
+        "role": "neutral",
+        "displayName": "Moss Ink",
+        "canonical": "#3E4F3A",
+        "tonalRamp": [
+          "oklch(16% 0.014 134)",
+          "oklch(26% 0.023 134)",
+          "oklch(38% 0.029 134)",
+          "oklch(50% 0.032 134)",
+          "oklch(63% 0.029 134)",
+          "oklch(76% 0.022 134)",
+          "oklch(87% 0.013 134)",
+          "oklch(95% 0.008 134)"
+        ]
+      },
+      "forest-ivory-soft": {
+        "role": "neutral",
+        "displayName": "Forest Ivory Soft",
+        "canonical": "#D5E3CC",
+        "tonalRamp": [
+          "oklch(16% 0.015 132)",
+          "oklch(26% 0.024 132)",
+          "oklch(38% 0.031 132)",
+          "oklch(50% 0.034 132)",
+          "oklch(63% 0.031 132)",
+          "oklch(76% 0.024 132)",
+          "oklch(87% 0.014 132)",
+          "oklch(95% 0.01 132)"
+        ]
+      },
+      "stone-unknown": {
+        "role": "neutral",
+        "displayName": "Stone Unknown",
+        "canonical": "#878475",
+        "tonalRamp": [
+          "oklch(16% 0.01 94)",
+          "oklch(26% 0.016 94)",
+          "oklch(38% 0.02 94)",
+          "oklch(50% 0.022 94)",
+          "oklch(63% 0.02 94)",
+          "oklch(76% 0.015 94)",
+          "oklch(87% 0.009 94)",
+          "oklch(95% 0.006 94)"
+        ]
+      },
+      "stone-ink": {
+        "role": "neutral",
+        "displayName": "Stone Ink",
+        "canonical": "#525144",
+        "tonalRamp": [
+          "oklch(16% 0.009 96)",
+          "oklch(26% 0.014 96)",
+          "oklch(38% 0.018 96)",
+          "oklch(50% 0.02 96)",
+          "oklch(63% 0.018 96)",
+          "oklch(76% 0.014 96)",
+          "oklch(87% 0.008 96)",
+          "oklch(95% 0.006 96)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Current stage heading inside the run panel; largest text on the page."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Header brand mark, idle state heading, and top-level section headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Active card title, station-board stage tile names, token totals, and helper card headers."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default plain-English copy, warning text, usage summaries, and helper action rows."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Live status, stage tile counters, step chip tags, helper metadata, and legends."
+      }
+    },
+    "shadows": [
+      {
+        "name": "running-dot-ring",
+        "value": "0 0 0 3px #3D6B2C",
+        "purpose": "Flat unblurred 3px halo anchoring the sprout-green running dot inside the dark running status pill; no drop shadows are used anywhere else."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-larder-glide",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Decelerating ease-out curve shared by both signature motions (active step marker glide and helper action slide-in)."
+      },
+      {
+        "name": "duration-marker-glide",
+        "value": "420ms",
+        "purpose": "Duration for the active step marker sliding across the current stage's step row (disabled under prefers-reduced-motion)."
+      },
+      {
+        "name": "duration-action-enter",
+        "value": "360ms",
+        "purpose": "Duration for a newly arrived helper action sliding into the top of its card from translateY(-8px) and blur(2px) (disabled under prefers-reduced-motion)."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "720px"
+      },
+      {
+        "name": "tablet-stage-stack",
+        "value": "859px"
+      },
+      {
+        "name": "desktop-max",
+        "value": "1200px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Header Bar",
+      "kind": "nav",
+      "refersTo": "header-bar",
+      "description": "Full-bleed bottle-green top bar with Zilla Slab brand mark and live connection readout.",
+      "html": "<header class=\"ds-header\"><div class=\"ds-header-inner\"><h1 class=\"ds-brand\">Julia machine</h1><p class=\"ds-live-status\"><span class=\"ds-live-dot\" aria-hidden=\"true\"></span>Live Â· updated just now</p></div></header>",
+      "css": ".ds-header { background: var(--surface-forest, #1D3B27); color: var(--ink-on-forest, #F6F1E4); border-bottom: 2px solid #13281A; font-family: var(--font-source-sans, \"Source Sans 3\", sans-serif); } .ds-header-inner { max-width: 1200px; margin: 0 auto; padding: 0 32px; min-height: 68px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; } .ds-brand { margin: 0; font-family: var(--font-zilla-slab, \"Zilla Slab\", serif); font-weight: 700; font-size: 26px; line-height: 1.1; letter-spacing: -0.01em; color: var(--ink-on-forest, #F6F1E4); } .ds-live-status { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--ink-on-forest-soft, #D5E3CC); } .ds-live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent-sprout, #9FD06E); flex-shrink: 0; }"
+    },
+    {
+      "name": "Warning Boxes (Stuck & Problem)",
+      "kind": "custom",
+      "refersTo": "warning-stuck",
+      "description": "Top-of-page plain-English warnings: dashed ochre-amber for recoverable stalls, solid madder red for dead-end problems.",
+      "html": "<div class=\"ds-warnings\"><div class=\"ds-warning ds-warning-stuck\"><span class=\"ds-warning-icon\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7.25 4.75V15.25\"/><path d=\"M12.75 4.75V15.25\"/></svg></span><p class=\"ds-warning-copy\"><strong class=\"ds-warning-title\">Helper paused for 7 minutes.</strong> Automatic recovery is running.</p></div><div class=\"ds-warning ds-warning-solid\"><span class=\"ds-warning-icon\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M10 3.25L17 15.75H3L10 3.25Z\"/><path d=\"M10 8V11.25\"/><circle cx=\"10\" cy=\"13.6\" r=\"0.6\" fill=\"currentColor\" stroke=\"none\"/></svg></span><p class=\"ds-warning-copy\"><strong class=\"ds-warning-title\">Run stopped after second stall.</strong> Dead-end report posted on the card.</p></div></div>",
+      "css": ".ds-warnings { display: flex; flex-wrap: wrap; gap: 12px; font-family: var(--font-source-sans, \"Source Sans 3\", sans-serif); } .ds-warning { flex: 1 1 280px; display: flex; align-items: center; gap: 12px; border-radius: 14px; padding: 14px 18px; font-size: 16px; line-height: 1.35; } .ds-warning-stuck { background: var(--surface-amber, #FFF1DC); border: 3px dashed var(--accent-amber, #B4540A); color: var(--ink-amber, #5E2904); } .ds-warning-solid { background: var(--surface-madder, #FBE6E7); border: 3px solid var(--accent-madder, #A3212D); color: var(--ink-madder, #66101A); } .ds-warning-icon { display: inline-flex; flex-shrink: 0; } .ds-warning-copy { margin: 0; } .ds-warning-title { font-weight: 700; font-size: 17px; }"
+    },
+    {
+      "name": "Station-Board Stage Tiles",
+      "kind": "card",
+      "refersTo": "stage-tile-current",
+      "description": "Four-stage railway-board tiles inside the bottle-green run panel showing passed, current, sent-back, and upcoming states.",
+      "html": "<div class=\"ds-stage-panel\"><ol class=\"ds-stage-board\"><li class=\"ds-stage-tile ds-stage-passed\"><span class=\"ds-stage-status\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4.5 10.5L8.25 14.25L15.75 6.25\"/></svg> Done</span><span class=\"ds-stage-name\">Build</span><span class=\"ds-stage-count\">4 of 4</span></li><li class=\"ds-stage-tile ds-stage-current\"><span class=\"ds-stage-status\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6.5 4.75L15.25 10L6.5 15.25V4.75Z\" fill=\"currentColor\" stroke=\"currentColor\"/></svg> Now</span><span class=\"ds-stage-name\">Babysit</span><span class=\"ds-stage-count\">2 of 3</span></li><li class=\"ds-stage-tile ds-stage-sentback\"><span class=\"ds-stage-status\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M8 5L4.5 8.5L8 12\"/><path d=\"M5 8.5H12.25C14.32 8.5 16 10.18 16 12.25C16 14.32 14.32 16 12.25 16H9.5\"/></svg> Round 2</span><span class=\"ds-stage-name\">Shipping</span><span class=\"ds-stage-count\">1 of 5</span></li><li class=\"ds-stage-tile ds-stage-upcoming\"><span class=\"ds-stage-status\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"10\" cy=\"10\" r=\"5.5\"/></svg> Next</span><span class=\"ds-stage-name\">After merge</span><span class=\"ds-stage-count\">0 of 2</span></li></ol></div>",
+      "css": ".ds-stage-panel { background: var(--surface-forest, #1D3B27); border-radius: 20px; padding: 20px; font-family: var(--font-source-sans, \"Source Sans 3\", sans-serif); } .ds-stage-board { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; } .ds-stage-tile { padding: 14px 16px; border-radius: 14px; display: flex; flex-direction: column; gap: 4px; } .ds-stage-status { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; } .ds-stage-name { font-family: var(--font-zilla-slab, \"Zilla Slab\", serif); font-weight: 700; font-size: 22px; line-height: 1.15; } .ds-stage-count { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; } .ds-stage-passed { background: var(--surface-leaf, #3D6B2C); color: var(--ink-on-forest, #F6F1E4); border: 2px solid var(--surface-leaf, #3D6B2C); } .ds-stage-current { background: var(--surface-ivory, #F6F1E4); color: var(--surface-forest, #1D3B27); border: 3px solid var(--accent-sprout, #9FD06E); } .ds-stage-sentback { background: #27442E; color: #FCE6B1; border: 2px dotted #F2C96B; } .ds-stage-upcoming { background: transparent; color: var(--ink-on-forest-soft, #D5E3CC); border: 2px solid var(--accent-forest-border, #5E8A4C); }"
+    },
+    {
+      "name": "Step Chip States",
+      "kind": "chip",
+      "refersTo": "step-chip-running",
+      "description": "Plain-English step chips inside the current stage encoding state via border geometry, icon, and colour.",
+      "html": "<div class=\"ds-steps-panel\"><ol class=\"ds-steps-row\"><li class=\"ds-step ds-step-passed\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4.5 10.5L8.25 14.25L15.75 6.25\"/></svg><span>Write code</span></li><li class=\"ds-step ds-step-running\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6.5 4.75L15.25 10L6.5 15.25V4.75Z\" fill=\"currentColor\" stroke=\"currentColor\"/></svg><span>Run tests</span><span class=\"ds-tag-now\">now</span></li><li class=\"ds-step ds-step-sentback\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M8 5L4.5 8.5L8 12\"/><path d=\"M5 8.5H12.25C14.32 8.5 16 10.18 16 12.25C16 14.32 14.32 16 12.25 16H9.5\"/></svg><span>Fix review notes</span><span class=\"ds-tag-round\">round 2</span></li><li class=\"ds-step ds-step-stuck\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7.25 4.75V15.25\"/><path d=\"M12.75 4.75V15.25\"/></svg><span>Wait for checks</span></li><li class=\"ds-step ds-step-givenup\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5.5 5.5L14.5 14.5\"/><path d=\"M14.5 5.5L5.5 14.5\"/></svg><span class=\"ds-struck\">Deploy preview</span></li><li class=\"ds-step ds-step-pending\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"10\" cy=\"10\" r=\"5.5\"/></svg><span>Ready for merge</span></li></ol></div>",
+      "css": ".ds-steps-panel { background: var(--surface-forest, #1D3B27); border-radius: 16px; padding: 18px; font-family: var(--font-source-sans, \"Source Sans 3\", sans-serif); } .ds-steps-row { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; } .ds-step { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 12px; font-size: 15px; line-height: 1.25; font-weight: 600; } .ds-step-passed { background: var(--surface-leaf, #3D6B2C); color: var(--ink-on-forest, #F6F1E4); border: 2px solid var(--surface-leaf, #3D6B2C); } .ds-step-running { background: var(--surface-ivory, #F6F1E4); color: var(--surface-forest, #1D3B27); border: 3px solid var(--accent-sprout, #9FD06E); font-weight: 700; } .ds-step-sentback { background: #2A4630; color: #FCE6B1; border: 2px dotted #F2C96B; } .ds-step-stuck { background: var(--surface-amber, #FFF1DC); color: var(--ink-amber, #5E2904); border: 2px dashed var(--accent-amber, #B4540A); font-weight: 700; } .ds-step-givenup { background: var(--surface-madder, #FBE6E7); color: var(--ink-madder, #66101A); border: 2px solid var(--accent-madder, #A3212D); font-weight: 700; } .ds-step-pending { background: transparent; color: var(--ink-on-forest-soft, #D5E3CC); border: 2px solid var(--accent-forest-border, #5E8A4C); } .ds-tag-now { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--surface-ground, #DCEBCB); color: var(--surface-forest, #1D3B27); } .ds-tag-round { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: rgba(242, 201, 107, 0.2); color: #FCE6B1; font-variant-numeric: tabular-nums; } .ds-struck { text-decoration: line-through; text-decoration-thickness: 2px; }"
+    },
+    {
+      "name": "Run Status Pills",
+      "kind": "chip",
+      "refersTo": "run-panel",
+      "description": "Rounded pill badges communicating overall run state inside the bottle-green run panel header.",
+      "html": "<div class=\"ds-pill-row\"><span class=\"ds-pill ds-pill-running\"><span class=\"ds-run-dot\" aria-hidden=\"true\"></span>Running Â· 14m</span><span class=\"ds-pill ds-pill-waiting\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"10\" cy=\"10\" r=\"5.5\"/></svg>Waiting for you</span><span class=\"ds-pill ds-pill-finished\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4.5 10.5L8.25 14.25L15.75 6.25\"/></svg>Finished</span><span class=\"ds-pill ds-pill-stuck\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7.25 4.75V15.25\"/><path d=\"M12.75 4.75V15.25\"/></svg>Stuck</span><span class=\"ds-pill ds-pill-problem\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5.5 5.5L14.5 14.5\"/><path d=\"M14.5 5.5L5.5 14.5\"/></svg>Given up</span></div>",
+      "css": ".ds-pill-row { background: var(--surface-forest, #1D3B27); border-radius: 16px; padding: 16px; display: flex; flex-wrap: wrap; gap: 10px; font-family: var(--font-source-sans, \"Source Sans 3\", sans-serif); } .ds-pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 5px 14px; border-radius: 999px; font-variant-numeric: tabular-nums; } .ds-pill-running { background: #274D33; color: #D7F0BE; border: 2px solid var(--surface-leaf, #3D6B2C); } .ds-pill-waiting { background: var(--surface-amber, #FFF1DC); color: var(--ink-amber, #5E2904); border: 2px solid #D8A236; } .ds-pill-finished { background: var(--surface-leaf, #3D6B2C); color: var(--ink-on-forest, #F6F1E4); border: 2px solid var(--accent-forest-border, #5E8A4C); } .ds-pill-stuck { background: var(--surface-amber, #FFF1DC); color: var(--ink-amber, #5E2904); border: 2px dashed var(--accent-amber, #B4540A); } .ds-pill-problem { background: var(--surface-madder, #FBE6E7); color: var(--ink-madder, #66101A); border: 2px solid var(--accent-madder, #A3212D); } .ds-run-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent-sprout, #9FD06E); box-shadow: 0 0 0 3px var(--surface-leaf, #3D6B2C); flex-shrink: 0; }"
+    },
+    {
+      "name": "Helper Cards (Working & Stuck)",
+      "kind": "card",
+      "refersTo": "helper-card-working",
+      "description": "Ivory and amber pantry cards listing each helper's live actions with highlighted current row and semantic border.",
+      "html": "<div class=\"ds-helper-grid\"><article class=\"ds-helper ds-helper-working\"><div class=\"ds-helper-head\"><h3 class=\"ds-helper-name\">Builder helper</h3><p class=\"ds-helper-meta\">Working Â· 6m</p></div><ol class=\"ds-action-list\"><li class=\"ds-action ds-action-now\"><span class=\"ds-action-icon ds-icon-now\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6.5 4.75L15.25 10L6.5 15.25V4.75Z\" fill=\"currentColor\" stroke=\"currentColor\"/></svg></span><span>Updating layout styles</span></li><li class=\"ds-action ds-action-done\"><span class=\"ds-action-icon ds-icon-done\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4.5 10.5L8.25 14.25L15.75 6.25\"/></svg></span><span>Read existing component</span></li></ol></article><article class=\"ds-helper ds-helper-stuck\"><div class=\"ds-helper-head\"><h3 class=\"ds-helper-name\">Check helper</h3><p class=\"ds-helper-meta\">Stuck Â· no update for 7m</p></div><ol class=\"ds-action-list\"><li class=\"ds-action ds-action-stuck\"><span class=\"ds-action-icon ds-icon-stuck\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7.25 4.75V15.25\"/><path d=\"M12.75 4.75V15.25\"/></svg></span><span>Waiting on test suite</span></li><li class=\"ds-action ds-action-done\"><span class=\"ds-action-icon ds-icon-done\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4.5 10.5L8.25 14.25L15.75 6.25\"/></svg></span><span>Pulled latest branch</span></li></ol></article></div>",
+      "css": ".ds-helper-grid { background: var(--surface-ground, #DCEBCB); padding: 16px; border-radius: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; font-family: var(--font-source-sans, \"Source Sans 3\", sans-serif); } .ds-helper { border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; } .ds-helper-working { background: var(--surface-ivory, #F6F1E4); border: 3px solid var(--surface-leaf, #3D6B2C); color: var(--ink-primary, #1A2A1E); } .ds-helper-stuck { background: var(--surface-amber, #FFF1DC); border: 3px dashed var(--accent-amber, #B4540A); color: var(--ink-amber, #5E2904); } .ds-helper-head { display: flex; flex-direction: column; gap: 3px; } .ds-helper-name { margin: 0; font-family: var(--font-zilla-slab, \"Zilla Slab\", serif); font-weight: 700; font-size: 20px; line-height: 1.15; } .ds-helper-meta { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink-secondary, #3E4F3A); } .ds-helper-stuck .ds-helper-meta { color: var(--ink-amber, #5E2904); } .ds-action-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 15px; } .ds-action { display: flex; align-items: flex-start; gap: 8px; line-height: 1.35; border-radius: 8px; padding: 3px 6px; margin: 0 -6px; } .ds-action-now { font-weight: 700; background: var(--surface-ground, #DCEBCB); color: var(--ink-primary, #1A2A1E); padding: 5px 8px; margin: 0 -8px; } .ds-action-stuck { font-weight: 700; background: var(--surface-amber-highlight, #F7D9B0); color: var(--ink-amber, #5E2904); padding: 5px 8px; margin: 0 -8px; } .ds-action-done { color: #354C2E; } .ds-helper-stuck .ds-action-done { color: #6B3C12; } .ds-action-icon { display: inline-flex; padding-top: 2px; flex-shrink: 0; } .ds-icon-now { color: var(--surface-forest, #1D3B27); } .ds-icon-done { color: var(--surface-leaf, #3D6B2C); } .ds-icon-stuck { color: var(--accent-amber, #B4540A); }"
+    },
+    {
+      "name": "Subscription Quota Bars",
+      "kind": "custom",
+      "refersTo": "quota-panel",
+      "description": "Ivory quota container displaying healthy (>40%), medium (21â€“40%), low (â‰¤20% with dashed madder outline), and unknown headroom bars.",
+      "html": "<section class=\"ds-quota\"><h2 class=\"ds-quota-heading\">Left in each subscription</h2><ul class=\"ds-quota-list\"><li class=\"ds-quota-row\"><strong class=\"ds-quota-name\">Plan A</strong><div class=\"ds-track\"><div class=\"ds-fill ds-fill-healthy\" style=\"width:74%\"></div></div><span class=\"ds-val\"><strong>74%</strong> Â· resets Thu</span></li><li class=\"ds-quota-row\"><strong class=\"ds-quota-name\">Plan B</strong><div class=\"ds-track ds-track-low\"><div class=\"ds-fill ds-fill-low\" style=\"width:14%\"></div></div><span class=\"ds-val ds-val-low\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M10 3.25L17 15.75H3L10 3.25Z\"/><path d=\"M10 8V11.25\"/><circle cx=\"10\" cy=\"13.6\" r=\"0.6\" fill=\"currentColor\" stroke=\"none\"/></svg><strong>14%</strong> Â· resets in 3h</span></li><li class=\"ds-quota-row\"><strong class=\"ds-quota-name\">Plan C</strong><div class=\"ds-track-unknown\"></div><span class=\"ds-val ds-val-unknown\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"10\" cy=\"10\" r=\"6.75\" stroke-dasharray=\"3 2.5\"/><path d=\"M7.75 10H12.25\"/></svg><strong>unknown</strong></span></li></ul></section>",
+      "css": ".ds-quota { background: var(--surface-ivory, #F6F1E4); border: 2px solid var(--surface-ground-deep, #C7D6BE); border-radius: 20px; padding: 22px 24px; display: flex; flex-direction: column; gap: 16px; font-family: var(--font-source-sans, \"Source Sans 3\", sans-serif); color: var(--ink-primary, #1A2A1E); } .ds-quota-heading { margin: 0; font-family: var(--font-zilla-slab, \"Zilla Slab\", serif); font-weight: 700; font-size: 24px; line-height: 1.15; } .ds-quota-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; } .ds-quota-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 170px; gap: 10px 16px; align-items: center; } .ds-quota-name { font-size: 17px; font-weight: 700; } .ds-track { height: 24px; border-radius: 12px; background: var(--surface-ivory-track, #DAD4C4); overflow: hidden; } .ds-track-low { outline: 3px dashed var(--accent-madder, #A3212D); outline-offset: 3px; } .ds-track-unknown { height: 24px; border-radius: 12px; border: 2px dashed var(--accent-unknown, #878475); background: #EAE5D6; } .ds-fill { height: 100%; border-radius: 12px 0 0 12px; } .ds-fill-healthy { background: var(--surface-leaf, #3D6B2C); } .ds-fill-low { background: var(--accent-madder, #A3212D); } .ds-val { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; color: var(--ink-secondary, #3E4F3A); font-variant-numeric: tabular-nums; } .ds-val strong { color: var(--ink-primary, #1A2A1E); } .ds-val-low, .ds-val-low strong { color: var(--ink-madder, #66101A); font-weight: 700; } .ds-val-unknown, .ds-val-unknown strong { color: var(--ink-unknown, #525144); font-weight: 600; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Larder",
+    "overview": "Mission Control is built around The Larder: a calm, daylight-legible station board dressed in deep bottle green, sage plaster, and warm ivory pantry cards. Rather than mimicking a dark developer terminal filled with scrolling logs and dense data tables, the interface presents an active run the way a railway departure board presents a trainâ€”four named stages in sequence, the current stage set as the largest headline on the page, and plain-English step chips moving steadily across the track.\n\nThe system is designed for a single non-programmer operator glancing at progress from a laptop while working or checking in from a phone away from the desk. Every surface earns its place through high-contrast tonal separation and crisp geometric borders instead of drop shadows, frosted glass, or decorative chrome. Motion is strictly functional: only the active step marker gliding along the row and each newly arrived helper action sliding into the top of its card ever move.\n\nThis visual world explicitly rejects the dark developer-tool aesthetic (no black interfaces, no monospace type, no glowing purple indicators) as well as the previous builder-default dashboard (light grey ground, plain white cards, mint and indigo accents). Colour never carries meaning alone: border line style, text decoration, and simple inline icons reinforce every operational state so a glance from across the room reads immediately.",
+    "keyCharacteristics": [
+      "Daylight-first palette: bottle green (#1D3B27) and leaf green (#3D6B2C) anchored on a soft sage ground (#DCEBCB) with warm ivory (#F6F1E4) cards.",
+      "Editorial slab-and-sans pairing: Zilla Slab for station-board headings and titles paired with Source Sans 3 (with tabular numerals) for all body copy, labels, and figuresâ€”never monospace.",
+      "Flat, matte surface hierarchy: zero drop shadows on panels or cards; depth is created strictly through tonal contrast and 2pxâ€“3px semantic borders.",
+      "Redundant state encoding: solid edges for active or passed, dashed edges for stuck or low quota, dotted edges for sent-back loops, and solid madder with strikethrough for given-up states.",
+      "Restrained, purposeful motion: only the active step marker glide (420ms) and top-of-card helper action entrance (360ms) animate, both disabled under reduced-motion preferences."
+    ],
+    "rules": [
+      {
+        "name": "The Problem-Only Madder Rule",
+        "body": "Madder red (#A3212D on #FBE6E7 wash) appears exclusively for genuine problems: a stopped or given-up run or helper, a solid problem warning banner, or a subscription at or below 20% remaining. Never use red for routine emphasis, decorative badges, or recoverable stalls.",
+        "section": "colors"
+      },
+      {
+        "name": "The Warm-Amber Stall Rule",
+        "body": "Recoverable stalls and waiting-for-you states use warm ochre-amber (#B4540A on #FFF1DC), never madder red, so a pause that can self-recover stays unmistakably separate from a dead-end failure.",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Monospace Rule",
+        "body": "Never use monospace type anywhere in Mission Control. Numeric figuresâ€”token counts, elapsed durations, step counters, and quota percentagesâ€”use Source Sans 3 or Zilla Slab with tabular numerals so numbers align cleanly without turning the board into a terminal.",
+        "section": "typography"
+      },
+      {
+        "name": "The Stage-Is-Headline Rule",
+        "body": "The current stage name is always the largest text on the page (clamp(2.5rem, 5vw, 3.5rem)), ensuring a three-foot glance answers where the run stands before any secondary metric.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-Matte Larder Rule",
+        "body": "Surfaces rest flat on the sage ground with zero drop shadows or ambient glows. Hierarchy is created solely through bottle-green versus ivory tonal contrast and crisp 2pxâ€“3px borders.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Shape-Plus-Colour Rule",
+        "body": "Every operational state must read from border geometry, text decoration, and an inline SVG icon as well as colour: solid edge for running or passed, dashed edge plus pause mark for stuck, dotted edge plus return arrow for sent back, and solid madder edge plus cross and strikethrough for given up.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do follow The Problem-Only Madder Rule: reserve #A3212D and #FBE6E7 strictly for stopped/given-up states, solid problem warnings, and subscriptions at or below 20% remaining.",
+      "Do follow The Shape-Plus-Colour Rule: pair every state colour with its matching border pattern (solid, dashed, or dotted), inline SVG icon, and strikethrough on given-up labels.",
+      "Do keep the current stage heading as the largest text on the page (clamp(2.5rem, 5vw, 3.5rem)) in Zilla Slab 700, with Source Sans 3 and tabular-nums for all metrics.",
+      "Do label every dollar figure explicitly as an estimate and name work by its plain-English title rather than card numbers or internal IDs.",
+      "Do stack stage tiles, step chips, helper cards, and quota rows into clean single columns below 720px (and collapse the stage board below 859px) so phone check-ins stay effortless.",
+      "Do honor prefers-reduced-motion by disabling both the 420ms step-marker glide and the 360ms helper action slide-in."
+    ],
+    "donts": [
+      "Don't introduce a dark developer-tool aesthetic: no black backgrounds, no monospace typography, and no purple indicator dots.",
+      "Don't revert to the retired builder-default look of light grey backgrounds, plain white cards, or mint and indigo accents.",
+      "Don't add drop shadows, ambient glows, or glassmorphism to panels, cards, stage tiles, or chipsâ€”follow The Flat-Matte Larder Rule.",
+      "Don't render dense data tables; communicate progress, helper activity, and subscription headroom with visual tiles, action rows, and quota bars.",
+      "Don't animate ambient chrome, progress fills, or pulsing status dots; only the gliding active step marker and incoming helper action rows may move.",
+      "Don't name specific AI models in documentation or static design copy; refer to subscriptions or kinds of model (free or paid) instead."
+    ]
+  }
+}
