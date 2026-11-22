@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { BoundedLocalSandbox } from './bounded-sandbox.mjs';
+import { BoundedLocalSandbox, HEAVY_COMMAND } from './bounded-sandbox.mjs';
 
 const systemctl = (...args) => execFileSync('systemctl', ['--user', ...args], { encoding: 'utf8' }).trim();
 const bestEffort = (...args) => {
@@ -155,6 +155,34 @@ test('an install or build takes the shared lock and a read does not', { timeout:
   } finally {
     await sandbox?.stop().catch(() => {});
   }
+});
+
+test('HEAVY_COMMAND matches flagged installs and browsers, skips non-heavy args, and avoids backtracking', () => {
+  const heavy = [
+    'npm ci',
+    'npm --prefix /tmp/x ci',
+    'cd /tmp/x && npm ci --no-audit',
+    'npx playwright test',
+    '/usr/local/bin/npm --prefix /tmp/x --no-audit ci',
+    'chromium --headless',
+    '/home/ubuntu/.cache/ms-playwright/chromium-1243/chrome-linux/chrome --headless',
+  ];
+  const light = [
+    'echo chrome',
+    'pkill chromium',
+    'grep -r chromium src',
+    'which chrome',
+    'git status',
+  ];
+  for (const cmd of heavy) assert.equal(HEAVY_COMMAND.test(cmd), true, `expected heavy: ${cmd}`);
+  for (const cmd of light) assert.equal(HEAVY_COMMAND.test(cmd), false, `expected light: ${cmd}`);
+
+  const slow = 'npm ' + '--ab '.repeat(22) + 'config';
+  const start = process.hrtime.bigint();
+  const matched = HEAVY_COMMAND.test(slow);
+  const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.equal(matched, false);
+  assert.ok(elapsedMs < 10, `expected < 10 ms, got ${elapsedMs.toFixed(2)} ms`);
 });
 
 test.after(() => {
