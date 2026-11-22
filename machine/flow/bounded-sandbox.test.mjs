@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { BoundedLocalSandbox, HEAVY_COMMAND } from './bounded-sandbox.mjs';
+import { BoundedLocalSandbox, HEAVY_COMMAND, isInstallerCommand } from './bounded-sandbox.mjs';
 
 const systemctl = (...args) => execFileSync('systemctl', ['--user', ...args], { encoding: 'utf8' }).trim();
 const bestEffort = (...args) => {
@@ -146,12 +146,56 @@ test('a command writes inside the card copy and nowhere else', { timeout: 60000 
   }
 });
 
-test('an install or build takes the shared lock and a read does not', { timeout: 60000 }, async () => {
+test('a build or test takes the shared lock and a read does not', { timeout: 60000 }, async () => {
   const sandbox = await sandboxOn({ lock: '/run/user/1000/card-builder.lock' });
   try {
-    assert.match(sandbox.wrapCommandForIsolation('npm ci').command, /flock --timeout 1800 .*card-builder\.lock/);
+    assert.match(sandbox.wrapCommandForIsolation('npm run build').command, /flock --timeout 1800 .*card-builder\.lock/);
     assert.match(sandbox.wrapCommandForIsolation('node --test machine/flow').command, /flock --timeout 1800/);
     assert.doesNotMatch(sandbox.wrapCommandForIsolation('cat package.json').command, /flock --timeout/);
+  } finally {
+    await sandbox?.stop().catch(() => {});
+  }
+});
+
+test('isInstallerCommand catches wrapped and flagged installers and ignores non-installers', () => {
+  const installers = [
+    'npm ci',
+    'cd /home/ubuntu/card-machine-worktrees/JUL-361/dashboard && timeout 300 npm ci --prefer-offline',
+    '{ echo 500 >/proc/self/oom_score_adj; } 2>/dev/null; timeout 300 npm ci',
+    '/usr/local/bin/npm --prefix /tmp/x --no-audit ci',
+    'npm install lodash',
+    'npm i',
+    'pnpm add zod',
+    'bun install',
+    'yarn',
+    'yarn add react',
+    'sh -c "cd dashboard; timeout 60 npm ci"',
+  ];
+  const allowed = [
+    'npm test',
+    'npm run build',
+    'node --test machine/flow',
+    'echo "npm ci"',
+    'echo "foo; npm ci"',
+    'grep -r "npm ci" docs/',
+    'git status',
+    'yarn test',
+  ];
+  for (const cmd of installers) assert.equal(isInstallerCommand(cmd), true, `expected installer: ${cmd}`);
+  for (const cmd of allowed) assert.equal(isInstallerCommand(cmd), false, `expected allowed: ${cmd}`);
+});
+
+test('BoundedLocalSandbox refuses installer commands before spawning a process', { timeout: 60000 }, async () => {
+  const sandbox = await sandboxOn();
+  try {
+    assert.throws(
+      () => sandbox.wrapCommandForIsolation('cd dashboard && timeout 300 npm ci --prefer-offline'),
+      /refused/i,
+    );
+    await assert.rejects(
+      () => sandbox.executeCommand('timeout 300 npm ci --dry-run', []),
+      /refused/i,
+    );
   } finally {
     await sandbox?.stop().catch(() => {});
   }

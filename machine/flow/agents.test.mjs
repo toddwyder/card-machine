@@ -528,3 +528,20 @@ test('Lead refuses to mark a playbook step completed with a flag: and lets the r
   const tasks = await store.getState({ threadId: 'JUL-407/flag-test', type: 'task' });
   assert.equal(tasks.find(item => item.id === 'playbook_5')?.status, 'completed');
 });
+
+test('FLOW_CARD_LIMIT_DOLLARS overrides the default card cost limit on CallCostControl', t => {
+  const previous = process.env.FLOW_CARD_LIMIT_DOLLARS;
+  t.after(() => {
+    if (previous === undefined) delete process.env.FLOW_CARD_LIMIT_DOLLARS;
+    else process.env.FLOW_CARD_LIMIT_DOLLARS = previous;
+  });
+  process.env.FLOW_CARD_LIMIT_DOLLARS = '7.48';
+  const dir = temporary(t);
+  const leadModelFile = join(dir, 'lead-model');
+  installLeadModel(leadModelFile);
+  const roleModelsFile = completeRoleFile(join(dir, 'lead-role-models.md'));
+  const agents = createAgents({ repo, leadModelFile, roleModelsFile, model: 'openai/gpt-6.1-sol' });
+  const costGuard = agents.build.inputProcessors.find(p => p?.constructor?.name === 'CallCostControl');
+  assert.ok(costGuard, 'Lead must carry CallCostControl');
+  assert.equal(costGuard.maxCost, 7.48);
+});

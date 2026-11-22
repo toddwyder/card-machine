@@ -91,3 +91,39 @@ test('a card with an existing remote branch is refused before creating a divergi
   assert.match(reason, /open pull request #534/);
   assert.throws(() => openCopy({ repo, card: 'JUL-404', env }), /Leftover work on GitHub for JUL-404/);
 });
+
+test('a card whose dependency list differs from main installs once per change and reuses the result', t => {
+  const { repo, env } = studio(t);
+  writeFileSync(join(repo, 'package-lock.json'), JSON.stringify({ name: 'app', lockfileVersion: 3, packages: {} }));
+  mkdirSync(join(repo, 'node_modules'), { recursive: true });
+  writeFileSync(join(repo, 'node_modules', '.package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: {} }));
+  git(repo, ['add', 'package-lock.json']);
+  git(repo, ['-c', 'user.email=copy@test', '-c', 'user.name=copy', 'commit', '--quiet', '-m', 'lock']);
+
+  let installs = 0;
+  const fakeInstall = treeDir => {
+    installs += 1;
+    mkdirSync(join(treeDir, 'node_modules', 'demo-lib'), { recursive: true });
+    writeFileSync(join(treeDir, 'node_modules', '.package-lock.json'), '{"lockfileVersion":3}');
+    writeFileSync(join(treeDir, 'node_modules', 'demo-lib', 'index.js'), `module.exports = ${installs};\n`);
+  };
+
+  // Same lockfile as main: hardlinks (or copies) main's modules with zero installs.
+  const copy = openCopy({ repo, card: 'JUL-361-DEPS', env, install: fakeInstall });
+  assert.equal(installs, 0, 'matching lockfile must not run an installer');
+
+  // Card changes its dependency list: installs once.
+  writeFileSync(join(copy.folder, 'package-lock.json'), JSON.stringify({ name: 'app', lockfileVersion: 3, packages: { 'node_modules/demo-lib': { version: '1.0.0' } } }));
+  openCopy({ repo, card: 'JUL-361-DEPS', env, install: fakeInstall });
+  assert.equal(installs, 1, 'differing lockfile installs once');
+  assert.equal(existsSync(join(copy.folder, 'node_modules', 'demo-lib', 'index.js')), true);
+
+  // Opening again without another dependency change does not reinstall.
+  openCopy({ repo, card: 'JUL-361-DEPS', env, install: fakeInstall });
+  assert.equal(installs, 1, 'unchanged lockfile reuses installed modules');
+
+  // Changing the dependency list a second time installs once more.
+  writeFileSync(join(copy.folder, 'package-lock.json'), JSON.stringify({ name: 'app', lockfileVersion: 3, packages: { 'node_modules/demo-lib': { version: '2.0.0' } } }));
+  openCopy({ repo, card: 'JUL-361-DEPS', env, install: fakeInstall });
+  assert.equal(installs, 2, 'second dependency change installs once more');
+});
