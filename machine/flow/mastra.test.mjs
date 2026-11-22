@@ -393,3 +393,27 @@ test('restartAllActiveWorkflowRuns leaves outer and nested step counters untouch
   const controlCounts = readCounts(controlCountsFile);
   assert.ok(controlCounts.nested >= 2, `control nested step counter rises when autoRestartActiveRuns is left on (got ${controlCounts.nested})`);
 });
+
+test('openMastra bounds DuckDB trace memory and threads by default', async t => {
+  const dir = tempDir(t);
+  const workflow = makeCountingWorkflow({
+    id: 'wf-duckdb-cap',
+    autoRestartActiveRuns: false,
+    countsFile: join(dir, 'counts.json'),
+  });
+  const mastra = await openMastra({
+    card: 'JUL-361',
+    agents: {},
+    workflow,
+    stateDb: join(dir, 'state.db'),
+    traceDb: join(dir, 'trace.duckdb'),
+  });
+  t.after(async () => {
+    await mastra.shutdown().catch(() => null);
+  });
+  const obs = await mastra.getStorage().getStore('observability');
+  const rows = await obs.db.query("SELECT name, value FROM duckdb_settings() WHERE name IN ('memory_limit', 'threads')");
+  const settings = Object.fromEntries(rows.map(row => [row.name, row.value]));
+  assert.equal(settings.memory_limit, '244.1 MiB');
+  assert.equal(settings.threads, '1');
+});
