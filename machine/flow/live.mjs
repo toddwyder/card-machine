@@ -118,7 +118,9 @@ export function createLiveFeed({ file, card = null, now = Date.now, append = app
       write('tool', {
         agent: agentOf(span),
         callId: span.id,
-        name: span.name ?? '',
+        // Mastra's tool span names the call `tool: 'choose_playbook'` and keeps the id on
+        // entityId, the same way an agent span does. The screen matches ids, so publish the id.
+        name: span.entityId ?? span.entityName ?? span.name ?? '',
         status,
       });
       return;

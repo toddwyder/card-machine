@@ -39,6 +39,16 @@ test('each hook writes the line the Run view folds', () => {
   assert.ok(written.every((event) => typeof event.id === 'string' && Number.isFinite(event.at)));
 });
 
+test('a tool call is published under its id, never its span label', () => {
+  const dir = scratch();
+  const feed = feedIn(dir);
+  // What a real tool span looks like: the label is prose, the id is on entityId.
+  const span = { id: 'span-t', type: 'tool_call', name: "tool: 'choose_playbook'", entityId: 'choose_playbook', endTime: new Date(), parent: null };
+  feed.observeSpan(span);
+  const [written] = lines(join(dir, 'JUL-1', LIVE_FILE));
+  assert.equal(written.name, 'choose_playbook', 'the screen matches tool ids, so the label never reaches it');
+});
+
 test('the same event seen twice writes one line and a second attempt is its own event', () => {
   const dir = scratch();
   const feed = feedIn(dir);
