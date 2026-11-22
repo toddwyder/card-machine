@@ -23,10 +23,17 @@ const ALL_STAGES = Object.freeze([
 ]);
 
 const TASK_LIST = {
+  // The Lead's list as the machine publishes it: one entry per playbook step, mid-way through,
+  // with one step the run was told to skip and its reason left on the title.
   lead: [
     { id: 'playbook_1', title: 'Trace the affected subsystem', status: 'completed' },
     { id: 'playbook_2', title: 'Architect the shape', status: 'in_progress' },
-    { id: 'playbook_3', title: 'Write the throughput checkpoint', status: 'pending' },
+    { id: 'playbook_3', title: 'Write the throughput checkpoint as four todo items', status: 'pending' },
+    { id: 'playbook_4', title: 'Delegate code-writing to a subagent using your configured feature model', status: 'pending' },
+    { id: 'playbook_5', title: 'Verify on the matching surface', status: 'pending' },
+    { id: 'playbook_6', title: 'Rebase into small, ordered commits', status: 'pending' },
+    { id: 'playbook_7', title: 'Interrogate the design skip: the arena settled it', status: 'pending' },
+    { id: 'playbook_8', title: 'Run Opening a PR', status: 'pending' },
   ],
   helper: [
     { id: 'slice_1', title: 'Read the fold', status: 'completed' },

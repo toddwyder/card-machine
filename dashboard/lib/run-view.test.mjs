@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { foldRunView, helperName, readLiveEvents } from './run-view.mjs';
 import { LIVE_TYPES, liveType } from '../../machine/flow/live-schema.mjs';
 import { SCENES, writeScene } from '../scripts/live-scenes.mjs';
+import { createLiveFeed, liveFileIn } from '../../machine/flow/live.mjs';
 
 const SETTINGS = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokens: 100000 };
 const NOW = 1795315660000;
@@ -198,4 +199,60 @@ test('every scene writes a log the fold can read', () => {
     for (const event of events) assert.equal(LIVE_TYPES.includes(liveType(event)), true, `${scene}: ${JSON.stringify(event)}`);
     assert.doesNotThrow(() => fold({ events }));
   }
+});
+
+// The count on screen is the machine's own task list, so it cannot show a step the run never had.
+test('the step row is the machine task list, counted and named', () => {
+  const { run } = fold({ events: eventsOf('running') });
+  assert.equal(run.steps.total, 8);
+  assert.equal(run.steps.index, 2);
+  assert.equal(run.steps.list.length, 8);
+  assert.equal(run.steps.list[1].title, 'Architect the shape');
+  assert.equal(run.steps.list[1].status, 'in_progress');
+  assert.equal(run.steps.list[0].status, 'completed');
+  assert.equal(run.steps.list[2].status, 'pending');
+  // One lookup decides both, so the step's name and its number cannot disagree.
+  assert.equal(run.step, run.steps.list[run.steps.index - 1].title);
+});
+
+// A step the machine was told to skip keeps its own shape, and the reason stays out of the pill.
+test('a skipped step reads as skipped, without its reason in the row', () => {
+  const skipped = fold({ events: eventsOf('running') }).run.steps.list.find(step => step.id === 'playbook_7');
+  assert.equal(skipped.status, 'skipped');
+  assert.equal(skipped.title, 'Interrogate the design');
+  assert.equal(skipped.short.includes('skip:'), false);
+});
+
+test('a long step keeps a pill-sized name', () => {
+  const long = fold({ events: eventsOf('running') }).run.steps.list.find(step => step.id === 'playbook_4');
+  assert.equal(long.short.length <= 43, true);
+  assert.equal(long.short.endsWith('…'), true);
+  assert.equal(long.title.startsWith(long.short.slice(0, 12)), true);
+});
+
+test('the step row follows the machine numbering, not the order it arrived in', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'run-view-order-'));
+  const file = liveFileIn(dir, 'JUL-361');
+  const feed = createLiveFeed({ file, now: () => NOW });
+  feed.run({ card: 'JUL-361', title: 'A card out of order' });
+  feed.tasks({
+    agent: 'flow-build',
+    tasks: [
+      { id: 'playbook_10', title: 'Tenth step', status: 'pending' },
+      { id: 'playbook_2', title: 'Second step', status: 'completed' },
+      { id: 'playbook_1', title: 'First step', status: 'completed' },
+    ],
+  });
+  const { run } = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
+  assert.deepEqual(run.steps.list.map(step => step.id), ['playbook_1', 'playbook_2', 'playbook_10']);
+  assert.equal(run.steps.index, 3);
+  assert.equal(run.steps.total, 3);
+  assert.equal(run.step, null);
+});
+
+test('a finished run counts its last step, never step zero', () => {
+  const { run } = fold({ events: eventsOf('finished') });
+  assert.equal(run.steps.total, 8);
+  assert.equal(run.steps.index, 8);
+  assert.equal(run.steps.list.every(step => step.status === 'completed'), true);
 });

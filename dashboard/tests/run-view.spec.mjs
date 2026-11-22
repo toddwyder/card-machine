@@ -72,6 +72,26 @@ test.describe('the Run view on a laptop', () => {
       }
     }
 
+    // The run's steps in one row, counted from the same list the step's name comes from.
+    const { steps } = read.run;
+    const row = panel.locator(`ol[aria-label="The run's ${steps.total} steps"]`);
+    await expect(row.getByRole('listitem')).toHaveCount(steps.total);
+    await expect(panel.getByText(`step ${steps.index} of ${steps.total}`, { exact: true })).toBeVisible();
+    const pills = row.getByRole('listitem');
+    expect(await pills.allInnerTexts()).toEqual(steps.list.map(step => step.short));
+
+    // The step in hand is filled in; the one the run skipped keeps a dotted edge and a struck name.
+    const current = row.locator('[aria-current="step"]');
+    await expect(current).toHaveAttribute('data-state', 'in_progress');
+    expect(await current.evaluate(node => getComputedStyle(node).backgroundColor)).toBe('rgb(220, 235, 203)');
+    await expect(current).toContainText(steps.list[steps.index - 1].short);
+    const skipped = row.locator('li[data-state="skipped"]');
+    await expect(skipped).toHaveCount(steps.list.filter(step => step.status === 'skipped').length);
+    if (await skipped.count()) {
+      expect(await skipped.first().evaluate(node => getComputedStyle(node).borderTopStyle)).toBe('dotted');
+      expect(await skipped.first().locator('span').evaluate(node => getComputedStyle(node).textDecorationLine)).toBe('line-through');
+    }
+
     await page.screenshot({ path: `${SHOTS}/laptop.png`, fullPage: true });
   });
 
@@ -241,7 +261,16 @@ test.describe('the Run view on a phone', () => {
 
     await prepare({ scene: 'running', readings: 'normal' });
     await page.reload();
-    await expect(page.getByRole('region', { name: 'The running card' })).toBeVisible();
+    const panel = page.getByRole('region', { name: 'The running card' });
+    await expect(panel).toBeVisible();
+
+    // The step row and its count survive the narrow screen, and still count the machine's list.
+    const { steps } = await snapshot(page).then(read => read.run);
+    await expect(panel.locator(`ol[aria-label="The run's ${steps.total} steps"]`).getByRole('listitem')).toHaveCount(steps.total);
+    await expect(panel.getByText(`step ${steps.index} of ${steps.total}`, { exact: true })).toBeVisible();
+    const narrow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(narrow).toBeLessThanOrEqual(1);
+
     await page.screenshot({ path: `${SHOTS}/phone.png`, fullPage: true });
   });
 });
