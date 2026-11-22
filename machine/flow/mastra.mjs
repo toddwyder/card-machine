@@ -11,6 +11,8 @@ import { MastraStorageExporter, Observability } from '@mastra/observability';
 import { CallCostObservability } from './call-cost.mjs';
 
 export const DEFAULT_TRACE_MAX_AGE = '1d';
+export const DEFAULT_TRACE_MEMORY_LIMIT = '256MB';
+export const DEFAULT_TRACE_THREADS = 1;
 
 export const cardStamper = card => ({
   name: 'card-stamper',
@@ -32,11 +34,13 @@ export async function openMastra({
   stateDb,
   traceDb,
   traceMaxAge = process.env.FLOW_TRACE_MAX_AGE || DEFAULT_TRACE_MAX_AGE,
+  traceMemoryLimit = process.env.FLOW_TRACE_MEMORY_LIMIT || DEFAULT_TRACE_MEMORY_LIMIT,
+  traceThreads = Number(process.env.FLOW_TRACE_THREADS) || DEFAULT_TRACE_THREADS,
 }) {
   if (workflow?.options?.autoRestartActiveRuns !== false) {
     throw new Error(`Workflow ${workflow?.id ?? '(unknown)'} must set options.autoRestartActiveRuns to false.`);
   }
-  const obs = traceDb ? await new DuckDBStore({ path: traceDb }).getStore('observability') : null;
+  const obs = traceDb ? await new DuckDBStore({ path: traceDb, memoryLimit: traceMemoryLimit, threads: traceThreads }).getStore('observability') : null;
   const storage = new MastraCompositeStore({
     id: 'flow-storage',
     default: new LibSQLStore({ id: 'flow-state', url: `file:${stateDb}` }),
