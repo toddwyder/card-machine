@@ -27,8 +27,8 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/review.mjs` | The Shipping review: finds the card's pull request, names the commit it reviews, builds the reviewer's task, reads the verdict. | `9f9dab7643fa9e3eac10ff78f63006bc5971749f2c84ac1ce345c80e3b6039fa` |
 | `machine/flow/cost-record.mjs` | Builds the per-card cost record from Mastra metrics and sends it to Axiom. | `2b8a1ad2bd83455f13b9cf6715c217d2434b2fc9072717dfd7f8b788569ca1f5` |
 | `machine/flow/mastra.mjs` | Storage, tracing and trace retention, so a run is written down and pruned. | `64f573fea86309a56b603fd48503aad96e09793c2c783582c48902f5b85debd6` |
-| `machine/flow/live.mjs` | Writes the run's live event log as each stage, tool call and model call starts and ends, for mission control to read during a run. | `b75948482b0b543df2bb00731a9078c25358bfb19a09d392d621e84479acb791` |
-| `machine/flow/live-schema.mjs` | The one list of live event types the machine writes and the Run view reads. | `c125e53e1f09823bb61c28cd436b2dbe9946707dcb4c7761c7921dae3fbddaa6` |
+| `machine/flow/live.mjs` | Writes the run's live event log as each stage, tool call and model call starts and ends, for mission control to read during a run. | `39c09315d1c3bc58217d9744c3676e94782d93e1fde9465f3edf0f37f4fa54c5` |
+| `machine/flow/live-schema.mjs` | The one list of live event types the machine writes and the Run view reads. | `2708e9fc1f8b3f303567c01a1ecda2854014e656522bc7394b307c9ae03df930` |
 | `machine/flow/start.mjs` | Assembles a run to read it back and to resume a card. | `12600321e4a0a836f43310749f43aa3d4f22704c9a970260143ec28238cc8f26` |
 | `machine/flow/run.mjs` | Answers a waiting card and reads a run. No way to start one. | `6aa66f1d72561054364ad8ffe90a19d5d3119ebcd8dd3539df3cbb57c14f4338` |
 | `machine/flow/report.mjs` | Builds the card report and tripwire stop helper. | `73092dd6925cba0014dc078e82be1d71686a9c35c1357cec9433f200bcf57499` |
