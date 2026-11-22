@@ -275,3 +275,24 @@ test('a finished run counts its last step, never step zero', () => {
   assert.equal(run.steps.index, 8);
   assert.equal(run.steps.list.every(step => step.status === 'completed'), true);
 });
+
+test('a run that ends on cleanup reads as finished, and one that ends elsewhere does not', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'run-view-last-stage-'));
+  const file = liveFileIn(dir, 'JUL-361');
+  const feed = createLiveFeed({ file, now: () => NOW });
+  feed.run({ card: 'JUL-361', title: 'A card that ran to its last stage' });
+  for (const [stage, status] of [
+    ['flow-build', 'done'],
+    ['retro', 'done'],
+    ['cleanup', 'started'],
+  ]) feed.stage({ stage, status });
+  const midRun = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
+  assert.equal(midRun.run.status, 'running');
+  assert.equal(midRun.run.stage.id, 'cleanup');
+
+  feed.stage({ stage: 'cleanup', status: 'done' });
+  const ended = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
+  assert.equal(ended.run.status, 'finished');
+  assert.equal(ended.run.stage.label, 'Clean up after the card');
+  assert.deepEqual(ended.warnings, []);
+});

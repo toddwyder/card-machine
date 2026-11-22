@@ -7,6 +7,11 @@ export const LIVE_TYPE_FIELD = 'type';
 // Every kind of line the machine writes to a run's live file.
 export const LIVE_TYPES = ['run', 'stage', 'agent', 'tool', 'model', 'tasks'];
 
+// The stages a run can end on. Every other stage leads to another one, so a run whose last
+// stage is one of these and has finished there is over. The reader needs this because the
+// machine's run table stays empty on this storage, so the log is the only word on the end.
+export const FINAL_STAGES = ['hold', 'cleanup'];
+
 const known = new Set(LIVE_TYPES);
 
 /** The event's type, or undefined for a line this screen does not know. */

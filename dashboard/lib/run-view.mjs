@@ -2,7 +2,7 @@
 // Everything here is pure. No file reads, no clock, no network, so a test can pin every state
 // and every warning without a browser or a run.
 
-import { liveType } from '../../machine/flow/live-schema.mjs';
+import { FINAL_STAGES, liveType } from '../../machine/flow/live-schema.mjs';
 import { readingReason } from './reading-reasons.mjs';
 import { stageLabel } from './stage-labels.mjs';
 
@@ -285,12 +285,12 @@ function deriveWarnings({ state, stages, helpers, subscriptions, modelEvents, id
 }
 
 // The log's own verdict on whether the run has ended, used when the machine has no row to ask:
-// the last stage it reached either failed or was the last one the machine has.
+// the last stage it reached either failed or was one of the stages a run ends on.
 function endedFromLog(stages) {
   const last = stages.at(-1);
   if (!last) return null;
   if (last.status === 'failed') return 'stopped';
-  if (last.id === 'hold' && last.status === 'done') return 'finished';
+  if (last.status === 'done' && FINAL_STAGES.includes(last.id)) return 'finished';
   return null;
 }
 
