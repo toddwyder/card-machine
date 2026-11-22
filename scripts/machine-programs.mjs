@@ -42,6 +42,8 @@ export const PROGRAMS = [
   ['machine/flow/review.mjs', 'The Shipping review: finds the card\'s pull request, names the commit it reviews, builds the reviewer\'s task, reads the verdict.'],
   ['machine/flow/cost-record.mjs', 'Builds the per-card cost record from Mastra metrics and sends it to Axiom.'],
   ['machine/flow/mastra.mjs', 'Storage, tracing and trace retention, so a run is written down and pruned.'],
+  ['machine/flow/live.mjs', 'Writes the run\'s live event log as each stage, tool call and model call starts and ends, for mission control to read during a run.'],
+  ['machine/flow/live-schema.mjs', 'The one list of live event types the machine writes and the Run view reads.'],
   ['machine/flow/start.mjs', 'Assembles a run to read it back and to resume a card.'],
   ['machine/flow/run.mjs', 'Answers a waiting card and reads a run. No way to start one.'],
   ['machine/flow/report.mjs', 'Builds the card report and tripwire stop helper.'],
