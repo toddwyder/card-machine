@@ -1,0 +1,5 @@
+{"id":"run-start","at":1763700000000,"kind":"run","card":"JUL-361","title":"Mission control's Run view"}
+{"id":"stage-build-1","at":1763700016000,"kind":"stage","stage":"flow-build","status":"started"}
+{"id":"agent-lead-1","at":1763700017000,"kind":"agent","agent":"flow-build","status":"started"}
+{"id":"model-lead-1","at":1763700023000,"kind":"model","agent":"flow-build","model":"commandcode/kimi-k3-1-pro","inputTokens":60000,"outputTokens":4000,"cachedInputTokens":0}
+{"id":"stage-build-2","at":1763700025000,"kind":"stage","stage":"flow-build","status":"failed"}

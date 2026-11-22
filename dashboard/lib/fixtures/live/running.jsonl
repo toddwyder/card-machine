@@ -1,0 +1,16 @@
+{"id":"run-start","at":1763700000000,"kind":"run","card":"JUL-361","title":"Mission control's Run view"}
+{"id":"stage-start-1","at":1763700001000,"kind":"stage","stage":"start","status":"started"}
+{"id":"stage-start-2","at":1763700006000,"kind":"stage","stage":"start","status":"done"}
+{"id":"stage-plan-1","at":1763700007000,"kind":"stage","stage":"start-build","status":"started"}
+{"id":"stage-plan-2","at":1763700015000,"kind":"stage","stage":"start-build","status":"done"}
+{"id":"stage-build-1","at":1763700016000,"kind":"stage","stage":"flow-build","status":"started"}
+{"id":"agent-lead-1","at":1763700017000,"kind":"agent","agent":"flow-build","status":"started"}
+{"id":"tasks-lead-1","at":1763700018000,"kind":"tasks","agent":"flow-build","tasks":[{"id":"playbook_1","title":"Trace the affected subsystem","status":"completed"},{"id":"playbook_2","title":"Architect the shape","status":"in_progress"},{"id":"playbook_3","title":"Write the throughput checkpoint","status":"pending"}]}
+{"id":"tool-lead-1","at":1763700019000,"kind":"tool","agent":"flow-build","callId":"call-lead-1","name":"mastra_workspace_read_file","status":"started"}
+{"id":"tool-lead-2","at":1763700022000,"kind":"tool","agent":"flow-build","callId":"call-lead-1","name":"mastra_workspace_read_file","status":"done"}
+{"id":"model-lead-1","at":1763700023000,"kind":"model","agent":"flow-build","model":"commandcode/kimi-k3-1-pro","inputTokens":12000,"outputTokens":900,"cachedInputTokens":4000}
+{"id":"agent-helper-1","at":1763700030000,"kind":"agent","agent":"pstack-feature-refactoring-1","status":"started"}
+{"id":"tool-helper-1","at":1763700032000,"kind":"tool","agent":"pstack-feature-refactoring-1","callId":"call-helper-1","name":"mastra_workspace_execute_command","status":"started"}
+{"id":"tool-helper-2","at":1763700040000,"kind":"tool","agent":"pstack-feature-refactoring-1","callId":"call-helper-1","name":"mastra_workspace_execute_command","status":"done"}
+{"id":"tool-helper-3","at":1763700045000,"kind":"tool","agent":"pstack-feature-refactoring-1","callId":"call-helper-2","name":"skill","status":"started"}
+{"id":"model-helper-1","at":1763700050000,"kind":"model","agent":"pstack-feature-refactoring-1","model":"commandcode/kimi-k3-1-pro","inputTokens":4000,"outputTokens":400,"cachedInputTokens":0}
