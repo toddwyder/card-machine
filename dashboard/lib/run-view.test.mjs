@@ -99,6 +99,22 @@ test('a subscription at or under the low mark raises one quota warning per windo
   assert.deepEqual(snapshot.subscriptions[1].windows.map(window => window.low), [true]);
 });
 
+test('one reading keeps every window it read, each with its own number and reset', () => {
+  const snapshot = fold({
+    subscriptions: [
+      freshSubscription('claude', 'Claude', [
+        { window: 'five_hour', percentLeft: 11, resetsAt: 1763710000000 },
+        { window: 'weekly', percentLeft: 98, resetsAt: 1764300000000 },
+      ]),
+    ],
+  });
+  const [subscription] = snapshot.subscriptions;
+  assert.deepEqual(subscription.windows.map(window => window.window), ['five_hour', 'weekly']);
+  assert.deepEqual(subscription.windows.map(window => window.percentLeft), [11, 98]);
+  assert.deepEqual(subscription.windows.map(window => window.resetsAt), [1763710000000, 1764300000000]);
+  assert.equal(subscription.windows[1].resetsAt === subscription.windows[0].resetsAt, false);
+});
+
 test('a failed reading is unknown, with no number and no warning', () => {
   const snapshot = fold({ subscriptions: [{ id: 'claude', name: 'Claude', status: 'unknown', readAt: NOW, reason: '401' }] });
   assert.equal(snapshot.subscriptions[0].status, 'unknown');
