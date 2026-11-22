@@ -139,7 +139,11 @@ export function writeScene(dir, scene, { now = Date.now(), card = CARD, title = 
     log.advance(9000);
     log.feed.stage({ stage: 'build-check', status: 'failed' });
     log.advance(60000);
-    status = 'failed';
+    // The stop path the workflow walks: a stop report, then hold and cleanup like any other run.
+    // The run's own record says it stopped, which is what the writer announces.
+    for (const stage of ['stop-report', 'hold', 'cleanup']) stagePair(log, stage, 15000);
+    log.feed.outcome({ ended: 'stopped', detail: 'stop report at reports/JUL-361-stop.md' });
+    status = 'success';
   }
   if (work.finished) {
     stagePair(log, 'finish-build', 15000);
@@ -148,6 +152,7 @@ export function writeScene(dir, scene, { now = Date.now(), card = CARD, title = 
     log.advance(1000);
     log.feed.tasks({ agent: HELPER, tasks: TASK_LIST.helper.map(task => ({ ...task, status: 'completed' })) });
     log.advance(30000);
+    log.feed.outcome({ ended: 'finished' });
     status = 'success';
   }
   if (work.uat) {

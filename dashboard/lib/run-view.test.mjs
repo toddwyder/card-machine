@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { foldRunView, helperName, readLiveEvents } from './run-view.mjs';
 import { LIVE_TYPES, liveType } from '../../machine/flow/live-schema.mjs';
 import { SCENES, writeScene } from '../scripts/live-scenes.mjs';
-import { createLiveFeed, liveFileIn } from '../../machine/flow/live.mjs';
+import { createLiveFeed, liveFileIn, stageEvents } from '../../machine/flow/live.mjs';
 
 const SETTINGS = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokens: 100000 };
 const NOW = 1795315660000;
@@ -35,7 +35,7 @@ test('a running card shows where it is, what it has used, and who is working', (
 });
 
 test('every event the writer emits is a type the shared schema and the fold know', () => {
-  const lines = readLiveEvents(sceneLog('running'));
+  const lines = [...readLiveEvents(sceneLog('running')), ...readLiveEvents(sceneLog('finished'))];
   assert.equal(lines.length > 0, true);
   const written = new Set(lines.map(event => liveType(event)));
   assert.deepEqual([...written].sort(), [...LIVE_TYPES].sort());
@@ -77,8 +77,11 @@ test('seven quiet minutes become a stuck run with a stuck warning', () => {
 test('a stopped run says so, whether the row or only the log says it', () => {
   const withRow = fold({ events: eventsOf('stopped'), runStatus: { status: 'failed', createdAt: NOW - 360000, updatedAt: NOW - 60000 } });
   assert.equal(withRow.run.status, 'stopped');
-  assert.equal(withRow.run.stage.status, 'failed');
+  // The stop path walks on through the stop report and cleanup, and the failed stage stays in
+  // the rail so Todd can see where it went wrong.
+  assert.equal(withRow.run.stages.find(stage => stage.id === 'build-check').status, 'failed');
   assert.deepEqual(withRow.warnings.map(warning => warning.kind), ['stopped']);
+  assert.match(withRow.warnings[0].text, /Check the build/);
   const logOnly = fold({ events: eventsOf('stopped') });
   assert.equal(logOnly.run.status, 'stopped');
   assert.deepEqual(logOnly.warnings.map(warning => warning.kind), ['stopped']);
@@ -276,23 +279,45 @@ test('a finished run counts its last step, never step zero', () => {
   assert.equal(run.steps.list.every(step => step.status === 'completed'), true);
 });
 
-test('a run that ends on cleanup reads as finished, and one that ends elsewhere does not', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'run-view-last-stage-'));
+test('no stage shape makes a run finished, and the machine outcome does', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'run-view-outcome-'));
   const file = liveFileIn(dir, 'JUL-361');
-  const feed = createLiveFeed({ file, now: () => NOW });
+  const feed = createLiveFeed({ file, card: 'JUL-361', now: () => NOW });
   feed.run({ card: 'JUL-361', title: 'A card that ran to its last stage' });
-  for (const [stage, status] of [
-    ['flow-build', 'done'],
-    ['retro', 'done'],
-    ['cleanup', 'started'],
-  ]) feed.stage({ stage, status });
-  const midRun = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
-  assert.equal(midRun.run.status, 'running');
-  assert.equal(midRun.run.stage.id, 'cleanup');
+  for (const stage of ['flow-build', 'retro', 'hold', 'cleanup']) feed.stage({ stage, status: 'done' });
+  // The stop path and the finish path both end here, so the log alone must not claim an end.
+  const unknown = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
+  assert.equal(unknown.run.status, 'running');
+  assert.equal(unknown.run.ended, null, 'an unknown end is not finished');
 
-  feed.stage({ stage: 'cleanup', status: 'done' });
+  feed.outcome({ ended: 'finished' });
   const ended = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
   assert.equal(ended.run.status, 'finished');
+  assert.equal(ended.run.ended, 'finished');
   assert.equal(ended.run.stage.label, 'Clean up after the card');
   assert.deepEqual(ended.warnings, []);
+});
+
+test('a stopped run reads stopped when the machine announces it, whatever its row says', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'run-view-stop-path-'));
+  const file = liveFileIn(dir, 'JUL-361');
+  const feed = createLiveFeed({ file, card: 'JUL-361', now: () => NOW });
+  feed.run({ card: 'JUL-361', title: 'A card the machine stopped' });
+  const staged = (id, output) => stageEvents(id, async () => output, () => feed);
+  await staged('build-check', { ok: false })({});
+  await staged('halt', { stopped: true, detail: 'smoke test failed twice' })({});
+  await staged('stop-report', { stopped: true, finished: true, detail: 'stop report at reports/JUL-361-stop.md' })({});
+  await staged('cleanup', { stopped: true, finished: true })({});
+  const events = readLiveEvents(readFileSync(file, 'utf8'));
+  // The row the machine keeps for a stopped run says the workflow itself succeeded.
+  const snapshot = fold({ events, runStatus: { status: 'success', createdAt: NOW - 600000, updatedAt: NOW - 1000 } });
+  assert.equal(snapshot.run.status, 'stopped');
+  assert.equal(snapshot.run.ended, 'stopped');
+  assert.deepEqual(snapshot.warnings.map(warning => warning.kind), ['stopped']);
+  assert.equal(snapshot.run.stage.label, 'Clean up after the card');
+  // A log from a writer that could not announce it still holds a stop report, so it still stops.
+  const withoutAnnouncement = events.filter(event => liveType(event) !== 'outcome');
+  const stoppedFromReport = fold({ events: withoutAnnouncement });
+  assert.equal(stoppedFromReport.run.status, 'stopped');
+  assert.equal(stoppedFromReport.run.ended, 'stopped');
 });

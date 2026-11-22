@@ -2,7 +2,7 @@
 // Everything here is pure. No file reads, no clock, no network, so a test can pin every state
 // and every warning without a browser or a run.
 
-import { FINAL_STAGES, liveType } from '../../machine/flow/live-schema.mjs';
+import { liveType } from '../../machine/flow/live-schema.mjs';
 import { readingReason } from './reading-reasons.mjs';
 import { stageLabel } from './stage-labels.mjs';
 
@@ -284,14 +284,20 @@ function deriveWarnings({ state, stages, helpers, subscriptions, modelEvents, id
   return warnings;
 }
 
-// The log's own verdict on whether the run has ended, used when the machine has no row to ask:
-// the last stage it reached either failed or was one of the stages a run ends on.
-function endedFromLog(stages) {
-  const last = stages.at(-1);
-  if (!last) return null;
-  if (last.status === 'failed') return 'stopped';
-  if (last.status === 'done' && FINAL_STAGES.includes(last.id)) return 'finished';
-  return null;
+// How the run ended, from the machine's own announcement: one `outcome` line it writes when a
+// step's output carries the run's end record. The stages cannot answer this, because the stop
+// path and the finish path both walk through hold and cleanup.
+function endedFromOutcome(events) {
+  const announced = events.find(event => liveType(event) === 'outcome');
+  return announced?.ended === 'stopped' || announced?.ended === 'finished' ? announced.ended : null;
+}
+
+// A log written before that line existed, or one whose writer could not append it, still has
+// one honest signal left: only the stop path writes a stop report, so a log holding one is a
+// stopped run. No stage shape makes a run finished, because no stage shape can tell the two
+// ends apart; an unknown end is reported as unknown, never as finished.
+function endedFromStopReport(stages) {
+  return stages.some(stage => stage.id === 'stop-report') ? 'stopped' : null;
 }
 
 export function runState({ ended = null, currentStage = null, idleMs = null, settings }) {
@@ -312,8 +318,12 @@ export function foldRunView({ events = [], runStatus = null, subscriptions = [],
   const modelEvents = events.filter(event => liveType(event) === 'model');
   const started = events.find(event => liveType(event) === 'run');
   const createdAt = number(runStatus?.createdAt) || moment(started) || null;
-  // The stored row decides when it has an answer; the log speaks for itself when it does not.
-  const ended = ENDED[String(runStatus?.status ?? '').toLowerCase()] ?? (runStatus ? null : endedFromLog(stages));
+  // The machine's own announcement comes first, because its stored row reports the workflow's
+  // word (`success`) and a stopped run still finishes successfully with a stop in its result.
+  // The row answers when the log cannot, and a log holding a stop report answers last.
+  const ended = endedFromOutcome(events)
+    ?? ENDED[String(runStatus?.status ?? '').toLowerCase()]
+    ?? (runStatus ? null : endedFromStopReport(stages));
   const lastActivityAt = events.reduce((last, event) => Math.max(last, moment(event)), createdAt ?? 0) || null;
   const idleMs = lastActivityAt === null ? null : Math.max(0, now - lastActivityAt);
   const currentStage = stages.at(-1) ?? null;
@@ -336,6 +346,7 @@ export function foldRunView({ events = [], runStatus = null, subscriptions = [],
       card,
       title: String(started.title || card || 'A card'),
       status: state,
+      ended,
       startedAt: createdAt,
       runningMs: createdAt === null ? null : Math.max(0, (ended ? (lastActivityAt ?? now) : now) - createdAt),
       stage: currentStage,

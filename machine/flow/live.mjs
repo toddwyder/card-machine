@@ -49,11 +49,18 @@ const EVENTS = {
     id: ({ agent, seq }) => `tasks:${agent}:${seq}`,
     body: ({ agent, seq, tasks }) => ({ agent, seq, tasks }),
   },
+  // How the run ended. The stop path and the finish path both end on the same stages, so the
+  // stage list cannot tell them apart; the run's own record can, and this is the machine
+  // saying it out loud. One line per card: the first announcement is the run's answer.
+  outcome: {
+    id: ({ card }) => `outcome:${card}`,
+    body: ({ card, ended, detail }) => ({ card, ended, detail }),
+  },
 };
 
 export const liveFileIn = (dir, card) => join(dir, card, LIVE_FILE);
 
-export function createLiveFeed({ file, now = Date.now, append = appendFileSync, logger = console } = {}) {
+export function createLiveFeed({ file, card = null, now = Date.now, append = appendFileSync, logger = console } = {}) {
   if (!file) throw new Error('A live feed needs the file it writes.');
   const seen = new Set();
   const stageAttempts = new Map();
@@ -131,6 +138,7 @@ export function createLiveFeed({ file, now = Date.now, append = appendFileSync, 
 
   return {
     file,
+    card,
     write,
     run: (fields) => write('run', fields),
     // Stages are numbered per stage name, so a second build round is its own attempt.
@@ -141,6 +149,7 @@ export function createLiveFeed({ file, now = Date.now, append = appendFileSync, 
     agent: (fields) => write('agent', fields),
     tool: (fields) => write('tool', fields),
     model: (fields) => write('model', fields),
+    outcome: ({ ended, detail = null }) => write('outcome', { card, ended, detail }),
     // Every task event carries the whole list, so the screen never merges two lists.
     tasks: ({ agent, tasks }) => {
       const seq = (taskSeq.get(agent) ?? 0) + 1;
@@ -177,6 +186,10 @@ export const stageEvents = (id, execute, feedOf = () => null) => async (context)
   try {
     const output = await execute(held);
     feed?.stage({ stage: id, status: waiting ? 'waiting' : 'done' });
+    // A step whose output carries the run's end record has just ended the run: the stop
+    // record wins, because a stopped run still walks through cleanup.
+    const ended = output?.stopped === true ? 'stopped' : output?.finished === true ? 'finished' : null;
+    if (ended) feed?.outcome({ ended, detail: typeof output?.detail === 'string' ? output.detail : null });
     return output;
   } catch (error) {
     feed?.stage({ stage: id, status: 'failed' });
@@ -211,7 +224,7 @@ export function setLiveDir(dir) {
 export function liveFeedForCard(dir, card) {
   if (!dir || !card) return null;
   const file = liveFileIn(dir, card);
-  if (!feeds.has(file)) feeds.set(file, createLiveFeed({ file }));
+  if (!feeds.has(file)) feeds.set(file, createLiveFeed({ file, card }));
   return feeds.get(file);
 }
 

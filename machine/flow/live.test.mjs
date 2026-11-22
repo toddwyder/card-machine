@@ -159,6 +159,30 @@ test('a write that fails logs once and leaves the run going', () => {
   assert.match(warnings[0], /read-only/);
 });
 
+test('the run says how it ended, once, taking the stop over the finish', async () => {
+  const dir = scratch();
+  const file = join(dir, 'JUL-1', LIVE_FILE);
+  const feed = createLiveFeed({ file, card: 'JUL-1', logger: quiet });
+  const staged = (id, output) => stageEvents(id, async () => output, () => feed);
+  await staged('flow-build', { ok: true })({});
+  await staged('cleanup', { stopped: true, finished: true })({});
+  await staged('stop-report', { stopped: true, finished: true, detail: 'stop report at x' })({});
+  const announced = lines(file).filter((event) => event.type === 'outcome');
+  assert.equal(announced.length, 1, 'one announcement per card, however many steps end the run');
+  assert.deepEqual([announced[0].card, announced[0].ended], ['JUL-1', 'stopped']);
+});
+
+test('a step that ends nothing announces nothing, and a clean finish announces its own', async () => {
+  const dir = scratch();
+  const ended = createLiveFeed({ file: join(dir, 'JUL-2', LIVE_FILE), card: 'JUL-2', logger: quiet });
+  await stageEvents('cleanup', async () => ({ finished: true }), () => ended)({});
+  assert.deepEqual(lines(ended.file).filter((event) => event.type === 'outcome').map((event) => event.ended), ['finished']);
+
+  const ordinary = createLiveFeed({ file: join(dir, 'JUL-3', LIVE_FILE), card: 'JUL-3', logger: quiet });
+  await stageEvents('flow-build', async () => ({ built: true }), () => ordinary)({});
+  assert.deepEqual(lines(ordinary.file).filter((event) => event.type === 'outcome'), []);
+});
+
 test('one feed per run file, and the run directory is resolved from the flow directory', () => {
   const dir = scratch();
   setLiveDir(dir);
