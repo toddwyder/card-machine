@@ -1,0 +1,5 @@
+{
+  "stuckMinutes": 7,
+  "quotaLowPercent": 20,
+  "burningFastCallTokens": 100000
+}
