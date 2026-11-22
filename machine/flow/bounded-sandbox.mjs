@@ -75,7 +75,7 @@ export function boundedCommand(command, { slice = BUILDER_SLICE, memoryMax = COM
     ...(ownerUnit
       ? [`--property=BindsTo=${unitName(ownerUnit, 'service')}`, `--property=Requisite=${unitName(ownerUnit, 'service')}`, `--property=PartOf=${unitName(ownerUnit, 'service')}`, `--property=After=${unitName(ownerUnit, 'service')}`]
       : []),
-    '--', '/bin/sh', '-c', command,
+    '--', 'env', '-u', 'DBUS_SESSION_BUS_ADDRESS', '/bin/sh', '-c', command,
   ];
   const scoped = parts.map(quote).join(' ');
   return lock ? `flock --timeout ${LOCK_WAIT_SECONDS} ${quote(lock)} /bin/sh -c ${quote(scoped)}` : scoped;
