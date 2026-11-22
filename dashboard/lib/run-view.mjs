@@ -253,12 +253,12 @@ export function foldRunView({ events = [], runStatus = null, subscriptions = [],
   const state = runState({ ended, currentStage, idleMs, settings });
   const foldedSubscriptions = foldSubscriptions(subscriptions, settings);
   const tokens = modelEvents.reduce((total, event) => total + tokensIn(event), 0);
-  const dollars = estimateUsd
-    ? modelEvents.reduce((total, event) => {
-      const price = estimateUsd({ model: event.model, inputTokens: number(event.inputTokens), outputTokens: tokensOut(event), cachedInputTokens: number(event.cachedInputTokens) });
-      return total + (Number.isFinite(price) ? price : 0);
-    }, 0)
-    : null;
+  // Dollars only add up the calls whose model has a published price. When none does, the screen
+  // says it has no price rather than a confident zero.
+  const prices = estimateUsd
+    ? modelEvents.map(event => estimateUsd({ provider: event.provider, model: event.model, inputTokens: number(event.inputTokens), outputTokens: tokensOut(event), cachedInputTokens: number(event.cachedInputTokens) })).filter(price => Number.isFinite(price))
+    : [];
+  const dollars = prices.length ? prices.reduce((total, price) => total + price, 0) : null;
   const card = started?.card ?? null;
 
   const run = card || createdAt !== null

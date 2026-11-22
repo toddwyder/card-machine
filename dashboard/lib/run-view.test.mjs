@@ -131,3 +131,9 @@ test('an agent id becomes a name Todd can read', () => {
   assert.equal(helperName('pstack-feature-refactoring-2'), 'Feature Refactoring 2');
   assert.equal(helperName('pstack-bug-fix-1'), 'Bug Fix 1');
 });
+
+test('a run whose calls have no published price reports no dollar figure', () => {
+  const snapshot = fold({ events: eventsOf('running.jsonl'), estimateUsd: () => null });
+  assert.equal(snapshot.run.usage.dollarsEstimate, null);
+  assert.equal(snapshot.run.usage.tokens > 0, true);
+});

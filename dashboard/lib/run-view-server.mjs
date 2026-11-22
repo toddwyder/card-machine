@@ -31,7 +31,18 @@ function unknownReadings(reason) {
 
 // A reading that fails is a reading of "unknown"; the screen never shows a number it did not just
 // read. The reader lives behind its own import so this screen works before that module lands.
+// A test or a demo can point at a saved reading instead, so every bar state can be proved.
 async function readReadings() {
+  const saved = process.env.RUN_VIEW_SUBSCRIPTIONS_FILE;
+  if (saved) {
+    try {
+      const readings = JSON.parse(await readFile(saved, 'utf8'));
+      if (Array.isArray(readings) && readings.length) return readings;
+    } catch (error) {
+      return unknownReadings(error?.message ?? 'no saved reading');
+    }
+    return unknownReadings('no reading returned');
+  }
   try {
     const quota = await import('./quota/index.mjs');
     const readings = await quota.readSubscriptions();

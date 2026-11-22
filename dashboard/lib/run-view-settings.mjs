@@ -1,8 +1,12 @@
 // The three warning limits, read from the one file that holds them: dashboard/settings/run-view.json.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-const FILE = new URL('../settings/run-view.json', import.meta.url);
+// The screen is started from the dashboard folder and the tests are started from the repository
+// root, so the settings file is looked for from either place rather than from the module's own
+// address, which a bundled server does not keep.
+const CANDIDATES = ['settings/run-view.json', join('dashboard', 'settings', 'run-view.json')];
 
 const LIMITS = {
   stuckAfterMs: ms => Number.isFinite(ms) && ms > 0,
@@ -10,7 +14,15 @@ const LIMITS = {
   burningFastTokens: tokens => Number.isFinite(tokens) && tokens > 0,
 };
 
-export function readRunViewSettings(file = FILE) {
+function defaultFile() {
+  for (const candidate of CANDIDATES) {
+    const full = join(process.cwd(), candidate);
+    if (existsSync(full)) return full;
+  }
+  throw new Error('dashboard/settings/run-view.json is missing');
+}
+
+export function readRunViewSettings(file = defaultFile()) {
   const raw = JSON.parse(readFileSync(file, 'utf8'));
   for (const [name, ok] of Object.entries(LIMITS)) {
     if (!ok(Number(raw?.[name]))) throw new Error(`dashboard/settings/run-view.json needs a number for ${name}`);

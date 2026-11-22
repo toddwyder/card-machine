@@ -35,7 +35,9 @@ export function createUsdEstimator({ catalog = null, corrections = null, load = 
     if (!prices) return null;
     const model = String(call?.model ?? '');
     if (!model) return null;
-    const price = priceFor({ catalog: prices, corrections: overrides, provider: providerOf(model), model: modelOf(model) });
+    // The event may name the provider itself; otherwise the model string is provider/model.
+    const provider = String(call?.provider ?? '') || providerOf(model);
+    const price = priceFor({ catalog: prices, corrections: overrides, provider, model: call?.provider ? model : modelOf(model) });
     if (!price) return null;
     const cached = Number(call.cachedInputTokens) || 0;
     const input = Math.max(0, (Number(call.inputTokens) || 0) - cached);
