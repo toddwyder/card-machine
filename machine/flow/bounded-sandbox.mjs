@@ -24,7 +24,7 @@ export const COMMAND_MEMORY_MAX = BUILDER_MEMORY_MAX;
 
 // Commands that install dependencies or build a tree. They take the shared lock
 // so a card's install and another card's test never overlap.
-export const HEAVY_COMMAND = /(?:^|[\s;&|()])(?:npm\s+(?:ci|install|add|update|test|run)|npx\s+(?:next|playwright)|bun\s+(?:install|add|test|run)|pnpm\s+(?:install|add|test|run)|yarn(?:\s|$)|next\s+build|node\s+--test|playwright\s+test)/;
+export const HEAVY_COMMAND = /(?:^|[;&|()\n])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:exec\s+)?(?:[^\s;&|()]*\/)?(?:(?:npm|bun|pnpm)\s+(?:-(?:-[A-Za-z0-9][A-Za-z0-9_-]*|[A-Za-z0-9])(?:=[^\s;&|()]+)?(?:\s+[^\s;&|()-][^\s;&|()]*)?\s+)*(?:ci|install|add|update|test|run)\b|npx\s+(?:next|playwright|stryker|vitest|tsc|eslint)\b|yarn(?:\s|$)|next\s+build\b|node\s+--test\b|playwright\s+test\b|chrome(?:-headless-shell)?(?:\s|$)|chromium(?:\s|$)|stryker\s+run\b)/;
 
 export const LOCK_WAIT_SECONDS = 1800;
 
