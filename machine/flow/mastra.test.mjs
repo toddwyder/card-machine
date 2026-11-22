@@ -417,3 +417,45 @@ test('openMastra bounds DuckDB trace memory and threads by default', async t => 
   assert.equal(settings.memory_limit, '244.1 MiB');
   assert.equal(settings.threads, '1');
 });
+
+test('openMastra bounds span payloads so large processor histories cannot blow DuckDB 244.1 MiB checkpoint', async t => {
+  const dir = tempDir(t);
+  const workflow = makeCountingWorkflow({
+    id: 'wf-span-bound',
+    autoRestartActiveRuns: false,
+    countsFile: join(dir, 'counts.json'),
+  });
+  const mastra = await openMastra({
+    card: 'JUL-361',
+    agents: {},
+    workflow,
+    stateDb: join(dir, 'state.db'),
+    traceDb: join(dir, 'trace.duckdb'),
+  });
+  t.after(async () => {
+    await mastra.shutdown().catch(() => null);
+  });
+  await mastra.getStorage().init();
+  const obsInstance = mastra.observability.getDefaultInstance();
+  const hugeMessage = 'x'.repeat(12_000);
+  const hugeHistory = Array.from({ length: 35 }, (_, i) => ({ role: 'user', content: `${i}:${hugeMessage}` }));
+
+  for (let i = 0; i < 4; i++) {
+    const span = obsInstance.startSpan({
+      type: 'processor_run',
+      name: 'llm request processor: provider-history-compat',
+      input: { messages: hugeHistory },
+      metadata: { resourceId: 'JUL-361' },
+    });
+    span.end({ output: { messages: hugeHistory } });
+  }
+  await mastra.observability.flush();
+
+  const obs = await mastra.getStorage().getStore('observability');
+  await obs.db.query('CHECKPOINT');
+  const [{ maxIn, maxOut }] = await obs.db.query(
+    'SELECT max(length(cast(input as varchar)))::INTEGER AS maxIn, max(length(cast(output as varchar)))::INTEGER AS maxOut FROM span_events',
+  );
+  assert.ok(maxIn <= 65_536, `expected bounded span input <= 64 KiB, got ${maxIn} bytes`);
+  assert.ok(maxOut <= 65_536, `expected bounded span output <= 64 KiB, got ${maxOut} bytes`);
+});
