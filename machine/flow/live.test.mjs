@@ -107,6 +107,37 @@ test('a stage announces its start, then how it ended', async () => {
   await stageEvents('land', async () => 'no feed', () => null)();
 });
 
+test('a stage that asks to wait says so, and reads as done only once it is resumed and finishes', async () => {
+  const dir = scratch();
+  const feed = feedIn(dir);
+  // The engine hands a step a suspend that returns as if the step had finished, so the
+  // wrapper has to count the request itself: a suspended stage is waiting, not done.
+  let suspended = null;
+  const context = {
+    suspend: async (payload) => { suspended = payload; },
+  };
+  await stageEvents('acceptance', async (step) => step.suspend({ request: 'JUL-1/build-1' }), () => feed)(context);
+  assert.deepEqual(suspended, { request: 'JUL-1/build-1' });
+  assert.deepEqual(lines(liveFileIn(dir, 'JUL-1')).map((event) => `${event.stage}:${event.status}`), [
+    'acceptance:started', 'acceptance:waiting',
+  ]);
+
+  // Resuming runs the stage again: it is working, then done.
+  await stageEvents('acceptance', async () => 'answered', () => feed)(context);
+  assert.deepEqual(lines(liveFileIn(dir, 'JUL-1')).map((event) => `${event.stage}:${event.status}`).slice(-2), [
+    'acceptance:started', 'acceptance:done',
+  ]);
+});
+
+test('a stage with no way to wait still ends the way it ended', async () => {
+  const dir = scratch();
+  const feed = feedIn(dir);
+  assert.equal(await stageEvents('build-check', async () => 'checked', () => feed)({ n: 1 }), 'checked');
+  assert.deepEqual(lines(liveFileIn(dir, 'JUL-1')).map((event) => `${event.stage}:${event.status}`), [
+    'build-check:started', 'build-check:done',
+  ]);
+});
+
 test('a write that fails logs once and leaves the run going', () => {
   const dir = scratch();
   const warnings = [];

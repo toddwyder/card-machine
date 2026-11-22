@@ -142,7 +142,7 @@ export function writeScene(dir, scene, { now = Date.now(), card = CARD, title = 
   }
   if (work.uat) {
     for (const stage of ['finish-build', 'build-check', 'shipping', 'verdict', 'pass-note', 'gate']) stagePair(log, stage, 15000);
-    log.feed.stage({ stage: 'acceptance', status: 'started' });
+    log.feed.stage({ stage: 'acceptance', status: 'waiting' });
     log.advance(20000);
   }
   if (scene === 'stuck') log.advance(8 * 60_000);

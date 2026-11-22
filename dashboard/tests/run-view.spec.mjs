@@ -106,6 +106,18 @@ test.describe('the Run view on a laptop', () => {
     }
   });
 
+  test('says it is waiting for Todd while the acceptance gate holds the run', async ({ page }) => {
+    await prepare({ scene: 'uat' });
+    await openRunView(page);
+
+    const read = await snapshot(page);
+    expect(read.run.status).toBe('waiting_for_you');
+    expect(read.run.stage.status).toBe('waiting');
+    await expect(page.locator('main')).toContainText('Waiting for you');
+    await expect(warning(page, 'stuck')).toHaveCount(0);
+    await page.screenshot({ path: `${SHOTS}/waiting-for-you.png`, fullPage: true });
+  });
+
   test('draws stuck as a dashed box and says how long it has been quiet', async ({ page }) => {
     await prepare({ scene: 'stuck' });
     await openRunView(page);

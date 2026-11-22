@@ -148,12 +148,30 @@ export function createLiveFeed({ file, now = Date.now, append = appendFileSync, 
 
 // A stage's start and how it ended, wrapped around one workflow step's work. The feed
 // is looked up per step, because the card a step serves is only known when it runs.
+//
+// A step that asks to wait returns as if it had finished, so the wrapper counts the
+// request itself: the context's suspend is wrapped, and a stage that suspends is
+// waiting on Todd rather than done. Without that, a run stopped at the acceptance gate
+// reads as still running.
 export const stageEvents = (id, execute, feedOf = () => null) => async (context) => {
   const feed = feedOf(context);
   feed?.stage({ stage: id, status: 'started' });
+  let waiting = false;
+  const held = feed && typeof context?.suspend === 'function'
+    ? Object.create(context, {
+      suspend: {
+        value: async (...args) => {
+          const output = await context.suspend(...args);
+          waiting = true;
+          feed.stage({ stage: id, status: 'waiting' });
+          return output;
+        },
+      },
+    })
+    : context;
   try {
-    const output = await execute(context);
-    feed?.stage({ stage: id, status: 'done' });
+    const output = await execute(held);
+    feed?.stage({ stage: id, status: waiting ? 'waiting' : 'done' });
     return output;
   } catch (error) {
     feed?.stage({ stage: id, status: 'failed' });

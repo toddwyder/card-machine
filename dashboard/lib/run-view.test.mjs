@@ -94,7 +94,26 @@ test('a finished run reads as finished and keeps no warnings', () => {
 });
 
 test('the run waits for Todd while the UAT stage is open', () => {
-  assert.equal(fold({ events: eventsOf('uat') }).run.status, 'waiting_for_you');
+  const snapshot = fold({ events: eventsOf('uat') });
+  assert.equal(snapshot.run.status, 'waiting_for_you');
+  assert.equal(snapshot.run.stage.id, 'acceptance');
+  assert.equal(snapshot.run.stage.status, 'waiting');
+  assert.deepEqual(snapshot.warnings, []);
+});
+
+test('a stage that waits is waiting, and goes back to running when the machine resumes it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'run-view-resume-'));
+  const feed = createLiveFeed({ file: liveFileIn(dir, 'JUL-361'), logger: { warn() {} } });
+  feed.run({ card: 'JUL-361', title: 'A card', at: NOW });
+  const read = () => readLiveEvents(readFileSync(liveFileIn(dir, 'JUL-361'), 'utf8'), { now: NOW });
+  feed.stage({ stage: 'acceptance', status: 'started' });
+  feed.stage({ stage: 'acceptance', status: 'waiting' });
+  assert.equal(fold({ events: read() }).run.status, 'waiting_for_you');
+  feed.stage({ stage: 'acceptance', status: 'started' });
+  assert.equal(fold({ events: read() }).run.status, 'running');
+  feed.stage({ stage: 'acceptance', status: 'done' });
+  feed.stage({ stage: 'land', status: 'started' });
+  assert.equal(fold({ events: read() }).run.status, 'running');
 });
 
 test('a run with no stored row still shows from its own log', () => {

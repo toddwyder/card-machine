@@ -25,9 +25,6 @@ export const WARNING_TITLES = Object.freeze({
 
 export const WINDOW_LABELS = Object.freeze({ five_hour: '5-hour window', weekly: 'week' });
 
-// The stage the machine stops on for Todd. While it runs, nothing is wrong; the run is his.
-const UAT_STAGE = 'acceptance';
-
 // What the machine's run row means in this screen's words: null means the run has not ended.
 const ENDED = Object.freeze({
   success: 'finished',
@@ -104,10 +101,13 @@ export function readLiveEvents(text) {
 }
 
 // A stage is not started, running, done or failed; a failed stage stays failed even if a later
-// line claims otherwise, because that is what happened.
+// line claims otherwise, because that is what happened. A stage that waits stays waiting until
+// the machine resumes it, which starts it again.
 function nextStageStatus(current, next) {
   if (current === 'failed') return 'failed';
   if (next === 'failed' || next === 'done') return next;
+  if (next === 'started') return 'started';
+  if (next === 'waiting') return current === 'done' ? current : 'waiting';
   return current ?? 'started';
 }
 
@@ -296,7 +296,8 @@ function endedFromLog(stages) {
 
 export function runState({ ended = null, currentStage = null, idleMs = null, settings }) {
   if (ended) return ended;
-  if (currentStage?.id === UAT_STAGE && currentStage.status === 'started') return 'waiting_for_you';
+  // A stage that is waiting is waiting on Todd, whatever the stage is; nothing is wrong.
+  if (currentStage?.status === 'waiting') return 'waiting_for_you';
   if (idleMs !== null && settings && idleMs > settings.stuckAfterMs) return 'stuck';
   return 'running';
 }
