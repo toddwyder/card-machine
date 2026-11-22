@@ -23,7 +23,7 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/role-models.mjs` | The Lead helper models, read from the saved role table and routed to account providers. | `6946ce44710f02f3bfa74f5aacbe91f49fa65db28b4009cd5b1e2ccc78dbfceb` |
 | `machine/flow/schema.mjs` | What the run form asks for and what the run remembers. | `f88678d622ef9296d6bc7559db1e8306a21d78caaa5fff8a2c01861f81f36eb1` |
 | `machine/flow/scratch.mjs` | The run folder: artifacts, verdicts and the report a stop leaves. | `c5434ee429300e6aad87017ef44dbcc5cb4592a6109f867b88b237bfaa122e6e` |
-| `machine/flow/copy.mjs` | The fresh copy of the repository each card builds in, and its removal when the card ends. | `bbbc7813271e9e26bad8b49c7c0d92ca0933e97050618fc374873ebb01b72cfe` |
+| `machine/flow/copy.mjs` | The fresh copy of the repository each card builds in, and its removal when the card ends. | `56dee1b3c5d3ea14c5fcaba0f186554bd3121ba8ec48fcac243aed446fcfe78f` |
 | `machine/flow/review.mjs` | The Shipping review: finds the card's pull request, names the commit it reviews, builds the reviewer's task, reads the verdict. | `9f9dab7643fa9e3eac10ff78f63006bc5971749f2c84ac1ce345c80e3b6039fa` |
 | `machine/flow/cost-record.mjs` | Builds the per-card cost record from Mastra metrics and sends it to Axiom. | `2b8a1ad2bd83455f13b9cf6715c217d2434b2fc9072717dfd7f8b788569ca1f5` |
 | `machine/flow/mastra.mjs` | Storage, tracing and trace retention, so a run is written down and pruned. | `6383b09cfd9216e19272db65b388362407f018b6acfce57e1de8fe300552beb6` |
