@@ -1,0 +1,62 @@
+/* The ring around a run. Tokens first: everything else is written in terms of them. */
+:root {
+  --bottle: #1d3b27;
+  --green: #3d6b2c;
+  --sapling: #5e8a4c;
+  --sage: #dcebcb;
+  --ivory: #f6f1e4;
+  --ink: #1d3b27;
+  --ink-soft: #4a4a3e;
+  --ink-faint: #5b5a50;
+  --red: #a3212d;
+  --red-bg: #fbe6e7;
+  --red-ink: #66101a;
+  --amber: #b4540a;
+  --amber-bg: #fff1dc;
+  --amber-ink: #5e2904;
+  --track: #dad4c4;
+  --lime: #9fd06e;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--sage);
+  color: var(--ink);
+  font-family: var(--font-sans), 'Source Sans 3', system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--sage);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-slab), 'Zilla Slab', Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+::selection {
+  background: var(--green);
+  color: var(--ivory);
+}
+
+:focus-visible {
+  outline: 3px solid var(--bottle);
+  outline-offset: 3px;
+}
+
+a {
+  color: inherit;
+}
