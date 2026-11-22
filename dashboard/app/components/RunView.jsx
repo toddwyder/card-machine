@@ -182,9 +182,7 @@ function collectActionIds(helpers) {
 
 export default function RunView({ initialData }) {
   const [snapshot, setSnapshot] = useState(initialData);
-  const [connectionState, setConnectionState] = useState(
-    initialData && initialData.sourceStatus === 'error' ? 'reconnecting' : 'live'
-  );
+  const [pollFailed, setPollFailed] = useState(false);
   const [freshActionIds, setFreshActionIds] = useState(() => new Set());
   const seenActionIdsRef = useRef(collectActionIds(initialData?.run?.helpers));
 
@@ -223,12 +221,12 @@ export default function RunView({ initialData }) {
 
         setFreshActionIds(newlyAdded);
         setSnapshot(nextData);
-        setConnectionState(nextData?.sourceStatus === 'error' ? 'reconnecting' : 'live');
+        setPollFailed(false);
       } catch (err) {
         if (!active || (err && err.name === 'AbortError')) {
           return;
         }
-        setConnectionState('reconnecting');
+        setPollFailed(true);
       } finally {
         if (active) {
           timerId = setTimeout(poll, POLL_INTERVAL_MS);
@@ -266,14 +264,9 @@ export default function RunView({ initialData }) {
     if (currentSteps.length === 0) {
       return -1;
     }
-    const byState = currentSteps.findIndex(
-      (step) => step.state === 'running' || step.state === 'stuck' || step.state === 'sent_back'
-    );
-    if (byState >= 0) {
-      return byState;
-    }
     if (typeof run?.currentStepIndex === 'number' && run.currentStepIndex >= 1) {
-      return Math.min(currentSteps.length - 1, run.currentStepIndex - 1);
+      const idx = Math.min(currentSteps.length - 1, run.currentStepIndex - 1);
+      return currentSteps[idx]?.state === 'running' ? idx : -1;
     }
     return -1;
   })();
@@ -287,7 +280,12 @@ export default function RunView({ initialData }) {
       return undefined;
     }
 
+    let cancelled = false;
+
     const updateMarker = () => {
+      if (cancelled) {
+        return;
+      }
       const targetEl = stepRefs.current.get(activeStepId);
       if (!targetEl || !listEl) {
         setMarkerRect(null);
@@ -303,12 +301,33 @@ export default function RunView({ initialData }) {
 
     updateMarker();
 
-    if (typeof ResizeObserver === 'undefined') {
-      return undefined;
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        if (!cancelled) {
+          requestAnimationFrame(updateMarker);
+        }
+      });
     }
-    const observer = new ResizeObserver(updateMarker);
-    observer.observe(listEl);
-    return () => observer.disconnect();
+
+    let observer = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(updateMarker);
+      observer.observe(listEl);
+      const targetEl = stepRefs.current.get(activeStepId);
+      if (targetEl) {
+        observer.observe(targetEl);
+      }
+    }
+
+    window.addEventListener('resize', updateMarker);
+
+    return () => {
+      cancelled = true;
+      if (observer) {
+        observer.disconnect();
+      }
+      window.removeEventListener('resize', updateMarker);
+    };
   }, [activeStepId, currentSteps.length, currentStage?.id]);
 
   const estimateDollarsText = formatEstimateLabel(run?.estimatedDollarsLabel);
@@ -320,13 +339,21 @@ export default function RunView({ initialData }) {
         <div className={styles.headerInner}>
           <p className={styles.brand}>Julia machine</p>
           <p className={styles.liveStatus} role="status" aria-live="polite">
-            <span
-              className={
-                connectionState === 'live' ? styles.liveDot : styles.reconnectingDot
-              }
-              aria-hidden="true"
-            />
-            {connectionState === 'live' ? 'Live' : 'Reconnecting'}
+            {pollFailed ||
+            snapshot?.sourceStatus === 'unavailable' ||
+            snapshot?.sourceStatus === 'error' ? (
+              <>
+                <span className={styles.reconnectingDot} aria-hidden="true" />
+                Reconnecting
+              </>
+            ) : snapshot?.sourceStatus === 'fixture' ? (
+              'Sample data'
+            ) : (
+              <>
+                <span className={styles.liveDot} aria-hidden="true" />
+                Live
+              </>
+            )}
           </p>
         </div>
       </header>
@@ -335,8 +362,7 @@ export default function RunView({ initialData }) {
         {warnings.length > 0 && (
           <section aria-label="Warnings" className={styles.warningsSection}>
             {warnings.map((warning) => {
-              const isStuck =
-                warning.kind === 'stuck' || warning.borderStyle === 'dashed';
+              const isStuck = warning.kind === 'stuck';
               return (
                 <div
                   key={warning.id}
@@ -369,15 +395,18 @@ export default function RunView({ initialData }) {
                   <span className={styles.tabular}>· {run.elapsedLabel}</span>
                 ) : null}
               </p>
-              <p className={styles.usageSummary}>
-                {run.tokensLabel ? (
-                  <strong className={styles.tokensCount}>{run.tokensLabel}</strong>
-                ) : null}
-                {run.tokensLabel && estimateDollarsText ? ' · ' : ''}
-                {estimateDollarsText ? (
-                  <span className={styles.estimateText}>{estimateDollarsText}</span>
-                ) : null}
-              </p>
+              {(run.tokensLabel || estimateDollarsText) && (
+                <p className={styles.usageSummary}>
+                  <span className={styles.usageLeadIn}>Card so far</span>{' '}
+                  {run.tokensLabel ? (
+                    <strong className={styles.tokensCount}>{run.tokensLabel}</strong>
+                  ) : null}
+                  {run.tokensLabel && estimateDollarsText ? ' · ' : ''}
+                  {estimateDollarsText ? (
+                    <span className={styles.estimateText}>{estimateDollarsText}</span>
+                  ) : null}
+                </p>
+              )}
             </div>
 
             <div className={styles.stageHeroRow}>
@@ -402,7 +431,17 @@ export default function RunView({ initialData }) {
             </div>
 
             {stages.length > 0 && (
-              <ol aria-label="Stages" className={styles.stageBoard}>
+              <ol
+                aria-label="Stages"
+                className={styles.stageBoard}
+                style={{
+                  '--stage-board-columns': stages
+                    .map((s) =>
+                      s.id === (currentStage?.id ?? run.currentStageId) ? '1.9fr' : '1fr'
+                    )
+                    .join(' '),
+                }}
+              >
                 {stages.map((stage) => {
                   const isCurrent = currentStage ? stage.id === currentStage.id : false;
                   let stageClass = styles.stageUpcoming;

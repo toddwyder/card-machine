@@ -415,8 +415,8 @@ export function evaluateWarnings({
       kind: 'quota_low',
       title: 'Quota low',
       message: `${name} has ${Math.round(remaining)}% left.`,
-      borderStyle: 'dashed',
-      severity: 'warning',
+      borderStyle: 'solid',
+      severity: 'danger',
     });
   }
 
@@ -427,8 +427,8 @@ export function evaluateWarnings({
       kind: 'burning_fast',
       title: 'Burning tokens fast',
       message: `${worst.agentName} used ${formatTokens(worst.tokens)} in one call.`,
-      borderStyle: 'dashed',
-      severity: 'warning',
+      borderStyle: 'solid',
+      severity: 'danger',
     });
   }
 
@@ -507,6 +507,11 @@ function deriveStepState({ stepDef, steps, state, runStatus }) {
 
   const hasSuspended = matches.some(m => m.entry?.status === 'suspended');
   if (hasSuspended) return { state: 'running', note: 'Waiting for you' };
+
+  const hasStuck = matches.some(m => m.entry?.status === 'stuck');
+  if (hasStuck) {
+    return { state: 'stuck' };
+  }
 
   const hasRunning = matches.some(m => m.entry?.status === 'running');
   if (hasRunning) {
@@ -708,12 +713,15 @@ export function buildRunViewSnapshot({
     ? rawRun.estimatedDollars
     : parsedSpans.estimatedDollars;
 
-  const stuckMinutes = runStatus === 'stuck'
-    ? (nowMs - lastActivityMs) / 60_000
-    : null;
-  const stuckInfo = stuckMinutes !== null
-    ? { minutes: stuckMinutes, targetName: activeStep?.name ?? activeStage?.name ?? null }
-    : null;
+  const stuckHelper = parsedSpans.helpers
+    .filter(h => h.status === 'stuck' && h._lastActivityMs > 0)
+    .sort((a, b) => a._lastActivityMs - b._lastActivityMs)[0] ?? null;
+
+  const stuckInfo = runStatus === 'stuck'
+    ? { minutes: (nowMs - lastActivityMs) / 60_000, targetName: activeStep?.name ?? activeStage?.name ?? null }
+    : stuckHelper
+      ? { minutes: (nowMs - stuckHelper._lastActivityMs) / 60_000, targetName: stuckHelper.name }
+      : null;
 
   const warnings = evaluateWarnings({
     runStatus,

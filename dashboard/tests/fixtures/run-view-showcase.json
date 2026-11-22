@@ -63,7 +63,7 @@
         }
       },
       "recheck-verdict": {
-        "status": "running",
+        "status": "stuck",
         "startedAt": "2026-11-22T18:18:30.000Z"
       },
       "land": {
@@ -92,27 +92,39 @@
     {
       "spanId": "agent-shipping",
       "spanType": "agent_run",
-      "attributes": { "agentId": "shipping" }
+      "attributes": {
+        "agentId": "shipping"
+      },
+      "startedAt": "2026-11-22T18:27:00.000Z"
     },
     {
       "spanId": "tool-s1",
       "parentSpanId": "agent-shipping",
       "spanType": "tool_call",
-      "attributes": { "toolName": "execute_command" }
+      "attributes": {
+        "toolName": "execute_command"
+      },
+      "startedAt": "2026-11-22T18:29:00.000Z"
     },
     {
       "spanId": "llm-s1",
       "parentSpanId": "agent-shipping",
       "spanType": "model_inference",
       "attributes": {
-        "usage": { "totalTokens": 24000 }
-      }
+        "usage": {
+          "totalTokens": 24000
+        }
+      },
+      "startedAt": "2026-11-22T18:28:30.000Z",
+      "endedAt": "2026-11-22T18:28:50.000Z"
     },
     {
       "spanId": "agent-build",
       "spanType": "agent_run",
       "startedAt": "2026-11-22T18:10:00.000Z",
-      "attributes": { "agentId": "flow-build" }
+      "attributes": {
+        "agentId": "flow-build"
+      }
     },
     {
       "spanId": "tool-b1",
@@ -120,8 +132,12 @@
       "spanType": "tool_call",
       "startedAt": "2026-11-22T18:11:00.000Z",
       "endedAt": "2026-11-22T18:11:30.000Z",
-      "attributes": { "toolName": "read_file" },
-      "input": { "path": "dashboard/app/components/RunView.jsx" }
+      "attributes": {
+        "toolName": "read_file"
+      },
+      "input": {
+        "path": "dashboard/app/components/RunView.jsx"
+      }
     },
     {
       "spanId": "tool-b2",
@@ -129,15 +145,21 @@
       "spanType": "tool_call",
       "startedAt": "2026-11-22T18:15:00.000Z",
       "endedAt": "2026-11-22T18:16:00.000Z",
-      "attributes": { "toolName": "edit_file" },
-      "input": { "path": "dashboard/app/components/RunView.module.css" }
+      "attributes": {
+        "toolName": "edit_file"
+      },
+      "input": {
+        "path": "dashboard/app/components/RunView.module.css"
+      }
     },
     {
       "spanId": "tool-b3",
       "parentSpanId": "agent-build",
       "spanType": "tool_call",
       "startedAt": "2026-11-22T18:19:30.000Z",
-      "attributes": { "toolName": "execute_command" }
+      "attributes": {
+        "toolName": "execute_command"
+      }
     },
     {
       "spanId": "llm-b1",
@@ -146,7 +168,9 @@
       "startedAt": "2026-11-22T18:18:00.000Z",
       "endedAt": "2026-11-22T18:18:30.000Z",
       "attributes": {
-        "usage": { "totalTokens": 138000 }
+        "usage": {
+          "totalTokens": 138000
+        }
       }
     },
     {
@@ -154,7 +178,9 @@
       "spanType": "agent_run",
       "startedAt": "2026-11-22T18:08:30.000Z",
       "endedAt": "2026-11-22T18:13:30.000Z",
-      "attributes": { "agentId": "subagent-execute" }
+      "attributes": {
+        "agentId": "subagent-execute"
+      }
     },
     {
       "spanId": "tool-e1",
@@ -162,8 +188,12 @@
       "spanType": "tool_call",
       "startedAt": "2026-11-22T18:09:00.000Z",
       "endedAt": "2026-11-22T18:09:30.000Z",
-      "attributes": { "toolName": "read_file" },
-      "input": { "path": "dashboard/lib/run-view-model.js" }
+      "attributes": {
+        "toolName": "read_file"
+      },
+      "input": {
+        "path": "dashboard/lib/run-view-model.js"
+      }
     },
     {
       "spanId": "tool-e2",
@@ -171,8 +201,12 @@
       "spanType": "tool_call",
       "startedAt": "2026-11-22T18:12:00.000Z",
       "endedAt": "2026-11-22T18:13:00.000Z",
-      "attributes": { "toolName": "write_file" },
-      "input": { "path": "dashboard/tests/run-view.spec.mjs" }
+      "attributes": {
+        "toolName": "write_file"
+      },
+      "input": {
+        "path": "dashboard/tests/run-view.spec.mjs"
+      }
     },
     {
       "spanId": "llm-e1",
@@ -181,7 +215,9 @@
       "startedAt": "2026-11-22T18:11:00.000Z",
       "endedAt": "2026-11-22T18:11:20.000Z",
       "attributes": {
-        "usage": { "totalTokens": 20000 }
+        "usage": {
+          "totalTokens": 20000
+        }
       }
     }
   ],

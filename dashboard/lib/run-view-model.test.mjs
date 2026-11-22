@@ -208,13 +208,13 @@ describe('run-view-model warnings and full snapshot building', () => {
     assert.equal(byKind.stuck.severity, 'warning');
     assert.match(byKind.stuck.message, /9 min/);
 
-    assert.equal(byKind.quota_low.borderStyle, 'dashed');
-    assert.equal(byKind.quota_low.severity, 'warning');
+    assert.equal(byKind.quota_low.borderStyle, 'solid');
+    assert.equal(byKind.quota_low.severity, 'danger');
     assert.match(byKind.quota_low.message, /Claude/);
     assert.match(byKind.quota_low.message, /14%/);
 
-    assert.equal(byKind.burning_fast.borderStyle, 'dashed');
-    assert.equal(byKind.burning_fast.severity, 'warning');
+    assert.equal(byKind.burning_fast.borderStyle, 'solid');
+    assert.equal(byKind.burning_fast.severity, 'danger');
     assert.match(byKind.burning_fast.message, /Build helper/);
     assert.match(byKind.burning_fast.message, /145 k tokens/);
   });

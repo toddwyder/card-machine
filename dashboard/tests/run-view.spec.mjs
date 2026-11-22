@@ -29,9 +29,14 @@ test.describe('Mission Control Run view', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/', { waitUntil: 'networkidle' });
 
-    // Card title, current stage, step counter, estimate wording
+    // Fixture header shows Sample data (not Live)
+    const headerStatus = page.locator('header [role="status"]');
+    await expect(headerStatus).toHaveText('Sample data');
+
+    // Card title, current stage, step counter, Card so far + estimate wording
     const runSection = page.locator('section[aria-label="Current run"]');
     await expect(runSection).toContainText('Mission control Run view');
+    await expect(runSection).toContainText('Card so far');
     await expect(runSection).toContainText('step 3 of 6');
     await expect(runSection).toContainText(/estimate/i);
     await expect(runSection.locator('h1')).toHaveText('Shipping');
@@ -66,6 +71,16 @@ test.describe('Mission Control Run view', () => {
     await expect(warningsSection).toContainText('ChatGPT has 14% left.');
     await expect(warningsSection).toContainText('Burning tokens fast');
     await expect(warningsSection).toContainText('Build helper');
+
+    const warningStyles = await alerts.evaluateAll((nodes) =>
+      nodes.map((el) => ({
+        text: (el.textContent || '').trim(),
+        borderStyle: getComputedStyle(el).borderStyle,
+      }))
+    );
+    expect(warningStyles.find((w) => w.text.includes('Run looks stuck'))?.borderStyle).toBe('dashed');
+    expect(warningStyles.find((w) => w.text.includes('Quota low'))?.borderStyle).toBe('solid');
+    expect(warningStyles.find((w) => w.text.includes('Burning tokens fast'))?.borderStyle).toBe('solid');
 
     // Step states in Shipping: passed, passed_with_notes, stuck, sent_back (Round 2), given_up
     const stepItems = page.locator('ol[aria-label="Shipping steps"] li');
@@ -123,6 +138,11 @@ test.describe('Mission Control Run view', () => {
     await expect(helpersSection).toContainText('Build helper');
     await expect(helpersSection).toContainText('Execute helper');
 
+    const shippingHelperCard = helpersSection.locator('> ul > li', { hasText: 'Shipping helper' });
+    await expect(shippingHelperCard).toContainText('Working');
+    const shippingActionPlay = await shippingHelperCard.locator('ol li svg path').first().getAttribute('d');
+    expect(shippingActionPlay).toContain('15.25');
+
     const buildHelperCard = helpersSection.locator('> ul > li', { hasText: 'Build helper' });
     await expect(buildHelperCard).toContainText('Stuck');
     const buildActions = await buildHelperCard.locator('ol li').allTextContents();
@@ -171,6 +191,7 @@ test.describe('Mission Control Run view', () => {
 
     if (process.env.CAPTURE_DIR) {
       mkdirSync(process.env.CAPTURE_DIR, { recursive: true });
+      await page.evaluate(() => document.fonts?.ready);
       await page.screenshot({
         path: join(process.env.CAPTURE_DIR, 'desktop.png'),
         fullPage: true,
@@ -187,6 +208,7 @@ test.describe('Mission Control Run view', () => {
     expect(mobileOverflow.scrollWidth).toBeLessThanOrEqual(mobileOverflow.clientWidth);
 
     if (process.env.CAPTURE_DIR) {
+      await page.evaluate(() => document.fonts?.ready);
       await page.screenshot({
         path: join(process.env.CAPTURE_DIR, 'mobile.png'),
         fullPage: true,

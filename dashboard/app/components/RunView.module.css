@@ -199,6 +199,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.usageLeadIn {
+  color: var(--ink-on-forest-soft);
+  margin-right: 4px;
+}
+
 .tokensCount {
   color: var(--ink-on-forest);
   font-family: var(--font-zilla-slab), serif;
@@ -271,9 +276,15 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  grid-template-columns: var(--stage-board-columns, repeat(auto-fit, minmax(175px, 1fr)));
   gap: 10px;
   align-items: stretch;
+}
+
+@media (max-width: 859px) {
+  .stageBoard {
+    grid-template-columns: 1fr;
+  }
 }
 
 .stageTile {
