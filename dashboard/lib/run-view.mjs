@@ -178,11 +178,57 @@ function foldHelpers(events, { settings, now }) {
   return list;
 }
 
-function currentStep(helpers) {
-  const lead = helpers.find(row => row.id === 'flow-build' && row.tasks.length > 0) ?? helpers.find(row => row.tasks.length > 0);
-  const running = lead?.tasks.find(task => task.status === 'in_progress');
-  return running?.title ?? null;
+// The machine appends its own note to a step it was told to skip, as `skip: <reason>`. The note
+// is a caption for the operator, not part of the step's name.
+const SKIP_NOTE = /\s*skip:\s*/i;
+const STEP_PILL_CHARS = 42;
+
+const STEP_STATUS = Object.freeze({ pending: 'pending', in_progress: 'in_progress', completed: 'completed' });
+
+const stepText = title => String(title ?? '').split(SKIP_NOTE)[0].trim();
+
+// A pill holds the first sentence of the step, cut at a word boundary when that is still long.
+function pillText(text) {
+  const sentence = text.split(/(?<=[.!?])\s/)[0].replace(/\.$/, '');
+  if (sentence.length <= STEP_PILL_CHARS) return sentence;
+  const head = sentence.slice(0, STEP_PILL_CHARS);
+  return `${head.slice(0, head.lastIndexOf(' ')).trim()}…`;
 }
+
+// The machine numbers its steps in the id (`playbook_7`), so that suffix is the run's order.
+const stepOrder = id => {
+  const match = /(\d+)$/.exec(String(id ?? ''));
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+};
+
+/**
+ * The run's steps: the Lead's own task list, in the order the machine numbered them, with the
+ * step the run is on. This is the only place a step becomes a number, a word or a pill, so the
+ * step's name and the "step N of M" count can never disagree.
+ */
+export function runSteps(helpers) {
+  const lead = helpers.find(row => row.id === 'flow-build' && row.tasks.length > 0) ?? helpers.find(row => row.tasks.length > 0);
+  const ordered = (lead?.tasks ?? [])
+    .map((task, position) => ({ task, position }))
+    .sort((a, b) => stepOrder(a.task.id) - stepOrder(b.task.id) || a.position - b.position);
+  const list = ordered.map(({ task }) => {
+    const title = stepText(task.title);
+    const skipped = SKIP_NOTE.test(String(task.title ?? '')) && task.status !== 'completed';
+    return {
+      id: String(task.id ?? ''),
+      title,
+      short: pillText(title),
+      status: skipped ? 'skipped' : STEP_STATUS[task.status] ?? 'pending',
+    };
+  });
+  const running = list.findIndex(step => step.status === 'in_progress');
+  const passed = list.filter(step => step.status === 'completed' || step.status === 'skipped').length;
+  // With nothing in hand, the run is on the next step it has not passed, so a fresh run reads
+  // "step 1 of 8" and a finished one reads its last step rather than none.
+  const index = list.length === 0 ? null : running >= 0 ? running + 1 : Math.min(list.length, passed + 1);
+  return { list, index, total: list.length, current: running >= 0 ? list[running] : null };
+}
+
 
 function foldSubscriptions(subscriptions, settings) {
   return (subscriptions ?? []).map(subscription => {
@@ -280,6 +326,7 @@ export function foldRunView({ events = [], runStatus = null, subscriptions = [],
     : [];
   const dollars = prices.length ? prices.reduce((total, price) => total + price, 0) : null;
   const card = started?.card ?? null;
+  const steps = runSteps(helpers);
 
   // A run exists because its own log says so. The stored row only says how it ended, so an
   // old row with no log is a result to report, never a run to draw.
@@ -291,7 +338,9 @@ export function foldRunView({ events = [], runStatus = null, subscriptions = [],
       startedAt: createdAt,
       runningMs: createdAt === null ? null : Math.max(0, (ended ? (lastActivityAt ?? now) : now) - createdAt),
       stage: currentStage,
-      step: currentStep(helpers),
+      // The step's name and the count come from the same lookup, so they cannot disagree.
+      step: steps.current?.title ?? null,
+      steps,
       stages,
       usage: { tokens, dollarsEstimate: dollars === null ? null : Number(dollars.toFixed(4)) },
       helpers,

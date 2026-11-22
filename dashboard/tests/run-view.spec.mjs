@@ -58,7 +58,7 @@ test.describe('the Run view on a laptop', () => {
     await expect(panel.getByText(/about \$|not priced yet/)).toBeVisible();
 
     // The step inside the stage, from the task list the machine wrote.
-    await expect(panel.getByText('Architect the shape')).toBeVisible();
+    await expect(panel.getByRole('paragraph').filter({ hasText: 'Architect the shape' })).toBeVisible();
 
     // One card per helper, each with the actions it has taken.
     const read = await snapshot(page);

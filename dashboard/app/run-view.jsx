@@ -81,6 +81,14 @@ function Mark({ state }) {
       </svg>
     );
   }
+  if (state === 'skipped') {
+    return (
+      <svg {...frame}>
+        <circle cx="7.5" cy="7.5" r="5.5" className={styles.markRing} />
+        <path d="M3.9 11.1 11.1 3.9" className={styles.markRing} />
+      </svg>
+    );
+  }
   if (state === 'failed') {
     return (
       <svg {...frame}>
@@ -113,7 +121,33 @@ function Warnings({ warnings }) {
   );
 }
 
-function StageRail({ stages, current, step }) {
+// The run's steps in one row, the one it is on filled in, and the count in words beside them.
+function StepRow({ steps }) {
+  if (!steps || !steps.list.length) return null;
+  return (
+    <div className={styles.stepStrip}>
+      <ol className={styles.steps} aria-label={`The run's ${steps.total} steps`}>
+        {steps.list.map((step, position) => (
+          <li
+            key={step.id}
+            className={styles.step}
+            data-state={step.status}
+            data-number={position + 1}
+            aria-current={step.status === 'in_progress' ? 'step' : undefined}
+          >
+            <Mark state={step.status === 'completed' ? 'done' : step.status} />
+            <span>{step.short}</span>
+          </li>
+        ))}
+      </ol>
+      <p className={styles.stepCount} data-index={steps.index} data-total={steps.total}>
+        step <b>{steps.index}</b> of <b>{steps.total}</b>
+      </p>
+    </div>
+  );
+}
+
+function StageRail({ stages, current, step, steps }) {
   const passed = stages.filter(stage => stage !== current);
   return (
     <ol className={styles.rail}>
@@ -130,6 +164,7 @@ function StageRail({ stages, current, step }) {
             <h2 className={styles.nowName}>{current.label}</h2>
           </div>
           {step ? <p className={styles.nowStep}>{step}</p> : null}
+          <StepRow steps={steps} />
         </li>
       ) : null}
     </ol>
@@ -287,7 +322,7 @@ export function RunView({ initialSnapshot }) {
                 {money(run.usage.dollarsEstimate)}
               </p>
             </div>
-            <StageRail stages={run.stages} current={run.stage} step={run.step} />
+            <StageRail stages={run.stages} current={run.stage} step={run.step} steps={run.steps} />
           </section>
         ) : (
           <section className={styles.quiet} aria-label="Nothing running">

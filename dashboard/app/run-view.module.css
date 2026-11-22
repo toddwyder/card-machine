@@ -188,6 +188,74 @@
   max-width: 60ch;
 }
 
+/* The run's steps: one pill each, the step in hand filled, the count in words beside them. A
+   step the run was told to skip keeps a dotted edge and a struck name, the same shapes the rest
+   of the screen uses, so the row reads without colour. */
+.stepStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 14px 0 0;
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px 3px 9px;
+  border: 2px solid var(--track);
+  border-radius: 999px;
+  background: var(--ivory);
+  color: var(--ink-faint);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.step[data-state='completed'] {
+  border-color: var(--sapling);
+  color: var(--ink-soft);
+}
+
+.step[data-state='in_progress'] {
+  border-color: var(--green);
+  background: var(--sage);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.step[data-state='skipped'] {
+  border-color: var(--ink-faint);
+  border-style: dotted;
+}
+
+.step[data-state='skipped'] span {
+  text-decoration: line-through;
+}
+
+.step[data-state='skipped'] .markRing {
+  stroke: var(--ink-faint);
+}
+
+.stepCount {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
 .sectionTitle {
   font-size: 1.5rem;
   margin: 0 0 12px;
@@ -552,5 +620,14 @@
 
   .bar {
     height: 20px;
+  }
+
+  .stepStrip {
+    gap: 6px 10px;
+  }
+
+  .step {
+    font-size: 0.78rem;
+    padding: 2px 9px 2px 7px;
   }
 }
