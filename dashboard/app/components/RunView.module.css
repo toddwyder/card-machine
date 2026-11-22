@@ -1,0 +1,868 @@
+.page {
+  min-height: 100vh;
+  background-color: var(--surface-ground);
+  color: var(--ink-primary);
+}
+
+.header {
+  background-color: var(--surface-forest);
+  color: var(--ink-on-forest);
+  border-bottom: 2px solid #13281A;
+}
+
+.headerInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 32px;
+  min-height: 68px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+}
+
+.brand {
+  margin: 0;
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink-on-forest);
+}
+
+.liveStatus {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-on-forest-soft);
+}
+
+.liveDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: var(--accent-sprout);
+  flex-shrink: 0;
+}
+
+.reconnectingDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #E8944A;
+  flex-shrink: 0;
+}
+
+.main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 32px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* Warnings strip */
+.warningsSection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.warningBoxStuck,
+.warningBoxSolid {
+  flex: 1 1 340px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.warningBoxStuck {
+  background-color: var(--surface-amber);
+  border: 3px dashed var(--accent-amber);
+  color: var(--ink-amber);
+}
+
+.warningBoxSolid {
+  background-color: var(--surface-madder);
+  border: 3px solid var(--accent-madder);
+  color: var(--ink-madder);
+}
+
+.warningIconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.warningCopy {
+  margin: 0;
+}
+
+.warningTitle {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+/* Bottle-green run panel */
+.runPanel,
+.idlePanel {
+  background-color: var(--surface-forest);
+  color: var(--ink-on-forest);
+  border-radius: 20px;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.runTopRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 600;
+  font-size: clamp(1.375rem, 2.2vw, 1.75rem);
+  line-height: 1.15;
+  color: var(--ink-on-forest);
+}
+
+.statusPill {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 5px 14px;
+  border-radius: 999px;
+}
+
+.statusPillRunning {
+  background-color: #274D33;
+  color: #D7F0BE;
+  border: 2px solid var(--surface-leaf);
+}
+
+.statusPillWaiting {
+  background-color: var(--surface-amber);
+  color: var(--ink-amber);
+  border: 2px solid #D8A236;
+}
+
+.statusPillFinished {
+  background-color: var(--surface-leaf);
+  color: var(--ink-on-forest);
+  border: 2px solid #5E8A4C;
+}
+
+.statusPillStuck {
+  background-color: var(--surface-amber);
+  color: var(--ink-amber);
+  border: 2px dashed var(--accent-amber);
+}
+
+.statusPillProblem {
+  background-color: var(--surface-madder);
+  color: var(--ink-madder);
+  border: 2px solid var(--accent-madder);
+}
+
+.runningDot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background-color: var(--accent-sprout);
+  box-shadow: 0 0 0 3px var(--surface-leaf);
+  flex-shrink: 0;
+}
+
+.usageSummary {
+  margin: 0 0 0 auto;
+  font-size: 16px;
+  color: var(--ink-on-forest-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.tokensCount {
+  color: var(--ink-on-forest);
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 700;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.estimateText {
+  color: var(--ink-on-forest-soft);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Current stage hero — largest text on the page */
+.stageHeroRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 20px;
+}
+
+.currentStageHeading {
+  margin: 0;
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 700;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  color: var(--ink-on-forest);
+}
+
+.stageHeroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font-size: 17px;
+  color: var(--ink-on-forest-soft);
+}
+
+.stepCounter {
+  font-weight: 700;
+  color: var(--accent-sprout);
+  font-variant-numeric: tabular-nums;
+}
+
+.roundBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 2px dotted #F2C96B;
+  color: #FCE6B1;
+  font-weight: 700;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.currentStepLabel {
+  color: var(--ink-on-forest);
+  font-weight: 600;
+}
+
+/* Station-board stages row */
+.stageBoard {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.stageTile {
+  padding: 14px 16px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stageTileStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stageTileName {
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.stageTileStepCount {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stagePassed {
+  background-color: var(--surface-leaf);
+  color: var(--ink-on-forest);
+  border: 2px solid var(--surface-leaf);
+}
+
+.stageCurrent {
+  background-color: var(--surface-ivory);
+  color: var(--surface-forest);
+  border: 3px solid var(--accent-sprout);
+}
+
+.stageUpcoming {
+  background-color: transparent;
+  color: var(--ink-on-forest-soft);
+  border: 2px solid var(--accent-forest-border);
+}
+
+.stageSentBack {
+  background-color: #27442E;
+  color: #FCE6B1;
+  border: 2px dotted #F2C96B;
+}
+
+.stageStuck {
+  background-color: var(--surface-amber);
+  color: var(--ink-amber);
+  border: 3px dashed var(--accent-amber);
+}
+
+.stageGivenUp {
+  background-color: var(--surface-madder);
+  color: var(--ink-madder);
+  border: 3px solid var(--accent-madder);
+}
+
+/* Current stage steps row + signature gliding marker */
+.stepsBlock {
+  padding-top: 16px;
+  border-top: 1px solid #35583D;
+}
+
+.stepsTrackWrap {
+  position: relative;
+}
+
+.activeStepMarker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 12px;
+  border: 3px solid var(--accent-sprout);
+  pointer-events: none;
+  transition:
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 2;
+}
+
+.stepsRow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.stepChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.stepIconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stepName {
+  word-break: break-word;
+}
+
+.stepRunning {
+  background-color: var(--surface-ivory);
+  color: var(--surface-forest);
+  border: 2px solid var(--surface-ivory);
+  font-weight: 700;
+}
+
+.stepPassed,
+.stepPassedNotes {
+  background-color: var(--surface-leaf);
+  color: var(--ink-on-forest);
+  border: 2px solid var(--surface-leaf);
+}
+
+.stepSentBack {
+  background-color: #2A4630;
+  color: #FCE6B1;
+  border: 2px dotted #F2C96B;
+}
+
+.stepStuck {
+  background-color: var(--surface-amber);
+  color: var(--ink-amber);
+  border: 2px dashed var(--accent-amber);
+  font-weight: 700;
+}
+
+.stepGivenUp {
+  background-color: var(--surface-madder);
+  color: var(--ink-madder);
+  border: 2px solid var(--accent-madder);
+  font-weight: 700;
+}
+
+.stepPending {
+  background-color: transparent;
+  color: var(--ink-on-forest-soft);
+  border: 2px solid var(--accent-forest-border);
+}
+
+.stepTagNow {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: lowercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background-color: var(--surface-ground);
+  color: var(--surface-forest);
+}
+
+.stepTagNotes {
+  font-size: 13px;
+  font-weight: 700;
+  color: #E4F2D8;
+}
+
+.stepTagRound {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background-color: rgba(242, 201, 107, 0.2);
+  color: #FCE6B1;
+  font-variant-numeric: tabular-nums;
+}
+
+.struckText {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+/* Idle panel when nothing is running */
+.idleHeading {
+  margin: 0;
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 700;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink-on-forest);
+}
+
+.lastRunLine {
+  margin: 0;
+  font-size: 17px;
+  color: var(--ink-on-forest-soft);
+  line-height: 1.45;
+}
+
+.lastRunLine strong {
+  color: var(--ink-on-forest);
+}
+
+/* Helpers section */
+.helpersSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionHeading {
+  margin: 4px 0 0;
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.15;
+  color: var(--ink-primary);
+}
+
+.helpersGrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.helperCard {
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.helperCardWorking {
+  background-color: var(--surface-ivory);
+  border: 3px solid var(--surface-leaf);
+  color: var(--ink-primary);
+}
+
+.helperCardStuck {
+  background-color: var(--surface-amber);
+  border: 3px dashed var(--accent-amber);
+  color: var(--ink-amber);
+}
+
+.helperCardStopped {
+  background-color: var(--surface-madder);
+  border: 3px solid var(--accent-madder);
+  color: var(--ink-madder);
+}
+
+.helperHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.helperName {
+  margin: 0;
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.helperMeta {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.helperCardStuck .helperMeta {
+  color: var(--ink-amber);
+}
+
+.helperCardStopped .helperMeta {
+  color: var(--ink-madder);
+}
+
+.actionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+}
+
+.actionItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.35;
+  border-radius: 8px;
+  padding: 3px 6px;
+  margin: 0 -6px;
+}
+
+.actionItemDone {
+  color: #354C2E;
+}
+
+.helperCardStuck .actionItemDone {
+  color: #6B3C12;
+}
+
+.actionItemNow {
+  font-weight: 700;
+  background-color: var(--surface-ground);
+  color: var(--ink-primary);
+  padding: 5px 8px;
+  margin: 0 -8px;
+}
+
+.actionItemStuck {
+  font-weight: 700;
+  background-color: var(--surface-amber-highlight);
+  color: var(--ink-amber);
+  padding: 5px 8px;
+  margin: 0 -8px;
+}
+
+.actionItemTodo {
+  color: #4A5946;
+}
+
+.actionIconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+
+.actionIconDone {
+  color: var(--surface-leaf);
+}
+
+.actionIconNow {
+  color: var(--surface-forest);
+}
+
+.actionIconStuck {
+  color: var(--accent-amber);
+}
+
+.actionIconTodo {
+  color: #5C6B57;
+}
+
+.actionLabel {
+  word-break: break-word;
+}
+
+@keyframes actionSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.actionSlideIn {
+  animation: actionSlideIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.helpersLegend {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legendDivider {
+  color: var(--ink-secondary);
+}
+
+/* Subscription quota section */
+.quotaSection {
+  background-color: var(--surface-ivory);
+  border: 2px solid var(--surface-ground-deep);
+  border-radius: 20px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.quotaHeading {
+  margin: 0;
+  font-family: var(--font-zilla-slab), serif;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.15;
+  color: var(--ink-primary);
+}
+
+.quotaList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.quotaRow {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 230px;
+  gap: 10px 18px;
+  align-items: center;
+}
+
+.quotaName {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.quotaTrack,
+.quotaTrackLow {
+  height: 24px;
+  border-radius: 12px;
+  background-color: var(--surface-ivory-track);
+  overflow: hidden;
+}
+
+.quotaTrackLow {
+  outline: 3px dashed var(--accent-madder);
+  outline-offset: 3px;
+}
+
+.quotaTrackUnknown {
+  height: 24px;
+  border-radius: 12px;
+  border: 2px dashed var(--accent-unknown);
+  background-color: #EAE5D6;
+}
+
+.quotaFill {
+  height: 100%;
+  border-radius: 12px 0 0 12px;
+}
+
+.quotaFillHealthy {
+  background-color: var(--surface-leaf);
+}
+
+.quotaFillMedium {
+  background-color: var(--accent-amber);
+}
+
+.quotaFillLow {
+  background-color: var(--accent-madder);
+}
+
+.quotaValue,
+.quotaValueLow,
+.quotaValueUnknown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quotaValue {
+  color: var(--ink-secondary);
+}
+
+.quotaValueLow {
+  color: var(--ink-madder);
+  font-weight: 700;
+}
+
+.quotaValueUnknown {
+  color: var(--ink-unknown);
+  font-weight: 600;
+}
+
+.quotaPercent {
+  color: inherit;
+  font-weight: 700;
+}
+
+.quotaValue .quotaPercent {
+  color: var(--ink-primary);
+}
+
+.inlineIcon {
+  flex-shrink: 0;
+  vertical-align: -2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .activeStepMarker {
+    transition: none;
+  }
+
+  .actionSlideIn {
+    animation: none;
+  }
+}
+
+/* Responsive phone layout (390px and below) */
+@media (max-width: 720px) {
+  .headerInner {
+    padding: 0 18px;
+    min-height: 60px;
+  }
+
+  .brand {
+    font-size: 22px;
+  }
+
+  .main {
+    padding: 18px 16px 36px;
+    gap: 20px;
+  }
+
+  .runPanel,
+  .idlePanel {
+    padding: 20px 18px;
+    border-radius: 16px;
+    gap: 18px;
+  }
+
+  .usageSummary {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .stageBoard {
+    grid-template-columns: 1fr;
+  }
+
+  .stepsRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stepChip {
+    width: 100%;
+  }
+
+  .helpersGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .quotaSection {
+    padding: 20px 18px;
+    border-radius: 16px;
+  }
+
+  .quotaRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}
