@@ -196,6 +196,32 @@ test('nothing running but a stored row says what the last run did', () => {
   assert.deepEqual(snapshot.lastResult, { status: 'finished', at: NOW - 3500000 });
 });
 
+test('cached prompt tokens are counted once, in the run total, the helper and the burning check', () => {
+  const log = (calls) => {
+    const dir = mkdtempSync(join(tmpdir(), 'run-view-tokens-'));
+    const file = liveFileIn(dir, 'JUL-361');
+    const feed = createLiveFeed({ file, card: 'JUL-361', now: () => NOW });
+    feed.run({ card: 'JUL-361', title: 'A card whose prompt was mostly cache' });
+    for (const [index, call] of calls.entries()) {
+      feed.model({ agent: 'flow-build', model: 'commandcode/moonshotai/Kimi-K3.1-Pro', spanId: `s${index}`, ...call });
+    }
+    return fold({ events: readLiveEvents(readFileSync(file, 'utf8')), estimateUsd: () => 0.084 });
+  };
+  // Mastra's inputTokens is the call's whole input and already holds the cache reads.
+  const cached = log([{ inputTokens: 130000, outputTokens: 1000, cachedInputTokens: 120000 }]);
+  assert.equal(cached.run.usage.tokens, 131000);
+  assert.equal(cached.run.helpers[0].tokens, 131000);
+  assert.deepEqual(cached.warnings.map(warning => warning.kind), ['burning_fast']);
+
+  const underTheLimit = log([{ inputTokens: 60000, outputTokens: 1000, cachedInputTokens: 50000 }]);
+  assert.equal(underTheLimit.run.usage.tokens, 61000);
+  assert.equal(underTheLimit.run.helpers[0].tokens, 61000);
+  assert.deepEqual(underTheLimit.warnings, []);
+
+  const uncached = log([{ inputTokens: 60000, outputTokens: 1000, cachedInputTokens: 0 }]);
+  assert.equal(uncached.run.usage.tokens, 61000);
+});
+
 test('a dollar figure is passed through as an estimate, never invented', () => {
   const estimateUsd = () => 0.0125;
   assert.equal(fold({ events: eventsOf('running') }).run.usage.dollarsEstimate, null);

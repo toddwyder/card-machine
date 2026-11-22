@@ -60,7 +60,11 @@ const TOOL_NAMES = Object.freeze({
 
 const number = value => (Number.isFinite(Number(value)) ? Number(value) : 0);
 const moment = event => number(event?.at);
-const tokensIn = event => number(event.inputTokens) + number(event.outputTokens) + number(event.cachedInputTokens);
+// The tokens one model call spent, counted once. Mastra's `inputTokens` is the call's whole
+// input and already contains the cache reads, which are repeated beside it only so a price can
+// charge them at the cache rate. Adding them again counts the same tokens twice, so the run
+// total, each helper's total and the burning-fast check all come through here.
+const tokensIn = event => number(event.inputTokens) + number(event.outputTokens);
 const tokensOut = event => number(event.outputTokens);
 
 export function helperName(agent) {
