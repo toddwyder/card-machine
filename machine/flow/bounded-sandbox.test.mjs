@@ -185,6 +185,30 @@ test('HEAVY_COMMAND matches flagged installs and browsers, skips non-heavy args,
   assert.ok(elapsedMs < 10, `expected < 10 ms, got ${elapsedMs.toFixed(2)} ms`);
 });
 
+test('a command inside the builder slice does not inherit DBUS_SESSION_BUS_ADDRESS', { timeout: 60000 }, async () => {
+  let sandbox;
+  try {
+    let active = false;
+    try { active = systemctl('is-active', owner) === 'active'; } catch {}
+    if (!active) {
+      bestEffort('stop', owner);
+      bestEffort('reset-failed', owner);
+      execFileSync('systemd-run', [
+        '--user', '--quiet', `--unit=${owner}`, `--slice=${slice}`,
+        '--property=MemoryMax=64M', '--property=MemorySwapMax=0', '--property=Restart=always', '--property=RestartSec=1s',
+        '/usr/bin/sleep', '120',
+      ]);
+      systemctl('set-property', '--runtime', slice, `MemoryMax=${sliceMemory}`, 'MemorySwapMax=0');
+    }
+    sandbox = await sandboxOn();
+    const result = await sandbox.executeCommand('python3', ['-c', 'import os; print(os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""))']);
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(result.stdout.trim(), '');
+  } finally {
+    await sandbox?.stop().catch(() => {});
+  }
+});
+
 test.after(() => {
   for (const [command, ...args] of [['stop', owner], ['reset-failed', owner], ['revert', slice]]) {
     try { systemctl(command, ...args); } catch {}
