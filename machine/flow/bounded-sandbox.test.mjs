@@ -151,7 +151,9 @@ test('a build or test takes the shared lock and a read does not', { timeout: 600
   try {
     assert.match(sandbox.wrapCommandForIsolation('npm run build').command, /flock --timeout 1800 .*card-builder\.lock/);
     assert.match(sandbox.wrapCommandForIsolation('node --test machine/flow').command, /flock --timeout 1800/);
+    assert.match(sandbox.wrapCommandForIsolation('timeout 300 npm run build').command, /flock --timeout 1800/);
     assert.doesNotMatch(sandbox.wrapCommandForIsolation('cat package.json').command, /flock --timeout/);
+    assert.doesNotMatch(sandbox.wrapCommandForIsolation('echo npm test').command, /flock --timeout/);
   } finally {
     await sandbox?.stop().catch(() => {});
   }
@@ -170,6 +172,17 @@ test('isInstallerCommand catches wrapped and flagged installers and ignores non-
     'yarn',
     'yarn add react',
     'sh -c "cd dashboard; timeout 60 npm ci"',
+    'npm clean-install',
+    'npm cit',
+    'npm it',
+    'npm --workspace dashboard ci',
+    'npm -w dashboard ci',
+    'npm --loglevel silent ci',
+    '{ npm ci; }',
+    'time npm ci',
+    'eval "npm ci"',
+    'echo "npm ci" | sh',
+    "node -e \"require('child_process').execSync('npm ci')\"",
   ];
   const allowed = [
     'npm test',
@@ -180,6 +193,8 @@ test('isInstallerCommand catches wrapped and flagged installers and ignores non-
     'grep -r "npm ci" docs/',
     'git status',
     'yarn test',
+    'echo "npm ci" | grep ci',
+    "node -e \"console.log('npm ci')\"",
   ];
   for (const cmd of installers) assert.equal(isInstallerCommand(cmd), true, `expected installer: ${cmd}`);
   for (const cmd of allowed) assert.equal(isInstallerCommand(cmd), false, `expected allowed: ${cmd}`);
@@ -210,6 +225,15 @@ test('HEAVY_COMMAND matches flagged installs and browsers, skips non-heavy args,
     '/usr/local/bin/npm --prefix /tmp/x --no-audit ci',
     'chromium --headless',
     '/home/ubuntu/.cache/ms-playwright/chromium-1243/chrome-linux/chrome --headless',
+    'timeout 300 npm run build',
+    'timeout 300 node --test machine/flow',
+    'env NODE_ENV=production npm run build',
+    'nice -n 10 npm test',
+    'sh -c "npm run build"',
+    'npx --no-install playwright test',
+    '{ npm run build; }',
+    'bunx playwright test',
+    'node --test-concurrency=1 --test machine/flow',
   ];
   const light = [
     'echo chrome',
@@ -217,6 +241,9 @@ test('HEAVY_COMMAND matches flagged installs and browsers, skips non-heavy args,
     'grep -r chromium src',
     'which chrome',
     'git status',
+    'ls',
+    'echo npm test',
+    'cat package.json',
   ];
   for (const cmd of heavy) assert.equal(HEAVY_COMMAND.test(cmd), true, `expected heavy: ${cmd}`);
   for (const cmd of light) assert.equal(HEAVY_COMMAND.test(cmd), false, `expected light: ${cmd}`);
