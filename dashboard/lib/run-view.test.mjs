@@ -295,7 +295,7 @@ test('the step row follows the machine numbering, not the order it arrived in', 
   assert.deepEqual(run.steps.list.map(step => step.id), ['playbook_1', 'playbook_2', 'playbook_10']);
   assert.equal(run.steps.index, 3);
   assert.equal(run.steps.total, 3);
-  assert.equal(run.step, null);
+  assert.equal(run.step, 'Tenth step');
 });
 
 test('a finished run counts its last step, never step zero', () => {
@@ -303,6 +303,7 @@ test('a finished run counts its last step, never step zero', () => {
   assert.equal(run.steps.total, 8);
   assert.equal(run.steps.index, 8);
   assert.equal(run.steps.list.every(step => step.status === 'completed'), true);
+  assert.equal(run.step, run.steps.list[7].title);
 });
 
 test('no stage shape makes a run finished, and the machine outcome does', () => {

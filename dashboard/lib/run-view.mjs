@@ -232,7 +232,9 @@ export function runSteps(helpers) {
   // With nothing in hand, the run is on the next step it has not passed, so a fresh run reads
   // "step 1 of 8" and a finished one reads its last step rather than none.
   const index = list.length === 0 ? null : running >= 0 ? running + 1 : Math.min(list.length, passed + 1);
-  return { list, index, total: list.length, current: running >= 0 ? list[running] : null };
+  // The name comes from the same step the count names, so a machine that only ever reports
+  // "completed" still shows the step it is on instead of a number with nothing beside it.
+  return { list, index, total: list.length, current: running >= 0 ? list[running] : list[index - 1] ?? null };
 }
 
 
