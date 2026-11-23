@@ -1,7 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const BUILTINS = new Set(builtinModules.flatMap(m => (m.startsWith('node:') ? [m] : [m, `node:${m}`])));
 
 function trackedFiles(root) {
   const output = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' });
@@ -20,10 +23,19 @@ function installedPackages(root) {
       }
     }
   }
+  for (const lockfile of ['package-lock.json', 'dashboard/package-lock.json']) {
+    const full = join(root, lockfile);
+    if (!existsSync(full)) continue;
+    const lock = JSON.parse(readFileSync(full, 'utf8'));
+    for (const key of Object.keys(lock.packages ?? {})) {
+      const idx = key.lastIndexOf('node_modules/');
+      if (idx !== -1) packages.add(key.slice(idx + 'node_modules/'.length));
+    }
+  }
   return packages;
 }
 
-/** Fails when graphify-out/graph.json references any source outside git-tracked files or installed packages. */
+/** Fails when graphify-out/graph.json references any source outside git-tracked files, Node built-ins, or installed packages. */
 export function checkGraphSources(root = process.cwd()) {
   const graphPath = join(root, 'graphify-out', 'graph.json');
   if (!existsSync(graphPath)) {
@@ -32,7 +44,7 @@ export function checkGraphSources(root = process.cwd()) {
   const graph = JSON.parse(readFileSync(graphPath, 'utf8'));
   const tracked = trackedFiles(root);
   const packages = installedPackages(root);
-  const allowed = source => tracked.has(source) || packages.has(source);
+  const allowed = source => tracked.has(source) || BUILTINS.has(source) || packages.has(source);
 
   const failures = [];
   for (const [kind, entries] of [
