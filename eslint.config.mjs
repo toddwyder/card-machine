@@ -156,8 +156,8 @@ export const frameworkPlugins = {
 };
 
 // The runner files below write the run record, the cost record, the per-card spending record, the
-// interrupted-run record and its heartbeat, and the exit timer, so the framework rules cover the
-// flow definitions only.
+// interrupted-run record and its heartbeat, the live event file the Run view reads, and the exit
+// timer, so the framework rules cover the flow definitions only.
 const flowRunnerFiles = [
   'machine/flow/run.mjs',
   'machine/flow/start.mjs',
@@ -178,6 +178,43 @@ export default [
     linterOptions: {
       noInlineConfig: true,
       reportUnusedDisableDirectives: 'error',
+    },
+  },
+  {
+    // The live event file is the one thing this module writes, one line per
+    // span, so the framework's write rules stay on for everything else it does.
+    files: ['machine/flow/live.mjs'],
+    plugins: frameworkPlugins,
+    rules: {
+      ...frameworkRules,
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'node:fs',
+              importNames: ['writeFile', 'writeFileSync', 'appendFile', 'createWriteStream'],
+              message: 'the live feed only appends lines with appendFileSync',
+            },
+            {
+              name: 'fs',
+              importNames: ['writeFile', 'writeFileSync', 'appendFile', 'createWriteStream'],
+              message: 'the live feed only appends lines with appendFileSync',
+            },
+            { name: 'node:fs/promises', importNames: ['writeFile', 'appendFile'], message: 'the live feed appends synchronously' },
+            { name: 'fs/promises', importNames: ['writeFile', 'appendFile'], message: 'the live feed appends synchronously' },
+            ...(frameworkRules['no-restricted-imports']?.[1]?.paths ?? []).filter(
+              path => !['node:fs', 'fs', 'node:fs/promises', 'fs/promises'].includes(path.name),
+            ),
+          ],
+        },
+      ],
+      'no-restricted-properties': [
+        'error',
+        ...(frameworkRules['no-restricted-properties']?.slice(1) ?? []).filter(
+          entry => !['writeFile', 'appendFile', 'writeFileSync', 'appendFileSync', 'createWriteStream'].includes(entry.property),
+        ),
+      ],
     },
   },
 ];

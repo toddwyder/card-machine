@@ -1,0 +1,15 @@
+{
+  "five_hour": {
+    "utilization": 11,
+    "resets_at": "2026-11-21T10:00:00.468488+00:00",
+    "limit_dollars": null,
+    "used_dollars": null
+  },
+  "seven_day": {
+    "utilization": 2,
+    "resets_at": "2026-11-28T05:00:00.468508+00:00",
+    "limit_dollars": null,
+    "used_dollars": null
+  },
+  "extra_usage": { "is_enabled": false, "disabled_reason": "out_of_credits" }
+}

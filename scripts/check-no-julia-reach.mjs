@@ -13,6 +13,7 @@ const SKIP_FILES = new Set([
   'package-lock.json',
   'dashboard/package-lock.json',
   'scripts/check-no-julia-reach.mjs',
+  'scripts/check-no-julia-reach.test.mjs',
   'scripts/server-in-use.mjs',
   'scripts/check-server-in-use.mjs',
   'scripts/check-server-in-use.test.mjs',
@@ -27,8 +28,26 @@ const REACH_PATTERNS = [
   { label: 'julia-next GitHub repository reference', pattern: /\btoddwyder\/julia-next\b|\bjulia-next\.git\b/i },
   { label: 'julia-next local checkout path', pattern: /\/julia-next\b|(?:\.\.\/)+julia(?!-agents\b)[\w-]*/i },
   { label: 'OVH Julia checkout reference', pattern: /\/home\/ubuntu\/julia-(?:flow-repo|builder|dashboard|mastra)\b/i },
-  { label: 'relative import into Julia app/lib', pattern: /(?:\.\.\/)+(?:app|lib)\// },
 ];
+
+// A relative import reaches Julia only if it climbs out of this repository on
+// its way to an `app` or `lib` folder. `dashboard/app/page.jsx` importing
+// `../lib/` stays inside the dashboard, so it is not a reach. The same import
+// from a file one folder deep would climb past the root and is.
+const APP_LIB_IMPORT = /(?:\.\.\/)+(?:app|lib)\//;
+
+function climbsOutOfRepo(file, specifier) {
+  const climb = (specifier.match(/(?:\.\.\/)+/)?.[0].match(/\.\./g) ?? []).length;
+  const depth = file.split('/').length - 1;
+  return climb > depth;
+}
+
+export function relativeReach(file, line) {
+  for (const [, specifier] of line.matchAll(/['"]((?:\.\.\/)[^'"]*)['"]/g)) {
+    if (APP_LIB_IMPORT.test(specifier) && climbsOutOfRepo(file, specifier)) return specifier;
+  }
+  return null;
+}
 
 function listFiles(root) {
   try {
@@ -68,6 +87,10 @@ export function checkNoJuliaReach(root = process.cwd()) {
         if (match) {
           failures.push(`${file}:${index + 1}: ${label} (${match[0]})`);
         }
+      }
+      const reach = relativeReach(file, line);
+      if (reach) {
+        failures.push(`${file}:${index + 1}: relative import past the repository root into Julia app/lib (${reach})`);
       }
     }
   }
