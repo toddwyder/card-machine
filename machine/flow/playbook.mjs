@@ -5,6 +5,8 @@ import { TaskSignalProvider } from '@mastra/core/signals';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
+import { cardOfContext, liveFeedForRun } from './live.mjs';
+
 export const PLAYBOOK_DIR = '.agents/skills/poteto-mode/playbooks';
 
 const PLAYBOOK_ALIASES = {
@@ -15,6 +17,18 @@ const PLAYBOOK_ALIASES = {
 
 const TASKS_REQUEST_CONTEXT_KEY = 'mastra:tasks';
 const TASK_STATE_TYPE = 'task';
+
+// The Run view shows each agent's task list as it stands, so every write announces the
+// whole list rather than a change: the screen never has to merge two lists.
+const announceTasks = (context, tasks) => {
+  const list = (Array.isArray(tasks) ? tasks : []).map(({ id, content, status }) => ({ id, title: content, status }));
+  liveFeedForRun(cardOfContext(context))?.tasks({
+    // Mastra keeps the agent's id on `agentId` in tool context; `id` and `name` are not set there,
+    // and falling back to them labelled a real run's task list "machine" on the Run view.
+    agent: context?.agent?.agentId ?? context?.agent?.name ?? 'machine',
+    tasks: list,
+  });
+};
 
 export function normalizePlaybookName(name) {
   const cleaned = String(name ?? '')
@@ -130,6 +144,7 @@ export function createChoosePlaybookTool({ repo, onChosen, onInvalid } = {}) {
       }
       context?.requestContext?.set?.(TASKS_REQUEST_CONTEXT_KEY, tasks);
       context?.requestContext?.get?.('controller')?.emitEvent?.({ type: 'task_updated', tasks });
+      announceTasks(context, tasks);
       onChosen?.({ playbook: entry.slug, steps: entry.steps, requestContext: context?.requestContext });
 
       return {
@@ -171,7 +186,9 @@ const wrapTaskTool = (base, checkRefusal) => createTool({
   execute: async (input, context) => {
     const { tasks } = await readTaskState(context);
     if (checkRefusal(input, tasks)) return flaggedTaskRefusal(tasks);
-    return base.execute(input, context);
+    const result = await base.execute(input, context);
+    announceTasks(context, (await readTaskState(context)).tasks);
+    return result;
   },
 });
 

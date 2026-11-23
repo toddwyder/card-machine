@@ -42,6 +42,8 @@ export const PROGRAMS = [
   ['machine/flow/review.mjs', 'The Shipping review: finds the card\'s pull request, names the commit it reviews, builds the reviewer\'s task, reads the verdict.'],
   ['machine/flow/cost-record.mjs', 'Builds the per-card cost record from Mastra metrics and sends it to Axiom.'],
   ['machine/flow/mastra.mjs', 'Storage, tracing and trace retention, so a run is written down and pruned.'],
+  ['machine/flow/live.mjs', 'Writes the run\'s live event log as each stage, tool call and model call starts and ends, for mission control to read during a run.'],
+  ['machine/flow/live-schema.mjs', 'The one list of live event types the machine writes and the Run view reads.'],
   ['machine/flow/start.mjs', 'Assembles a run to read it back and to resume a card.'],
   ['machine/flow/run.mjs', 'Answers a waiting card and reads a run. No way to start one.'],
   ['machine/flow/report.mjs', 'Builds the card report and tripwire stop helper.'],
@@ -53,6 +55,7 @@ export const PROGRAMS = [
   ['machine/flow/call-cost.mjs', 'Counts each finished model call, keeps the card ledger honest when a lookup fails, and stops the card at $4.'],
   ['machine/flow/crash-stop.mjs', 'Stops a run whose Studio died, and posts the cause on the card.'],
   ['machine/flow/interrupted.mjs', 'At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them.'],
+  ['scripts/proof-run.mjs', 'Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins.'],
   ['scripts/julia-agents.mjs', 'Runs a machine command with the Julia keys it needs.'],
 ].map(([path, what]) => ({ path, what }));
 

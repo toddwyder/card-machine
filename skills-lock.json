@@ -94,11 +94,11 @@
       "installMode": "copy"
     },
     "create-verification-skill": {
-      "source": "backnotprop/pstack",
-      "ref": "0d2dc00df47d7686c94324cfe9c3444710d9f16d",
+      "source": "e2e-inc/e2e",
+      "commit": "02cf99bea4808571b04009ebb87bb8cc9a9886ea",
       "sourceType": "github",
       "skillPath": "skills/create-verification-skill/SKILL.md",
-      "computedHash": "bba612e8b81a02df0f49e6f6911f3b543c8c7d9f1f3c13ae6c0e2d58cc8c3ad3",
+      "computedHash": "9fea0eabbdedc671cd774ecde0968b635006b38daa41396e6f7c79d89d8f9930",
       "installMode": "copy"
     },
     "domain-modeling": {
@@ -107,6 +107,14 @@
       "ref": "v1.3.2",
       "skillPath": "skills/engineering/domain-modeling/SKILL.md",
       "computedHash": "7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3"
+    },
+    "e2e": {
+      "source": "e2e-inc/e2e",
+      "commit": "02cf99bea4808571b04009ebb87bb8cc9a9886ea",
+      "sourceType": "github",
+      "skillPath": "skills/e2e/SKILL.md",
+      "computedHash": "4456b5439f424ec637fe13900d5d29bc6cb7377476615505f19a81c9d252fd80",
+      "installMode": "copy"
     },
     "figure-it-out": {
       "source": "backnotprop/pstack",
@@ -234,6 +242,14 @@
       "sourceType": "github",
       "skillPath": "skills/make-bot-ui/SKILL.md",
       "computedHash": "ad19d0bc6764287ec08c2521701974e7dac941f72e4d0fe81a24f4614494586f",
+      "installMode": "copy"
+    },
+    "migrate-to-e2e": {
+      "source": "e2e-inc/e2e",
+      "commit": "02cf99bea4808571b04009ebb87bb8cc9a9886ea",
+      "sourceType": "github",
+      "skillPath": "skills/migrate-to-e2e/SKILL.md",
+      "computedHash": "3eacc56de47ef0a9f396451df4e7c0514ec4e09097e4f84432b1eb18e2655bfd",
       "installMode": "copy"
     },
     "migrate-to-shoehorn": {

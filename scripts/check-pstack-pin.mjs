@@ -5,6 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { scratchDir } from './scratch-dir.mjs';
 
 export const MIRROR = 'https://github.com/backnotprop/pstack';
+export const E2E_SKILLS = new Set([
+  'create-verification-skill',
+  'e2e',
+  'migrate-to-e2e',
+]);
 export const JULIA_SKILLS = new Set([
   'adversarial-review',
   'graphify',
@@ -12,6 +17,7 @@ export const JULIA_SKILLS = new Set([
   'playwright-cli',
   'tighten',
   'verify-julia',
+  'verify-card-machine',
   'verify-recipes-formally',
   'verify-slice-latch',
 ]);
@@ -59,6 +65,7 @@ export function compareSkillTrees(mirrorSkills, installedSkills) {
   const installed = readdirSync(installedSkills, { withFileTypes: true })
     .filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
   for (const skill of expected) {
+    if (E2E_SKILLS.has(skill)) continue;
     if (!installed.includes(skill)) {
       problems.push(`missing installed pstack skill: ${skill}`);
       continue;
@@ -74,7 +81,9 @@ export function compareSkillTrees(mirrorSkills, installedSkills) {
     for (const file of installedFiles) if (!mirrorFiles.includes(file)) problems.push(`unexpected pstack file: ${skill}/${file}`);
   }
   for (const skill of installed) {
-    if (!expected.includes(skill) && !JULIA_SKILLS.has(skill)) problems.push(`installed skill is not in the pstack mirror or Julia's own set: ${skill}`);
+    if (!expected.includes(skill) && !JULIA_SKILLS.has(skill) && !E2E_SKILLS.has(skill)) {
+      problems.push(`installed skill is not in the pstack mirror or Julia's own set: ${skill}`);
+    }
   }
   for (const entry of readdirSync(installedSkills, { withFileTypes: true })) {
     if (!entry.isDirectory() && !ALLOWED_TOP_LEVEL_FILES.has(entry.name)) problems.push(`unexpected file in .agents/skills: ${entry.name}`);
@@ -127,7 +136,7 @@ export function cloneMirror(pin, destination) {
   execFileSync('git', ['init', '-q', destination]);
   execFileSync('git', ['-C', destination, 'remote', 'add', 'origin', pin.mirror]);
   execFileSync('git', ['-C', destination, 'fetch', '--depth', '1', 'origin', pin.commit], { stdio: ['ignore', 'ignore', 'inherit'] });
-  execFileSync('git', ['-C', destination, 'checkout', '-q', '--detach', 'FETCH_HEAD']);
+  execFileSync('git', ['-C', destination, '-c', 'core.autocrlf=false', 'checkout', '-q', '--detach', 'FETCH_HEAD']);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

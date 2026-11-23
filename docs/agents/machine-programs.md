@@ -11,12 +11,12 @@ of any size, not only a change to the sentence beside it.
 | --- | --- | --- |
 | `src/mastra/index.ts` | The Studio entry. Registers the card workflow so the run form can start a card. | `b99f32c2d21f8233b460ca3e4f2ce792bef279b8aa23c37a150195fa1db604b4` |
 | `machine/flow/workflow.mjs` | The order of the stages, the loops and the one place a card waits. | `034c6dee30a5d397e4cae4db1e1d6d8a8c9916f8efc42682829e1ef64a9b5489` |
-| `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `756006964d225bfe7946974dee0ff998e56ba4edd4a9d622f02fe313d424f35e` |
+| `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `bc0db21d057974b025a81841cf2090f6fc74527fe900c8dc936ff66137f9d201` |
 | `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `f39f2b51bea53f3113ad3d596f78fb6ad3443de82e4de888a11ec0ac61e97589` |
 | `machine/flow/task.mjs` | The task the Lead is given, taken word for word from the card. | `8291341fccce3a14da83396abdc6d6613ea5e8f90ef598a53afcd5e1d6bbee9e` |
 | `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `038d75f36e75d25820c9ea01c63f09a651e9fbf03fdba6fd803718968b812fc9` |
 | `machine/flow/access.mjs` | Shares the service environment from scripts/julia-agents.env across agent workspaces and checks every agent’s access at run start. | `2f4e98b66d2880c38dfc4edadc2977a69f3dcdf87a4b00b4e0dd8f5c671f7b49` |
-| `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `8b357b1e60870c6eacfb06e87c36805ee62dc96d801ca7d88155dcdf5f43716e` |
+| `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `66582de51ade08e55bee7c53b3b2142d8982f9eec4f09defe69c50f4fd75dcc0` |
 | `machine/flow/graphify.mjs` | The Graphify graph tools offered to Lead and its helpers. | `c502bc49faa96ef1de469764696d1682347679a61a17629766940de5baf546b6` |
 | `machine/flow/memory.mjs` | The memory note-takers, run on the free model the card picked. | `c166620cff305155382848e9e2c7bf09b24641bb14d3a0ed8bca242a852835b1` |
 | `machine/flow/models.mjs` | The Lead model, read from its independent setting and routed through its account provider. | `271f19a5a292f05566244e8c5191b10526e811b9a068590d82f1b3116d83e0e9` |
@@ -26,7 +26,9 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/copy.mjs` | The fresh copy of the repository each card builds in, and its removal when the card ends. | `c91323987ae2ae49251cff10f36c8e42264eee6651987589e284f33f06bf00d3` |
 | `machine/flow/review.mjs` | The Shipping review: finds the card's pull request, names the commit it reviews, builds the reviewer's task, reads the verdict. | `9f9dab7643fa9e3eac10ff78f63006bc5971749f2c84ac1ce345c80e3b6039fa` |
 | `machine/flow/cost-record.mjs` | Builds the per-card cost record from Mastra metrics and sends it to Axiom. | `2b8a1ad2bd83455f13b9cf6715c217d2434b2fc9072717dfd7f8b788569ca1f5` |
-| `machine/flow/mastra.mjs` | Storage, tracing and trace retention, so a run is written down and pruned. | `6383b09cfd9216e19272db65b388362407f018b6acfce57e1de8fe300552beb6` |
+| `machine/flow/mastra.mjs` | Storage, tracing and trace retention, so a run is written down and pruned. | `5b355496c10993988eee758812bc62058dd29774b7ec9335ac6af3ca2b4e6313` |
+| `machine/flow/live.mjs` | Writes the run's live event log as each stage, tool call and model call starts and ends, for mission control to read during a run. | `6d96feed1c1795b90a3b641903807318c8febdb100cb0ce4b1e1bf809449f1cf` |
+| `machine/flow/live-schema.mjs` | The one list of live event types the machine writes and the Run view reads. | `be1c3384caca8e37a1e5d5a8ff53e369dd45c0c85728f705b74b8fd7225f76b9` |
 | `machine/flow/start.mjs` | Assembles a run to read it back and to resume a card. | `b6405831ccaadcba1726fc7619ab83ac706add1fb5e53c30db803b35286dc35d` |
 | `machine/flow/run.mjs` | Answers a waiting card and reads a run. No way to start one. | `6aa66f1d72561054364ad8ffe90a19d5d3119ebcd8dd3539df3cbb57c14f4338` |
 | `machine/flow/report.mjs` | Builds the card report and tripwire stop helper. | `69fe294d4ee99428ff3a4f342dcbc4d7e48ae3ba6eece7515cf79cd43d323246` |
@@ -38,4 +40,5 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/call-cost.mjs` | Counts each finished model call, keeps the card ledger honest when a lookup fails, and stops the card at $4. | `6c82e761ab1f5399cc98e1e1df9eb82caed9fb4006fb3f612126687426050db0` |
 | `machine/flow/crash-stop.mjs` | Stops a run whose Studio died, and posts the cause on the card. | `cf1c590c3b86813b448131b273434f6bf6fe4152718405cb1a35330f4e515747` |
 | `machine/flow/interrupted.mjs` | At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them. | `518b3442a8ae7ed09d2322942608119bdf64f8d45cb3dbb744f52b31d79c55cb` |
+| `scripts/proof-run.mjs` | Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins. | `da96d2f9dad89f89ff78a772489bed64ae53dc40f2dff3f3c3f7fc65650ba167` |
 | `scripts/julia-agents.mjs` | Runs a machine command with the Julia keys it needs. | `b0e522f94f3c02926ddc6542e60b16f8e117dcac5509a84148b141c39dc985f6` |

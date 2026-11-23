@@ -55,6 +55,17 @@ test('compareSkillTrees fails on drift, missing files, extras, symlinks and unkn
     assert.deepEqual(compareSkillTrees(mirror, installed), ['installed skill is not in the pstack mirror or Julia\'s own set: other']);
     rmSync(join(installed, 'other'), { recursive: true });
 
+    // Todd's approved deviation: e2e's create-verification-skill replaces pstack's, and e2e / migrate-to-e2e are allowed.
+    write(join(mirror, 'create-verification-skill/SKILL.md'), 'pstack\n');
+    write(join(installed, 'create-verification-skill/SKILL.md'), 'e2e\n');
+    write(join(installed, 'e2e/SKILL.md'), 'e2e\n');
+    write(join(installed, 'migrate-to-e2e/SKILL.md'), 'e2e\n');
+    assert.deepEqual(compareSkillTrees(mirror, installed), []);
+    rmSync(join(mirror, 'create-verification-skill'), { recursive: true });
+    rmSync(join(installed, 'create-verification-skill'), { recursive: true });
+    rmSync(join(installed, 'e2e'), { recursive: true });
+    rmSync(join(installed, 'migrate-to-e2e'), { recursive: true });
+
     rmSync(join(installed, 'how/references/explorer.md'));
     symlinkSync(join(mirror, 'how/references/explorer.md'), join(installed, 'how/references/explorer.md'));
     assert.deepEqual(compareSkillTrees(mirror, installed), ['pstack file is a symlink, not a copy: how/references/explorer.md']);

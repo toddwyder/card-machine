@@ -29,7 +29,7 @@ export function checkSkillVersions(root = process.cwd()) {
   const refsBySource = new Map();
   for (const [name, entry] of Object.entries(skills)) {
     const source = entry?.source;
-    const ref = entry?.ref;
+    const ref = entry?.ref ?? entry?.commit;
     if (!source || !ref) {
       problems.push(`skills-lock.json entry "${name}" is missing source or ref`);
       continue;

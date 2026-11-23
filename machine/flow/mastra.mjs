@@ -1,6 +1,10 @@
 // The run's own storage: LibSQL keeps the workflow's saved state and snapshots,
 // DuckDB keeps the trace with Mastra retention, and one span processor stamps
 // the card on every span so a model call can be found by the card it served.
+// A second processor writes the live file the Run view reads, because the trace
+// cannot be read while the run holds it.
+
+import { dirname } from 'node:path';
 
 import { Mastra } from '@mastra/core';
 import { MastraCompositeStore } from '@mastra/core/storage';
@@ -9,6 +13,7 @@ import { LibSQLStore } from '@mastra/libsql';
 import { MastraStorageExporter, Observability } from '@mastra/observability';
 
 import { CallCostObservability } from './call-cost.mjs';
+import { liveFeedForCard, setLiveDir, spanLiveProcessor } from './live.mjs';
 
 export const DEFAULT_TRACE_MAX_AGE = '1d';
 export const DEFAULT_TRACE_MEMORY_LIMIT = '256MB';
@@ -134,6 +139,11 @@ export async function openMastra({
     },
   });
 
+  // One run at a time per process, so the run's folder is the state file's folder and
+  // the live file sits in it under the card.
+  const liveDir = dirname(stateDb);
+  setLiveDir(liveDir);
+
   const registeredAgents = Object.fromEntries(
     Object.entries(agents ?? {}).filter(([, agent]) => typeof agent?.__setLogger === 'function'),
   );
@@ -147,7 +157,11 @@ export async function openMastra({
           name: 'default',
           serviceName: 'jul-336-card-path',
           exporters: [new MastraStorageExporter({ maxBatchSize: 1 })],
-          spanOutputProcessors: [cardStamper(card), spanSizeCap()],
+          spanOutputProcessors: [
+            cardStamper(card),
+            spanLiveProcessor(liveFeedForCard(liveDir, card)),
+            spanSizeCap(),
+          ],
           serializationOptions: DEFAULT_SPAN_SERIALIZATION,
           logging: { enabled: false },
         }),

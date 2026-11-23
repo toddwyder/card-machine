@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
+
+import { liveFileIn, setLiveDir } from './live.mjs';
 
 import {
   createChoosePlaybookTool,
@@ -84,6 +87,28 @@ test('createChoosePlaybookTool writes playbook steps to threadState and rejects 
   assert.equal(stored.length, 4);
   assert.equal(chosen.playbook, 'investigation');
   assert.equal(ctx.requestContext.get('mastra:tasks').length, 4);
+});
+
+test('a task list is published under the agent id the tool ran as', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'playbook-live-'));
+  setLiveDir(dir);
+  const ctx = {
+    mastra: { getStorage: () => ({ getStore: async () => ({ getState: async () => [], setState: async () => {} }) }) },
+    // The shape Mastra hands a tool: the agent's id is `agentId`, and `id` is not set.
+    agent: { agentId: 'flow-build', threadId: 't-1' },
+    requestContext: new Map([['mastra__resourceId', 'JUL-1']]),
+  };
+  try {
+    await createChoosePlaybookTool({ repo }).execute({ playbook: 'feature' }, ctx);
+    const written = readFileSync(liveFileIn(dir, 'JUL-1'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    const tasks = written.filter((event) => event.type === 'tasks');
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].agent, 'flow-build');
+    assert.equal(tasks[0].tasks.length, 8);
+    assert.deepEqual(tasks[0].tasks.map((task) => task.id).slice(0, 2), ['playbook_1', 'playbook_2']);
+  } finally {
+    setLiveDir(null);
+  }
 });
 
 test('createGuardedTaskTools refuses task_write and task_complete on flagged tasks', async () => {

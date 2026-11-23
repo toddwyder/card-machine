@@ -13,6 +13,7 @@ import { stopIfAccessMissing, verifyRunAccess } from './access.mjs';
 import { checkStateUpdate, realCheck } from './check.mjs';
 import { closeCopy, findLeftoverWork, openCopy } from './copy.mjs';
 import { sendCardCostRecord } from './cost-record.mjs';
+import { stageHooks } from './live.mjs';
 import { pruneTrace } from './mastra.mjs';
 import { resolveMemoryWatch } from './memory-watch.mjs';
 import { openCardPullRequest } from './pr.mjs';
@@ -23,9 +24,6 @@ import { cardState, flowData, runInput } from './schema.mjs';
 import { nextVerdict, openRun, readArtifact, sweepBuild, writeArtifact, writeLanding, writeReport, writeRetro } from './scratch.mjs';
 import { buildTaskPrompt, criteriaFromCard } from './task.mjs';
 
-const step = (id, execute, extra = {}) =>
-  createStep({ id, inputSchema: flowData, outputSchema: flowData, ...extra, execute });
-
 const REQUIRED_TASK_TOOLS = ['task_write', 'task_update', 'task_complete', 'task_check'];
 
 const finishCard = ({ mastra, card, status }) =>
@@ -34,6 +32,9 @@ const finishCard = ({ mastra, card, status }) =>
 export function createStages({ agents, dir, repo, projectRepo = repo, githubRepo = '', review = realReview, check = realCheck, preflight = verifyRunAccess, memoryWatch }) {
   const watch = resolveMemoryWatch(memoryWatch);
   const cardDir = (card) => join(dir, card);
+
+  const { run: announceRun, staged } = stageHooks(dir);
+  const step = (id, execute, extra = {}) => createStep({ id, inputSchema: flowData, outputSchema: flowData, ...extra, execute: staged(id, execute) });
 
   const halt = async ({ inputData, state }) =>
     state.stopped ? { card: state.card, kind: state.kind, ...inputData, stopped: true, detail: state.stopWhy } : null;
@@ -59,12 +60,10 @@ export function createStages({ agents, dir, repo, projectRepo = repo, githubRepo
     id: 'start',
     inputSchema: runInput,
     outputSchema: flowData,
-    execute: async ({ inputData, state, setState }) => {
+    execute: staged('start', async ({ inputData, state, setState }) => {
       const toolNames = Object.keys((await agents.build.listTools?.()) ?? agents.build.tools ?? {});
       const missing = REQUIRED_TASK_TOOLS.filter(name => !toolNames.includes(name));
-      if (missing.length > 0) {
-        throw new Error(`Lead is missing required task tools (${missing.join(', ')}). Check the Lead memory setting before starting a card.`);
-      }
+      if (missing.length > 0) throw new Error(`Lead is missing required task tools (${missing.join(', ')}). Check the Lead memory setting before starting a card.`);
       await setState({ ...state, card: inputData.card, kind: inputData.kind });
       openRun(dir, inputData.card);
       const short = await stopIfResourcesShort({ inputData, state: { ...state, card: inputData.card, kind: inputData.kind }, setState }, dir);
@@ -81,7 +80,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, githubRepo
         : await preflight({ agents, checkout: projectRepo, repo }).then(async r => r.ok ? null : (await setState({ ...state, card: inputData.card, kind: inputData.kind, stopPart: 'Access', stopWhy: r.reason, stopped: true }), { card: inputData.card, kind: inputData.kind, stopped: true, detail: r.reason }));
       if (denied) return denied;
       return { card: inputData.card, kind: inputData.kind };
-    },
+    }),
   });
 
   const startBuild = step('start-build', async (context) => {
@@ -112,6 +111,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, githubRepo
     await setState({ ...state, buildRounds, buildStartedAt, requestId, copy: copy.folder, base: copy.base, playbook: '', playbookCall: 0 });
     const issue = await review.readCard(card);
     if (!issue) throw new Error(`Linear card ${card} could not be read.`);
+    announceRun(context, card, issue.title);
     if (buildRounds === 1) await review.moveCard(card, 'Implementation');
     return { ...inputData, card, detail: `build round ${buildRounds} started in ${copy.folder}`, prompt: buildTaskPrompt(issue, state.checkReasons) };
   });
@@ -120,7 +120,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, githubRepo
     id: 'flow-build',
     inputSchema: z.object({ prompt: z.string() }),
     outputSchema: z.object({ text: z.string() }),
-    execute: async ({ inputData, state, setState, requestContext, tracingContext, metrics }) => {
+    execute: staged('flow-build', async ({ inputData, state, setState, requestContext, tracingContext, metrics }) => {
       if (state.stopped) return { text: '' };
       let stop = null;
       try {
@@ -145,14 +145,14 @@ export function createStages({ agents, dir, repo, projectRepo = repo, githubRepo
           });
         }
       }
-    },
+    }),
   });
 
   const finishBuild = createStep({
     id: 'finish-build',
     inputSchema: z.object({ text: z.string().optional() }),
     outputSchema: flowData,
-    execute: async (context) => {
+    execute: staged('finish-build', async (context) => {
       const stopped = await halt(context);
       if (stopped) return stopped;
       const { inputData, state } = context;
@@ -160,7 +160,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, githubRepo
       const text = inputData.text ?? '';
       writeArtifact(cardDir(card), card, text);
       return { card, kind: state.kind, detail: text, failCount: state.failCount, playbook: state.playbook, playbookCall: state.playbookCall };
-    },
+    }),
   });
 
   const buildCheck = step('build-check', async (context) => {
