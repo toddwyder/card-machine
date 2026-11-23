@@ -58202,25 +58202,6 @@
       "id": "agents_skills_create_verification_skill_maintain_verification_skill"
     },
     {
-      "label": "control-notes Harness",
-      "_origin": "semantic",
-      "author": null,
-      "captured_at": null,
-      "community": 258,
-      "community_name": "Create Verification Skill",
-      "contributor": null,
-      "file_type": "concept",
-      "metadata": {
-        "graphify_reference_stub": true
-      },
-      "norm_label": "control-notes harness",
-      "rationale": null,
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/create-note.md",
-      "source_location": null,
-      "source_url": null,
-      "id": "agents_skills_create_verification_skill_references_feature_map_example_create_note_control_notes"
-    },
-    {
       "label": "Create Verification Skill",
       "_origin": "semantic",
       "author": null,
@@ -58235,54 +58216,6 @@
       "source_location": null,
       "source_url": null,
       "id": "agents_skills_create_verification_skill_create_verification_skill"
-    },
-    {
-      "label": "Create a Note Feature",
-      "_origin": "semantic",
-      "author": null,
-      "captured_at": null,
-      "community": 258,
-      "community_name": "Create Verification Skill",
-      "contributor": null,
-      "file_type": "document",
-      "norm_label": "create a note feature",
-      "rationale": "A save status alone is insufficient proof, so the recipe reopens the note from the list to confirm persistence from a second user-facing view.",
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/create-note.md",
-      "source_location": null,
-      "source_url": null,
-      "id": "agents_skills_create_verification_skill_references_feature_map_example_create_note"
-    },
-    {
-      "label": "Notes Verification Map",
-      "_origin": "semantic",
-      "author": null,
-      "captured_at": null,
-      "community": 258,
-      "community_name": "Create Verification Skill",
-      "contributor": null,
-      "file_type": "document",
-      "norm_label": "notes verification map",
-      "rationale": "The map is the maintained source for verifying user-facing behavior, so implementation details are kept out: name only user paths, stable handles, required state, commands, and observable proof.",
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/README.md",
-      "source_location": null,
-      "source_url": null,
-      "id": "agents_skills_create_verification_skill_references_feature_map_example_readme"
-    },
-    {
-      "label": "Search Notes Feature",
-      "_origin": "semantic",
-      "author": null,
-      "captured_at": null,
-      "community": 258,
-      "community_name": "Create Verification Skill",
-      "contributor": null,
-      "file_type": "document",
-      "norm_label": "search notes feature",
-      "rationale": "Results update after a short debounce, so the recipe waits for the results list or empty status rather than a fixed sleep; the CLI defaults to human-readable output, so --format json is used for stable assertions.",
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/search.md",
-      "source_location": null,
-      "source_url": null,
-      "id": "agents_skills_create_verification_skill_references_feature_map_example_search"
     },
     {
       "label": "impeccable comp-spec",
@@ -182932,28 +182865,6 @@
     },
     {
       "relation": "references",
-      "_origin": "semantic",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/create-note.md",
-      "source_location": null,
-      "weight": 1,
-      "source": "agents_skills_create_verification_skill_references_feature_map_example_create_note",
-      "target": "agents_skills_create_verification_skill_references_feature_map_example_create_note_control_notes"
-    },
-    {
-      "relation": "references",
-      "_origin": "semantic",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/search.md",
-      "source_location": null,
-      "weight": 1,
-      "source": "agents_skills_create_verification_skill_references_feature_map_example_search",
-      "target": "agents_skills_create_verification_skill_references_feature_map_example_create_note_control_notes"
-    },
-    {
-      "relation": "references",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -182973,39 +182884,6 @@
       "weight": 1,
       "source": "agents_readme",
       "target": "agents_skills_create_verification_skill_create_verification_skill"
-    },
-    {
-      "relation": "references",
-      "_origin": "semantic",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": ".agents/skills/create-verification-skill/SKILL.md",
-      "source_location": null,
-      "weight": 1,
-      "source": "agents_skills_create_verification_skill_create_verification_skill",
-      "target": "agents_skills_create_verification_skill_references_feature_map_example_readme"
-    },
-    {
-      "relation": "references",
-      "_origin": "semantic",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/README.md",
-      "source_location": null,
-      "weight": 1,
-      "source": "agents_skills_create_verification_skill_references_feature_map_example_readme",
-      "target": "agents_skills_create_verification_skill_references_feature_map_example_create_note"
-    },
-    {
-      "relation": "references",
-      "_origin": "semantic",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/README.md",
-      "source_location": null,
-      "weight": 1,
-      "source": "agents_skills_create_verification_skill_references_feature_map_example_readme",
-      "target": "agents_skills_create_verification_skill_references_feature_map_example_search"
     },
     {
       "relation": "calls",
@@ -196532,20 +196410,6 @@
       "confidence": "INFERRED",
       "confidence_score": 0.85,
       "source_file": "GLOSSARY.md"
-    },
-    {
-      "id": "notes_verification_map_features",
-      "label": "Notes Verification Map Feature Set",
-      "nodes": [
-        "agents_skills_create_verification_skill_references_feature_map_example_readme",
-        "agents_skills_create_verification_skill_references_feature_map_example_create_note",
-        "agents_skills_create_verification_skill_references_feature_map_example_search",
-        "agents_skills_create_verification_skill_references_feature_map_example_create_note_control_notes"
-      ],
-      "relation": "form",
-      "confidence": "INFERRED",
-      "confidence_score": 0.85,
-      "source_file": ".agents/skills/create-verification-skill/references/feature-map-example/README.md"
     },
     {
       "id": "verification_infrastructure",
