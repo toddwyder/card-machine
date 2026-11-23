@@ -1,104 +1,133 @@
 # The Run view against a real run
 
-This is the proof for the card's first done check: the screen read beside the run's own trace,
-not beside a fixture. The machine ran a card down its real workflow and wrote its real live file,
-a real `state.db` and a real `trace.duckdb`; the screen was then served from that file and each
-value on it was paired with the trace row for the same moment.
+This is the proof for the card's first two done checks: the screen read beside the run's own trace,
+not beside a fixture. The machine ran a card down its real workflow and wrote its real live file, a
+real `state.db` and a real `trace.duckdb`; the screen was then served from that file and each value
+on it was paired with the trace row for the same moment.
 
 ## What ran
 
 | Part | Real or stand-in |
 | --- | --- |
-| Workflow, stages, storage, trace, live writer | the machine's own code (`machine/flow/`) |
-| Model | `createMockModel` from `@mastra/core/test-utils/llm-mock`, the stand-in `machine/flow/workflow.test.mjs` uses |
+| Workflow, stages, storage, trace, live writer, task tools, memory | the machine's own code (`machine/flow/`) |
+| Model | `MastraLanguageModelV2Mock` from `@mastra/core/test-utils/llm-mock`, the stand-in `machine/flow/workflow.test.mjs` uses |
+| The Lead's two tool calls | real tool calls: `choose_playbook`, then `task_update` on `playbook_1` |
 | Shipping, review, check, preflight | the stand-ins `machine/flow/workflow.test.mjs` uses; no real pull request |
 | Quota readings | the real readers, real endpoints |
 
-A paid model call and a real pull request are the two things this environment must not do, so
-the drive script swaps exactly those. Everything the screen reads is the machine's own output.
+A paid model call and a real pull request are the two things this environment must not do, so the
+drive script swaps exactly those. Everything the screen reads is the machine's own output.
 
 ```sh
-node .artifacts/flow/proof-JUL-361/drive.mjs start
-# -> suspended at attempt/acceptance, request JUL-361-PROOF/build-1
-node .artifacts/flow/proof-JUL-361/drive.mjs resume 299f344c-d6c9-4e40-b993-1959002490bf
-# -> status success, cleaned up
-FLOW_DIR=$PWD/.artifacts/flow/proof-JUL-361/run npx next start --port 4314
+node machine/flow/proof-run.mjs
+# -> status success, 45 live lines, byType {stage 32, run 1, agent 2, tool 4, tasks 2, model 3, outcome 1}
+cd dashboard && FLOW_DIR=../.artifacts/flow/proof-JUL-361/run npx next start --port 4314
 curl http://127.0.0.1:4314/control/api/run-view
 ```
 
-The run is `JUL-361-PROOF`. Its live file is 36 lines: 32 stage events, one run event, two agent
-events and one model event. It opens on `start` and ends on `cleanup` done, which is what a real
-card does.
+`proof-run.mjs` is the driver, so a reviewer reruns this rather than trusting the transcript. It
+writes the run folder, the `state.db` and the `trace.duckdb`; copy the trace before opening it, since
+a live run holds the original.
 
-## What the screen said, twice
+The trace copy is opened read-only; the original is never opened, because a live run holds it.
 
-Read while the run held at the acceptance gate, then again after it finished.
+## What the screen said
 
-| Moment | Screen |
+Two reads over HTTP, identical bodies for the whole run object:
+
+| Field | Screen |
 | --- | --- |
-| held at the gate | `status: waiting_for_you`, stage "Your UAT on the live site" `waiting`, no warnings |
-| after resume | `status: finished`, stage "Clean up after the card" done, 15 stages, 48.9 s running |
+| status | `finished` |
+| stage | `cleanup` → "Clean up after the card", done |
+| step | "`architect` for the shape.", step 2 of 8, 1 done |
+| tokens | 90 |
+| dollar estimate | `null` (see caveats) |
+| helper | Lead, done, 2 actions, 8 tasks |
+| warnings | none |
+| subscriptions | ChatGPT fresh 100% / 80% left, Claude `unknown` "sign-in expired", CommandCode fresh 97% / 99% left |
 
-Both reads came over HTTP twice with identical bodies (`moment1.json`, `moment2.json`), and the
-cold request took 0.43 s with a warm one at 0.25 s.
+`runningMs` 2,108 ms for a run that began at 03:23:55.098Z and ended at 03:23:57.206Z. The times in
+this document come from the run recorded while the card was open; a rerun moves them by a few
+milliseconds and leaves every delta below at 0–1 ms.
 
-## Pairing the screen with the trace
+## Pairing each action with the trace
 
-Every stage the screen lists, against the `workflow_step` span that opened it:
+The Lead's actions, as the screen lists them (newest first) beside the `tool_call` span for the same
+call. Both sides read the same `spanId`, `callId` and clock.
 
-| Stage | Label on screen | Screen (ms) | Trace (ms) | Delta |
-| --- | --- | --- | --- | --- |
-| start | Read the card | 1795338651671 | 1795338651660 | 11 |
-| start-build | Plan the slices | 1795338651716 | 1795338651713 | 3 |
-| flow-build | Build the slices | 1795338651867 | 1795338651865 | 2 |
-| finish-build | Open the pull request | 1795338652304 | 1795338652302 | 2 |
-| build-check | Check the build | 1795338652308 | 1795338652307 | 1 |
-| shipping | Hand the change to shipping | 1795338652338 | 1795338652335 | 3 |
-| verdict | Re-check the verdict still fits the code | 1795338652345 | 1795338652343 | 2 |
-| pass-note | Record the verdict | 1795338652356 | 1795338652354 | 2 |
-| gate | Wait for main's checks | 1795338652372 | 1795338652370 | 2 |
-| acceptance | Your UAT on the live site | 1795338652389 | 1795338652387 | 2 |
-| land | Merge and read the result back | 1795338699543 | 1795338699540 | 3 |
-| smoke | Smoke test the live site | 1795338699557 | 1795338699555 | 2 |
-| smoke-pass | Keep the landed change | 1795338699572 | 1795338699569 | 3 |
-| retro | Write the retro | 1795338699610 | 1795338699607 | 3 |
-| cleanup | Clean up after the card | 1795338699627 | 1795338699624 | 3 |
+| Screen (newest first) | Screen start / end (ms) | Trace `tool_call` start / end (ms) | Delta |
+| --- | --- | --- | --- |
+| Update a task (`task_update`) | 1795404235645 / 1795404235658 | 1795404235645 / 1795404235658 | 0 / 0 |
+| Choose playbook (`choose_playbook`) | 1795404235304 / 1795404235324 | 1795404235303 / 1795404235324 | 1 / 0 |
 
-15 of 15 stages matched, the slowest 11 ms apart, because the span's clock and the feed's clock
-read the same instant from two places. The 38 s between `acceptance` and `land` is the gate
-waiting for Todd, and the screen read it as `waiting_for_you` at that moment.
+The agent run they belong to:
 
-Tokens: the screen showed 30, and the trace has one distinct `model_inference` span with
-`inputTokens` 10 and `outputTokens` 20. The trace also carries a `model_generation` span with the
-same usage above each inference, so a naive sum over both types would double count. The writer
-counts the inference only, and the pairing collapses the trace the same way.
+| Screen | Trace |
+| --- | --- |
+| Lead, `flow-build`, 03:23:55.122Z → 03:23:55.776Z, 90 tokens | one `agent_run` span, `entityId` `flow-build`, 03:23:55.121Z → 03:23:55.776Z |
 
-Helper: the screen showed one helper, "Lead". The trace has one `agent_run` span, `entityId`
-`flow-build`, and one model call under it. No tool or task events appear because the mock model
-calls no tools, so the run produced none to show.
+Tokens agree because both sides count the same three `model_inference` spans, one per Lead turn,
+each reporting 10 in and 20 out. The trace also carries three `model_generation` spans above them
+with the same usage, so a naive sum over both types would triple count; the writer counts the
+inference only and the pairing collapses the trace the same way.
+
+## Where "step 2 of 8" came from
+
+Not from a heuristic. The machine publishes the Lead's task list as a `tasks` event twice in this
+run, once after `choose_playbook` and once after `task_update`, each carrying the eight playbook
+items with their statuses. At the second event `playbook_1` is `completed` and the rest are
+`pending`, and `state.db` holds the same list (`mastra_thread_state`, thread
+`JUL-361-PROOF/build-1`). The fold names the step the count names: one completed step means the run
+is on step 2, so `run.step` is `playbook_2`'s title. The browser suite pins the same behaviour with
+a step the machine marked `in_progress`.
+
+## What a mock model proves, and what it does not
+
+Proves: the stage code, the live writer, the task tools, the span processor, the fold, and the screen
+all work on a real run's own data. Every number above came out of the machine, and the pairing is
+row for row.
+
+Does not prove: real model latency, a real token count (a mock turn always reports 10 in and 20 out,
+so 90 is the true usage of these three calls and not what a builder would spend), real quota
+movement during the run, or a real model's tool choices. Helper actions, step advancement and every
+warning state are also driven from writer-generated scenes in `dashboard/lib/run-view.test.mjs` and
+`dashboard/tests/run-view.spec.mjs`, which do not depend on a model at all.
+
+## Reaching the Run view on the tailnet
+
+The app listens on `127.0.0.1:4314` under `basePath: /control`. `tailscale serve status` today
+forwards only `/` to another app on 4313, so `https://ovh.tail91f394.ts.net/control` returns 404
+until the path is added:
+
+```sh
+tailscale serve --bg --set-path /control http://127.0.0.1:4314
+tailscale serve status   # expect / -> 4313, /control -> 4314
+```
+
+That leaves the existing `/` mapping untouched, and the Run view answers at
+`https://ovh.tail91f394.ts.net/control`. Running it is Todd's call; nothing in this card runs it.
 
 ## Caveats, stated rather than hidden
 
-- **Tokens are the mock model's own numbers.** A mock call reports 10 in and 20 out regardless of
-  the prompt, so 30 is the true usage of that call, not the usage a real builder would spend.
 - **The dollar figure is null, not zero.** `mock-model-id` is not in `dashboard/lib/model-prices.js`,
-  so there is no price to estimate from. A real card's model is priced there.
-- **One helper, no actions.** The mock build does one turn with no tool calls, so the helper cards
-  carry the name and the token count and no actions. Helper actions are proven from the writer's
-  own spans in `dashboard/lib/run-view.test.mjs` and in the browser suite, not from this run.
+  so there is no price to estimate from. A real card's model is priced there, and the screen always
+  prints the word "estimate" beside the figure.
 - **Claude reads `unknown`.** Its stored sign-in expired at 05:45Z and the refresh path returns
-  nothing, so the bar shows `unknown` with the reason. ChatGPT and CommandCode read fresh from
-  their live endpoints in the same request.
+  nothing, so the bar shows `unknown` with the reason. ChatGPT and CommandCode read fresh from their
+  live endpoints in the same request.
 
 ## What this run found
 
-Two defects that no fixture had caught, both fixed at their source:
+Three defects that no fixture had caught, each fixed at its source:
 
 1. The fold treated only `hold` as an ending, so a run that finishes on `cleanup` read as still
-   running. A real run's last stage is `cleanup`.
-2. The writer published the span's label (`agent run: 'flow-build'`) as the agent's identity, so
-   the screen would have shown "Agent Run: 'Flow Build'" instead of "Lead". Mastra keeps the id on
-   `entityId`. The screenshots above were taken after both fixes.
-
-The pre-fix log is kept beside this run at `.artifacts/flow/proof-JUL-361/run-prefix/` for
-comparison.
+   running. The machine now publishes an `outcome` event, and the fold reads the ending from it.
+2. The writer published the span's label (`agent run: 'flow-build'`) as the agent's identity, so the
+   screen would have shown "Agent Run: 'Flow Build'" instead of "Lead". Mastra keeps the id on
+   `entityId`.
+3. The task tools published their list under the phantom agent `machine`, because Mastra hands a
+   tool its agent as `agent.agentId` and the code asked for `agent.id`. That split the Lead into two
+   helper cards. The list now carries `flow-build`, and one card holds both the actions and the steps.
+4. The step count printed without a step name, because a run whose only task write reports a
+   completion has nothing marked in progress. The name now comes from the same lookup as the count,
+   so "step 2 of 8" always has the step beside it.

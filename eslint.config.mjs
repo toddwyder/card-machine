@@ -156,14 +156,16 @@ export const frameworkPlugins = {
 };
 
 // The runner files below write the run record, the cost record, the per-card spending record, the
-// interrupted-run record and its heartbeat, the live event file the Run view reads, and the exit
-// timer, so the framework rules cover the flow definitions only.
+// interrupted-run record and its heartbeat, the live event file the Run view reads, the proof run
+// that fills a run folder for the Run view, and the exit timer, so the framework rules cover the
+// flow definitions only.
 const flowRunnerFiles = [
   'machine/flow/run.mjs',
   'machine/flow/start.mjs',
   'machine/flow/scratch.mjs',
   'machine/flow/crash-stop.mjs',
   'machine/flow/interrupted.mjs',
+  'machine/flow/proof-run.mjs',
   'machine/flow/**/*.test.mjs',
 ];
 
