@@ -14,7 +14,8 @@
     "check:studio": "node scripts/check-studio-start.mjs",
     "check:lead": "node scripts/check-lead.mjs",
     "check:model-picker": "node scripts/check-model-picker.mjs",
-    "check:julia-reach": "node scripts/check-no-julia-reach.mjs"
+    "check:julia-reach": "node scripts/check-no-julia-reach.mjs",
+    "test:e2e": "e2e run"
   },
   "dependencies": {
     "@sentry/node": "^11.0.0",
@@ -26,6 +27,8 @@
   },
   "devDependencies": {
     "@duckdb/node-api": "1.5.2-r.2",
+    "@e2e-dev/core": "^0.24.0",
+    "@e2e-dev/web": "^0.16.1",
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@firebase/rules-unit-testing": "6.0.0",
     "@mastra/code-sdk": "1.20.0",
@@ -39,6 +42,7 @@
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/tap-runner": "10.1.1",
     "dependency-cruiser": "18.8.0",
+    "e2e": "^0.24.0",
     "eslint": "10.15.0",
     "firebase-tools": "15.37.0",
     "mastra": "1.38.0",

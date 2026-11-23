@@ -1,40 +1,24 @@
-# Run view: finish review
+# Run view: finish review (Impeccable)
 
-Against `## Direction contract` in `.impeccable/surfaces/run-view/brief.md`, clause by clause.
-Pictures are in `docs/run-view-proof/`, taken by `dashboard/tests/run-view.spec.mjs` from logs
-written through the machine's own `createLiveFeed` and `stageEvents` (`dashboard/scripts/live-scenes.mjs`).
+Ran as Impeccable's own dual-agent finish review (Assessment A design review + Assessment B detector and browser evidence + `impeccable detect --json dashboard/app/run-view.jsx` returning `[]`) against `## Direction contract` in `.impeccable/surfaces/run-view/brief.md` and the e2e proof run `01a208f5-0c67-7904-b8c5-04642f4ceb55` (`tests/run-view.e2e.ts`, 6/6 passing, `--trace on --output .e2e/proof/run-view`).
 
 | Clause | Verdict | Evidence |
 | --- | --- | --- |
-| **THESIS** — the run as a trip through named stages, shown like a station board, refusing the dark console | met | `laptop.png` (1280×1493): bottle-green panel on a sage ground, a rail of past stage pills with the current stage in an ivory block; no black ground, no monospace body, no purple anywhere. The rail carries the machine's own 19 stage labels, not the contract's four named stages: the board never shows a stage the machine has not reached, so the four-stage framing in the contract is a reading of the trip, not a literal row of four. |
-| **OWN-WORLD: colours** — bottle green `#1D3B27`, leaf green `#3D6B2C`, sage `#DCEBCB`, ivory `#F6F1E4`, madder red `#A3212D` for problems only | met | `app/globals.css` `:root` matches the hexes; red appears only in `stopped.png` (banner, struck title) and `quota-low.png` (low fill and ring). |
-| **OWN-WORLD: faces** — Zilla Slab for headings and the stage name, Source Sans 3 for everything else | met | `app/globals.css:30,44`; visible in `laptop.png` (slab stage name, slab section titles, sans body). |
-| **OWN-WORLD: state from edges as well as colour** — solid running, dashed stuck, dotted sent back, struck through given up | met | `stuck.png` (dashed amber banner, dashed helper card), `burning-fast.png` (dotted banner), `finished.png` (dotted pill for "Send it back to the builder"), `stopped.png` (solid red banner, struck title). Asserted as border-style in the spec, not as colour. |
-| **STORY** — without clicking, Todd knows the stage and step, whether it is moving, what it used against each subscription, and anything wrong | met | `laptop.png` answers all four above the fold: warnings (none), stage and step in the panel, running time, tokens and an estimate, then a bar per window. `nothing-running.png` shows the quiet answer. |
-| **FIRST VIEWPORT: warnings across the top when there are any** | met | `stuck.png`, `stopped.png`, `burning-fast.png`, `quota-low.png`, `ended-unknown.png`: banner first, panel under it. The phone spec asserts warnings sit above the panel. |
-| **FIRST VIEWPORT: green panel with card title, running time, tokens, dollars marked "estimate"** | met | `laptop.png`: title in slab, "Running · 6 min", "82 k tokens · about $0.18, estimate". The word "estimate" is part of the string in `app/run-view.jsx:48`. |
-| **FIRST VIEWPORT: the current stage name is the largest text on the page** | met | `laptop.png`, `phone.png` (390×1688): 2.9rem stage name against a 2rem card title; the spec asserts the stage's font size is greater than the title's and above 24px. |
-| **FIRST VIEWPORT: its steps in a row and "step N of M"** | met | `laptop.png`: a row of pills under the stage name, the step in hand filled in sage with a solid green edge, passed steps solid-edged with a tick, a step the run skipped dotted with a struck name, and "step 2 of 8" beside them. The row is the Lead's own task list as the machine publishes it (`machine/flow/playbook.mjs` `announceTasks`), ordered by the numeric suffix of `playbook_N`, and the same lookup that names `run.step` gives the count, so the two cannot disagree. `dashboard/lib/run-view.test.mjs` holds the count to that list and the spec compares the row to the served snapshot on a laptop and a phone. |
-| **FIRST VIEWPORT: helper cards, then the three quota bars** | met | `laptop.png`: helper cards in a grid under the panel, three subscriptions beneath them, one row per subscription with a bar per window. |
-| **FIRST VIEWPORT: no primary action; the UAT stop reads "waiting for you"** | met | No button, form or link on the surface; `STATE_WORDS.waiting_for_you` is "Waiting for you" in `app/run-view.jsx:11`. |
-| **FIRST VIEWPORT: the marker moves along the stage's row as each step passes** | **partly met** | The marker is the filled pill in the step row: it moves one place each time a step passes, and the rail itself grows as the machine reaches a stage. It is a lit pill rather than a travelling dot, and the one authored motion stays a new helper action settling in at the top of its card (`prefers-reduced-motion` honoured). |
-| **FIRST VIEWPORT: on a phone everything stacks** | met | `phone.png` (390×2204): warnings, panel, helper cards and quota windows in one column; the phone spec asserts that order and no horizontal overflow at 390px. |
-| **FORM** — operate surface, code-led, composed from the A2 board | met | `chosen-design-A2-larder-bolder.html` is the source of the palette, the slab/sans pairing and the rail; `laptop.png` sits in that world rather than a new one. |
-| **FINISH** — finish review, verdict, DESIGN.md, rasters carrying provenance | met | This file is the review; `dashboard/DESIGN.md` records the system; every picture is regenerated by the spec on a fresh build. |
+| **THESIS** — the run as a trip through named stages, shown like a station board, refusing the dark console | **partly met** | Bottle-green `#1D3B27` panel on sage `#DCEBCB` ground with ivory `#F6F1E4` cards, Zilla Slab + Source Sans 3, zero monospace or data tables (`001-laptop-running.png`). Gap: the rail renders the machine's granular stage labels rather than the brief's four coarse stage names (`Build`, `Babysit`, `Shipping`, `After merge`), per the card constraint to read stages from the machine itself. |
+| **OWN-WORLD** — bottle green, leaf green, sage, ivory, madder red for problems only; Zilla Slab + Source Sans 3; state from edges + colour | **met** | `globals.css` and `run-view.module.css` match the larder tokens; `layout.jsx` loads Zilla Slab and Source Sans 3; madder red appears only on `quota_low`, `stopped`, failed helpers, low bars, and unknown readings; every state pairs a distinct SVG `<Mark>` with `solid`, `dashed`, `dotted`, or `line-through` (`002-stuck.png`, `001-quota-low.png`, `004-stopped.png`). |
+| **STORY** — without clicking, Todd knows the stage and step, whether it is moving, what it used against each subscription, and anything wrong | **met** | Zero clicks required; polls `/control/api/run-view` every 2s. Warnings sit at the top; status + duration, display-size stage, step + `STEP N OF M`, token/dollar estimate, helper cards, and subscription bars with reset dates are scannable at a glance (`001-laptop-running.png`, `002-nothing-running.png`). |
+| **FIRST VIEWPORT** — warnings first, green panel, largest stage text, step row `step N of M`, helper cards, quota bars, no primary action, UAT "Waiting for you", phone stacking | **partly met** | Warnings sit above the panel; stage name (`clamp(1.9rem, 4.2vw, 2.9rem)`) is larger than card title; `STEP 2 OF 8` and skipped dotted/struck pill render; UAT shows `Waiting for you`; phone (`390px`) stacks with zero horizontal overflow (`002-phone-running.png`). Gaps: `.action:first-child` has `settleIn` motion (`prefers-reduced-motion` honoured), but the step-row marker has no transition; on laptop, helper cards push subscription bars below the initial 720px fold. |
+| **FORM** — operate surface, code-led, composed from the A2 board | **met** | Read-only operate-mode Next.js surface following `chosen-design-A2-larder-bolder.html`. |
+| **FINISH** — finish review, `DESIGN.md`, mechanical detector clean | **met** | `dashboard/DESIGN.md` matches CSS tokens; `impeccable detect --json dashboard/app/run-view.jsx` returned `[]` (0 findings); all 6 tests in `tests/run-view.e2e.ts` passed. |
 
-## Where the pictures come from
+## Priority observations from Assessment A
 
-`npm run build && npx playwright test` in `dashboard/`. Playwright now builds before it starts
-`next start`, because a stale build once let a spec pass against CSS that no longer existed.
+1. `.rail` uses `flex-wrap: wrap; align-items: flex-end`, leaving empty bottle-green space to the left of `.now` when past stage pills wrap (`001-laptop-running.png`).
+2. `.spend` renders `82 k tokens·about $0.18, estimate` without spacing around the middot (`run-view.jsx:325-329`).
+3. Step-row marker has no motion transition when advancing (`brief.md` FIRST VIEWPORT).
 
-The scenes drive the machine's own writer (`machine/flow/live.mjs`) rather than a live card run, so
-these pictures prove the screen against the real log format, not against a real run. A real-run
-proof beside the trace record is still open on the card.
+## Proof provenance
 
-## Deliberately left out
-
-- A travelling dot along the rail: the count moves instead, as the filled pill in the step row.
-- A `sent back` state for a helper: the machine reports helpers as working, done, failed or stuck,
-  so the dotted edge is carried by the rail's remediation pill instead.
-- A design.json sidecar for the document command: `DESIGN.md` is the only consumer in this repo, and
-  a second copy of the tokens would drift from the CSS that actually runs.
+- `npx e2e run tests/run-view.e2e.ts --trace on --output .e2e/proof/run-view` (run `01a208f5-0c67-7904-b8c5-04642f4ceb55`, 6/6 passed in 16.90s against `next start` with fixture logs written via `machine/flow/live.mjs`).
+- `node dashboard/scripts/quota-live-check.mjs` (local check without OVH server credentials: all 3 providers failed/401 and reader returned `unknown`).
+- Real-run proof beside the trace record remains open by Todd's decision for the next real card.

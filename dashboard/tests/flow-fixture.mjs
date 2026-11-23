@@ -3,11 +3,12 @@
 
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createLiveFeed, liveFileIn } from '../../machine/flow/live.mjs';
 import { writeScene } from '../scripts/live-scenes.mjs';
 
 const here = new URL('.', import.meta.url);
-export const FLOW_DIR = new URL('./test-results/flow', here).pathname;
+export const FLOW_DIR = fileURLToPath(new URL('./test-results/flow', here));
 export const LIVE_FILE = liveFileIn(FLOW_DIR, 'JUL-361');
 export const SUBSCRIPTIONS_FILE = join(FLOW_DIR, 'subscriptions.json');
 
