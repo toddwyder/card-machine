@@ -26,10 +26,8 @@ curl http://127.0.0.1:4314/control/api/run-view
 ```
 
 `proof-run.mjs` is the driver, so a reviewer reruns this rather than trusting the transcript. It
-writes the run folder, the `state.db` and the `trace.duckdb`; copy the trace before opening it, since
-a live run holds the original.
-
-The trace copy is opened read-only; the original is never opened, because a live run holds it.
+writes the run folder, the `state.db` and the `trace.duckdb`. The trace copy is opened read-only; the
+original is never opened, because a live run holds it.
 
 ## What the screen said
 
@@ -118,7 +116,7 @@ That leaves the existing `/` mapping untouched, and the Run view answers at
 
 ## What this run found
 
-Three defects that no fixture had caught, each fixed at its source:
+Four defects that no fixture had caught, each fixed at its source:
 
 1. The fold treated only `hold` as an ending, so a run that finishes on `cleanup` read as still
    running. The machine now publishes an `outcome` event, and the fold reads the ending from it.
