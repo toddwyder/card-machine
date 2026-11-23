@@ -19,13 +19,13 @@ A paid model call and a real pull request are the two things this environment mu
 drive script swaps exactly those. Everything the screen reads is the machine's own output.
 
 ```sh
-node machine/flow/proof-run.mjs
+node scripts/proof-run.mjs
 # -> status success, 45 live lines, byType {stage 32, run 1, agent 2, tool 4, tasks 2, model 3, outcome 1}
 cd dashboard && FLOW_DIR=../.artifacts/flow/proof-JUL-361/run npx next start --port 4314
 curl http://127.0.0.1:4314/control/api/run-view
 ```
 
-`proof-run.mjs` is the driver, so a reviewer reruns this rather than trusting the transcript. It
+`scripts/proof-run.mjs` is the driver, so a reviewer reruns this rather than trusting the transcript. It
 writes the run folder, the `state.db` and the `trace.duckdb`. The trace copy is opened read-only; the
 original is never opened, because a live run holds it.
 

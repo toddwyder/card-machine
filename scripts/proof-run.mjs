@@ -2,14 +2,14 @@
 // The model, the review, the check and the shipping step are the only stand-ins: everything the
 // screen shows is written by the machine's own stages, live writer, state.db and trace.
 //
-//   node machine/flow/proof-run.mjs
+//   node scripts/proof-run.mjs
 //   FLOW_DIR=$PWD/.artifacts/flow/proof-JUL-361/run npx next start --port 4314   # in dashboard/
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const repoRoot = new URL('../..', import.meta.url).pathname;
+const repoRoot = new URL('..', import.meta.url).pathname;
 process.chdir(repoRoot);
 process.env.CMD_API_KEY ??= 'unused-in-proof';
 

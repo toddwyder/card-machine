@@ -52,7 +52,7 @@ export const PROGRAMS = [
   ['machine/flow/call-cost.mjs', 'Counts each finished model call, keeps the card ledger honest when a lookup fails, and stops the card at $4.'],
   ['machine/flow/crash-stop.mjs', 'Stops a run whose Studio died, and posts the cause on the card.'],
   ['machine/flow/interrupted.mjs', 'At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them.'],
-  ['machine/flow/proof-run.mjs', 'Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins.'],
+  ['scripts/proof-run.mjs', 'Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins.'],
   ['scripts/julia-agents.mjs', 'Runs a machine command with the Julia keys it needs.'],
 ].map(([path, what]) => ({ path, what }));
 

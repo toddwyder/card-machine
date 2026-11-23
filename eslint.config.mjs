@@ -165,7 +165,7 @@ const flowRunnerFiles = [
   'machine/flow/scratch.mjs',
   'machine/flow/crash-stop.mjs',
   'machine/flow/interrupted.mjs',
-  'machine/flow/proof-run.mjs',
+  'scripts/proof-run.mjs',
   'machine/flow/**/*.test.mjs',
 ];
 

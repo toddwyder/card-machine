@@ -37,5 +37,5 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/call-cost.mjs` | Counts each finished model call, keeps the card ledger honest when a lookup fails, and stops the card at $4. | `6c82e761ab1f5399cc98e1e1df9eb82caed9fb4006fb3f612126687426050db0` |
 | `machine/flow/crash-stop.mjs` | Stops a run whose Studio died, and posts the cause on the card. | `cf1c590c3b86813b448131b273434f6bf6fe4152718405cb1a35330f4e515747` |
 | `machine/flow/interrupted.mjs` | At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them. | `518b3442a8ae7ed09d2322942608119bdf64f8d45cb3dbb744f52b31d79c55cb` |
-| `machine/flow/proof-run.mjs` | Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins. | `ebce5e730b443cad967ef687f1f245a56a6729101a618050f303f4ff0d274017` |
+| `scripts/proof-run.mjs` | Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins. | `da96d2f9dad89f89ff78a772489bed64ae53dc40f2dff3f3c3f7fc65650ba167` |
 | `scripts/julia-agents.mjs` | Runs a machine command with the Julia keys it needs. | `b0e522f94f3c02926ddc6542e60b16f8e117dcac5509a84148b141c39dc985f6` |
