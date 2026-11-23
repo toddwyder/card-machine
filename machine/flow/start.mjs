@@ -26,14 +26,14 @@ async function assemble({ dir, card, model, agents: injected, traceDb = join(dir
   openScratch(dir);
   const { createAgents, projectGithubRepo, projectRepoRoot, repoRoot } = await import('./agents.mjs');
   const projectRepo = projectRepoRoot();
-  projectGithubRepo();
+  const githubRepo = projectGithubRepo();
   const agents =
     injected ?? createAgents({
       ...(model ? { model } : {}),
       tools: await graphifyTools(),
       dir,
     });
-  const workflow = buildCardPath({ agents, dir, repo: repoRoot(), projectRepo });
+  const workflow = buildCardPath({ agents, dir, repo: repoRoot(), projectRepo, githubRepo });
   const mastra = await openMastra({
     card,
     agents: injected ? undefined : agents,

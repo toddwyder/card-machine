@@ -67,4 +67,9 @@ export const cardState = z.object({
   checkReasons: z.array(z.string()).default([]),
   playbook: z.string().default(''),
   playbookCall: z.number().int().min(0).default(0),
+  buildStartedAt: z.string().default(''),
+  lowestFreeRamMb: z.number().nullable().default(null),
+  lowestFreeRamAt: z.string().default(''),
+  prTitle: z.string().default(''),
+  prBody: z.string().default(''),
 });

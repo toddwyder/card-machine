@@ -26,7 +26,17 @@ export function tripwireStop({ reason, processorId, metadata } = {}) {
   return { stopPart: id || 'Agent', stopWhy: String(reason ?? 'Agent aborted') };
 }
 
+export function withLowestFreeRam(state, memoryWatch) {
+  if (!state?.buildStartedAt || typeof memoryWatch?.lowest !== 'function') return state;
+  const found = memoryWatch.lowest({ since: state.buildStartedAt, until: new Date().toISOString() });
+  if (!found) return state;
+  return { ...state, lowestFreeRamMb: found.lowestMb, lowestFreeRamAt: found.at };
+}
+
 export function reportText(state, detail) {
+  const memoryLine = state.lowestFreeRamMb != null
+    ? [`Lowest free RAM: ${state.lowestFreeRamMb} MB (at ${state.lowestFreeRamAt})`]
+    : (state.buildStartedAt ? ['Lowest free RAM: unavailable (no samples recorded during build)'] : []);
   return [
     `# ${state.card} stopped`,
     '',
@@ -37,6 +47,7 @@ export function reportText(state, detail) {
     `Failures counted: ${state.failCount}`,
     `Shipping rounds: ${state.reviewRound}`,
     `Build rounds: ${state.buildRounds}`,
+    ...memoryLine,
     ...(state.copy ? [`Copy: ${state.copy}`, `Started from main at: ${state.base}`] : []),
     `Last detail: ${detail || 'none'}`,
     '',

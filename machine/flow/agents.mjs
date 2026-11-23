@@ -13,6 +13,7 @@ import { studioUnit } from './interrupted.mjs';
 import { cardMemory } from './memory.mjs';
 import { buildModelReader, leadModelId } from './models.mjs';
 import { createChoosePlaybookTool, createGuardedTaskTools } from './playbook.mjs';
+import { createWritePrTool } from './pr.mjs';
 import { ensureCardResources } from './resources.mjs';
 import { SHIPPING_MAX_STEPS } from './review.mjs';
 import { agentModel, helperKey, readRoleModels, readStageModels } from './role-models.mjs';
@@ -225,7 +226,7 @@ export function createAgents({ model, leadModel, helperModel, repo = repoRoot(),
     ...cardMemory(memoryModelId),
     workspace: cardWorkspace('machine-repo', { readOnly: true, skills: ['.agents/skills'] }),
     agents: helpers,
-    tools: { ...createGuardedTaskTools(), ...tools, choose_playbook: choosePlaybookTool },
+    tools: { ...createGuardedTaskTools(), ...tools, choose_playbook: choosePlaybookTool, write_pr: createWritePrTool() },
     defaultOptions: {
       maxSteps: 400,
       toolCallConcurrency: HELPER_CONCURRENCY,
