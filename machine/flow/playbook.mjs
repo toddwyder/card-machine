@@ -23,7 +23,9 @@ const TASK_STATE_TYPE = 'task';
 const announceTasks = (context, tasks) => {
   const list = (Array.isArray(tasks) ? tasks : []).map(({ id, content, status }) => ({ id, title: content, status }));
   liveFeedForRun(cardOfContext(context))?.tasks({
-    agent: context?.agent?.id ?? context?.agent?.name ?? 'machine',
+    // Mastra keeps the agent's id on `agentId` in tool context; `id` and `name` are not set there,
+    // and falling back to them labelled a real run's task list "machine" on the Run view.
+    agent: context?.agent?.agentId ?? context?.agent?.name ?? 'machine',
     tasks: list,
   });
 };

@@ -16,7 +16,7 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/task.mjs` | The task the Lead is given, taken word for word from the card. | `ee7d91a262a8dc0a1664ba03fc5c73f3f19aac19fedb5cd6b9c003b10ff11f2a` |
 | `machine/flow/agents.mjs` | The agents the stages run, and what the build agent may touch. | `a15fc81e88dda155cd0974ad72b8b8b11ccfb8dfabc2aa0be9564b4254d71863` |
 | `machine/flow/access.mjs` | Shares the service environment from scripts/julia-agents.env across agent workspaces and checks every agent’s access at run start. | `2f4e98b66d2880c38dfc4edadc2977a69f3dcdf87a4b00b4e0dd8f5c671f7b49` |
-| `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `40b546b72dbdb72229b7ad523828c175cca60b8107ccaaae0353586cfc5148d2` |
+| `machine/flow/playbook.mjs` | Playbook catalog, task seeding, and the choose_playbook tool. | `66582de51ade08e55bee7c53b3b2142d8982f9eec4f09defe69c50f4fd75dcc0` |
 | `machine/flow/graphify.mjs` | The Graphify graph tools offered to Lead and its helpers. | `c502bc49faa96ef1de469764696d1682347679a61a17629766940de5baf546b6` |
 | `machine/flow/memory.mjs` | The memory note-takers, run on the free model the card picked. | `c166620cff305155382848e9e2c7bf09b24641bb14d3a0ed8bca242a852835b1` |
 | `machine/flow/models.mjs` | The Lead model, read from its independent setting and routed through its account provider. | `271f19a5a292f05566244e8c5191b10526e811b9a068590d82f1b3116d83e0e9` |
