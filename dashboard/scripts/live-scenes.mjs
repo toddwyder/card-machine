@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
 import { createLiveFeed, liveFileIn } from '../../machine/flow/live.mjs';
 
-export const SCENES = Object.freeze(['running', 'burning', 'stuck', 'stopped', 'finished', 'quiet', 'torn', 'uat']);
+export const SCENES = Object.freeze(['running', 'burning', 'stuck', 'stopped', 'finished', 'ended-unknown', 'quiet', 'torn', 'uat']);
 
 const CARD = 'JUL-361';
 const TITLE = "Mission control's Run view";
@@ -109,6 +109,9 @@ const SCENE_WORK = {
   stuck: {},
   stopped: { stopped: true },
   finished: { finished: true },
+  // A run that reached cleanup while its end record never arrived: the write failed, or the
+  // process died on its last step. The screen must still see a run that is over.
+  'ended-unknown': { unannounced: true },
   quiet: { none: true },
   torn: {},
   uat: { uat: true },
@@ -154,6 +157,15 @@ export function writeScene(dir, scene, { now = Date.now(), card = CARD, title = 
     log.advance(30000);
     log.feed.outcome({ ended: 'finished' });
     status = 'success';
+  }
+  if (work.unannounced) {
+    stagePair(log, 'finish-build', 15000);
+    // No stop report either: that stage is the other shape a stop leaves behind.
+    for (const stage of ALL_STAGES.slice(4, -2).filter(id => id !== 'stop-report')) stagePair(log, stage, 15000);
+    log.feed.tasks({ agent: LEAD, tasks: TASK_LIST.lead.map(task => ({ ...task, status: 'completed' })) });
+    log.advance(30000);
+    // Cleanup is the machine's last step on every path, and nothing says which end it was.
+    stagePair(log, 'cleanup', 15000);
   }
   if (work.uat) {
     for (const stage of ['finish-build', 'build-check', 'shipping', 'verdict', 'pass-note', 'gate']) stagePair(log, stage, 15000);

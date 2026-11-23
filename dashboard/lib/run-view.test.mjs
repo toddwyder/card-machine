@@ -310,11 +310,26 @@ test('no stage shape makes a run finished, and the machine outcome does', () => 
   const file = liveFileIn(dir, 'JUL-361');
   const feed = createLiveFeed({ file, card: 'JUL-361', now: () => NOW });
   feed.run({ card: 'JUL-361', title: 'A card that ran to its last stage' });
-  for (const stage of ['flow-build', 'retro', 'hold', 'cleanup']) feed.stage({ stage, status: 'done' });
-  // The stop path and the finish path both end here, so the log alone must not claim an end.
+  for (const stage of ['flow-build', 'retro', 'hold']) feed.stage({ stage, status: 'done' });
+  // A run still walking its last stage is live, whatever else the log holds.
+  const walking = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
+  assert.equal(walking.run.status, 'running');
+  assert.equal(walking.run.ended, null);
+
+  feed.stage({ stage: 'cleanup', status: 'started' });
+  const cleaning = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
+  assert.equal(cleaning.run.status, 'running');
+  assert.equal(cleaning.run.ended, null);
+
+  // Cleanup is where every path ends the run, so a log that finished it is a run that is over.
+  // Which end it was stays unknown, and the clock stops with the log instead of climbing.
+  feed.stage({ stage: 'cleanup', status: 'done' });
   const unknown = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
-  assert.equal(unknown.run.status, 'running');
-  assert.equal(unknown.run.ended, null, 'an unknown end is not finished');
+  assert.equal(unknown.run.status, 'ended_unknown');
+  assert.equal(unknown.run.ended, 'unknown', 'an unknown end is not finished');
+  assert.equal(unknown.run.runningMs, NOW - unknown.run.startedAt);
+  assert.deepEqual(unknown.warnings.map(warning => warning.kind), ['ended_unknown']);
+  assert.equal(unknown.warnings[0].title, 'Ended without a result');
 
   feed.outcome({ ended: 'finished' });
   const ended = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });

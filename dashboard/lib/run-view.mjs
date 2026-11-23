@@ -14,11 +14,13 @@ export const RUN_STATES = Object.freeze({
   stuck: 'Stuck',
   stopped: 'Stopped',
   finished: 'Finished',
+  ended_unknown: 'Ended, result unknown',
 });
 
 export const WARNING_TITLES = Object.freeze({
   stopped: 'Stopped',
   stuck: 'Stuck',
+  ended_unknown: 'Ended without a result',
   quota_low: 'Quota low',
   burning_fast: 'Burning tokens fast',
 });
@@ -263,6 +265,13 @@ function deriveWarnings({ state, stages, helpers, subscriptions, modelEvents, id
       text: failedStage ? `The run stopped at “${failedStage.label}”.` : 'The run stopped before it finished.',
     });
   }
+  if (state === 'ended_unknown') {
+    warnings.push({
+      kind: 'ended_unknown',
+      title: WARNING_TITLES.ended_unknown,
+      text: 'The machine reached its last stage without saying whether the run finished or stopped.',
+    });
+  }
   if (state === 'stuck') {
     const minutes = Math.max(1, Math.round((idleMs ?? settings.stuckAfterMs) / 60000));
     warnings.push({ kind: 'stuck', title: WARNING_TITLES.stuck, text: `Nothing has happened in the run for ${minutes} minutes.` });
@@ -304,7 +313,17 @@ function endedFromStopReport(stages) {
   return stages.some(stage => stage.id === 'stop-report') ? 'stopped' : null;
 }
 
+// Every path that ends a run finishes on cleanup, so a log that got there is a run that is over
+// even when its announcement never arrived. Which end it was stays unknown: a crashed writer
+// must not keep the screen saying a run is live with its clock climbing.
+function endedFromLastStage(stages) {
+  const last = stages.at(-1);
+  if (last?.id !== 'cleanup') return null;
+  return last.status === 'done' || last.status === 'failed' ? 'unknown' : null;
+}
+
 export function runState({ ended = null, currentStage = null, idleMs = null, settings }) {
+  if (ended === 'unknown') return 'ended_unknown';
   if (ended) return ended;
   // A stage that is waiting is waiting on Todd, whatever the stage is; nothing is wrong.
   if (currentStage?.status === 'waiting') return 'waiting_for_you';
@@ -327,7 +346,8 @@ export function foldRunView({ events = [], runStatus = null, subscriptions = [],
   // The row answers when the log cannot, and a log holding a stop report answers last.
   const ended = endedFromOutcome(events)
     ?? ENDED[String(runStatus?.status ?? '').toLowerCase()]
-    ?? (runStatus ? null : endedFromStopReport(stages));
+    ?? (runStatus ? null : endedFromStopReport(stages))
+    ?? endedFromLastStage(stages);
   const lastActivityAt = events.reduce((last, event) => Math.max(last, moment(event)), createdAt ?? 0) || null;
   const idleMs = lastActivityAt === null ? null : Math.max(0, now - lastActivityAt);
   const currentStage = stages.at(-1) ?? null;
