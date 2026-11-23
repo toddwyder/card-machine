@@ -9,7 +9,7 @@ of any size, not only a change to the sentence beside it.
 
 | Program | What it does | sha256 |
 | --- | --- | --- |
-| `src/mastra/index.ts` | The Studio entry. Registers the card workflow so the run form can start a card. | `9482a6996510da89c3c621965eb015cad5fe322539af2a6471ebd2edb5c91b84` |
+| `src/mastra/index.ts` | The Studio entry. Registers the card workflow so the run form can start a card. | `b99f32c2d21f8233b460ca3e4f2ce792bef279b8aa23c37a150195fa1db604b4` |
 | `machine/flow/workflow.mjs` | The order of the stages, the loops and the one place a card waits. | `034c6dee30a5d397e4cae4db1e1d6d8a8c9916f8efc42682829e1ef64a9b5489` |
 | `machine/flow/steps.mjs` | What each stage does, including the build being a real agent step. | `756006964d225bfe7946974dee0ff998e56ba4edd4a9d622f02fe313d424f35e` |
 | `machine/flow/check.mjs` | The post-build check: verifies Lead task list in Mastra state before Shipping. | `f39f2b51bea53f3113ad3d596f78fb6ad3443de82e4de888a11ec0ac61e97589` |
@@ -23,7 +23,7 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/role-models.mjs` | The Lead helper models, read from the saved role table and routed to account providers. | `6946ce44710f02f3bfa74f5aacbe91f49fa65db28b4009cd5b1e2ccc78dbfceb` |
 | `machine/flow/schema.mjs` | What the run form asks for and what the run remembers. | `4eb6f56030f5c31208c65aeded0b2904c1e83d538f84a3deff0cf02cc75e7c4a` |
 | `machine/flow/scratch.mjs` | The run folder: artifacts, verdicts and the report a stop leaves. | `c5434ee429300e6aad87017ef44dbcc5cb4592a6109f867b88b237bfaa122e6e` |
-| `machine/flow/copy.mjs` | The fresh copy of the repository each card builds in, and its removal when the card ends. | `56dee1b3c5d3ea14c5fcaba0f186554bd3121ba8ec48fcac243aed446fcfe78f` |
+| `machine/flow/copy.mjs` | The fresh copy of the repository each card builds in, and its removal when the card ends. | `c91323987ae2ae49251cff10f36c8e42264eee6651987589e284f33f06bf00d3` |
 | `machine/flow/review.mjs` | The Shipping review: finds the card's pull request, names the commit it reviews, builds the reviewer's task, reads the verdict. | `9f9dab7643fa9e3eac10ff78f63006bc5971749f2c84ac1ce345c80e3b6039fa` |
 | `machine/flow/cost-record.mjs` | Builds the per-card cost record from Mastra metrics and sends it to Axiom. | `2b8a1ad2bd83455f13b9cf6715c217d2434b2fc9072717dfd7f8b788569ca1f5` |
 | `machine/flow/mastra.mjs` | Storage, tracing and trace retention, so a run is written down and pruned. | `6383b09cfd9216e19272db65b388362407f018b6acfce57e1de8fe300552beb6` |

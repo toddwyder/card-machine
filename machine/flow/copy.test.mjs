@@ -192,3 +192,13 @@ test('syncCopyModules runs bun install --frozen-lockfile when bun is available a
   assert.equal(existsSync(join(copy.folder, 'node_modules', 'main-only')), false, 'stale hardlinked package from main was cleared');
   assert.equal(existsSync(join(repo, 'node_modules', 'main-only', 'index.js')), true, 'main node_modules stayed intact');
 });
+
+test('a card copy points its origin remote at the project repository origin', t => {
+  const { dir, repo, env } = studio(t);
+  const origin = join(dir, 'origin.git');
+  git(dir, ['clone', '--bare', '--quiet', repo, origin]);
+  git(repo, ['remote', 'add', 'origin', origin]);
+
+  const copy = openCopy({ repo, card: 'JUL-411-ORIGIN', env });
+  assert.equal(git(copy.folder, ['remote', 'get-url', 'origin']), origin);
+});

@@ -220,6 +220,11 @@ export function findLeftoverWork({ repo, card, findPr, env = process.env }) {
   return `Leftover work on GitHub for ${card}: ${reasons.join('; ')}. Stopped before creating a diverging branch; decide whether to resume, merge, or close and delete the earlier work.`;
 }
 
+function syncOriginRemote(repo, folder) {
+  if (!hasOrigin(repo)) return;
+  git(folder, ['remote', 'set-url', 'origin', git(repo, ['remote', 'get-url', 'origin'])]);
+}
+
 // The copy is its own repository, not a worktree of the studio's. A card's commands
 // run in a jail where only the copy is writable, so the git folder the helpers commit
 // with has to live inside it.
@@ -228,6 +233,7 @@ export function openCopy({ repo, card, env = process.env, install } = {}) {
   if (existsSync(folder)) {
     const base = baseOf(folder, card);
     if (base) {
+      syncOriginRemote(repo, folder);
       syncCopyModules({ repo, folder, install });
       return { folder, base, fresh: false };
     }
@@ -241,6 +247,7 @@ export function openCopy({ repo, card, env = process.env, install } = {}) {
   const base = startedFrom(repo);
   mkdirSync(copiesRoot(env), { recursive: true });
   git(repo, ['clone', '--quiet', '--shared', '--no-checkout', repo, folder]);
+  syncOriginRemote(repo, folder);
   git(folder, ['checkout', '--quiet', '-B', branch(card), base]);
   git(folder, ['update-ref', baseRef(card), base]);
   syncCopyModules({ repo, folder, install });
