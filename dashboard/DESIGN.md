@@ -191,7 +191,7 @@ The current-stage block carries a 3px lime border rather than a halo, so its hig
 
 Two radii families. Panels and cards are generously round (20px for the run panel and quota block, 16px for helper cards and the current-stage block, 14px for a warning banner); bars and chips are rounder still (12px on a quota bar, 999px on a past-stage pill, a 6px tick behind an in-progress task, 8px on the unknown-reading tag).
 
-Borders do the talking. Every card and banner has a 3px border whose style is a state: **solid** on a live helper or a stopped run's banner, **dashed** on the stuck banner, a stuck helper, a low-quota bar's ring, and the unknown-reading tag, **dotted** on a sent-back stage pill and on the burning-tokens banner. A given-up run's card title is struck through. No state is carried by colour alone.
+Borders do the talking. Every card and banner has a 3px border whose style is a state: **solid** on a live helper or a stopped run's banner, **dashed** on the stuck banner, the ended-without-a-result banner, a stuck helper, a low-quota bar's ring, and the unknown-reading tag, **dotted** on a sent-back stage pill and on the burning-tokens banner. A given-up run's card title is struck through. No state is carried by colour alone.
 
 ## Components
 
@@ -216,7 +216,7 @@ Borders do the talking. Every card and banner has a 3px border whose style is a 
 ### Warning banner
 
 - **Shape:** 14px corners, `14px 18px` padding, 3px border, mono-free text; the title in 1.2rem slab sits above one or two sentences of what is wrong.
-- **Stuck:** amber wash and text, dashed amber border. **Burning tokens fast:** the same wash, dotted border. **Stopped** and **Quota low:** madder wash and text, solid border. A stopped run's banner strikes its title through.
+- **Stuck and ended-without-a-result:** amber wash and text, dashed amber border. **Burning tokens fast:** the same wash, dotted border. **Stopped** and **Quota low:** madder wash and text, solid border. A stopped run's banner strikes its title through.
 - **Wording:** a banner says what is wrong and never suggests a fix; the numbers in it come from the settings file (7 minutes quiet, 20% left, 100,000 tokens in one call).
 
 ### Helper card
@@ -237,7 +237,7 @@ Borders do the talking. Every card and banner has a 3px border whose style is a 
 ### Do:
 
 - **Do** keep the stage name the largest text on the page at every width, via `clamp(1.9rem, 4.2vw, 2.9rem)`.
-- **Do** give every state a border shape: solid alive, dashed stuck or unknown or low, dotted sent back, struck through given up.
+- **Do** give every state a border shape: solid alive, dashed stuck or ended without a result, or unknown or low, dotted sent back, struck through given up.
 - **Do** write numbers in tabular figures with their unit ("12 minutes", "824 k tokens", "about $0.18, estimate").
 - **Do** let the stage rail grow as stages are reached, so it shows where the run has been.
 - **Do** put warnings above everything, in the order stopped, stuck, quota low, burning fast, and read them out of `dashboard/settings/run-view.json`, and read them out of `dashboard/settings/run-view.json`.

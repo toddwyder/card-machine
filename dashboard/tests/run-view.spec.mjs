@@ -170,6 +170,30 @@ test.describe('the Run view on a laptop', () => {
     await page.screenshot({ path: `${SHOTS}/stopped.png`, fullPage: true });
   });
 
+  test('says a run that reached its last stage ended, without inventing a result', async ({ page }) => {
+    await prepare({ scene: 'ended-unknown' });
+    await openRunView(page);
+
+    const ended = warning(page, 'ended_unknown');
+    await expect(ended).toBeVisible();
+    expect(await borderTopStyle(ended)).toBe('dashed');
+    await expect(ended).toContainText('The machine reached its last stage without saying whether the run finished or stopped.');
+
+    const panel = page.getByRole('region', { name: 'The running card' });
+    await expect(panel.getByText(/Ended, result unknown · /)).toBeVisible();
+    // A dashed mark on the run line, not the working ring: the run is over.
+    const runMark = panel.locator('p[data-run-state="ended_unknown"] svg');
+    await expect(runMark).toHaveAttribute('data-state', 'stuck');
+
+    // Once the run is known to be over the clock stops climbing.
+    const runLine = panel.locator('p[data-run-state="ended_unknown"]');
+    const before = await runLine.textContent();
+    await page.waitForTimeout(2500);
+    expect(await runLine.textContent()).toBe(before);
+
+    await page.screenshot({ path: `${SHOTS}/ended-unknown.png`, fullPage: true });
+  });
+
   test("draws a low window as a ringed bar, matched to that window's own reading", async ({ page }) => {
     await prepare({ scene: 'running', readings: 'low' });
     await openRunView(page);
@@ -297,5 +321,17 @@ test.describe('the Run view on a phone', () => {
     expect(narrow).toBeLessThanOrEqual(1);
 
     await page.screenshot({ path: `${SHOTS}/phone.png`, fullPage: true });
+  });
+
+  test('reads an ended run by its dashes on a narrow screen too', async ({ page }) => {
+    await prepare({ scene: 'ended-unknown' });
+    await openRunView(page);
+
+    const ended = warning(page, 'ended_unknown');
+    await expect(ended).toBeVisible();
+    expect(await borderTopStyle(ended)).toBe('dashed');
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
   });
 });

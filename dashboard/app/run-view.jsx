@@ -12,7 +12,13 @@ const STATE_WORDS = {
   stuck: 'Stuck',
   stopped: 'Stopped',
   finished: 'Finished',
+  ended_unknown: 'Ended, result unknown',
 };
+
+// Which mark each state and warning draws. The table is the one place a state becomes a shape,
+// so the screen cannot show a live ring beside a run that is over.
+const MARK_OF_STATE = { running: 'working', waiting_for_you: 'working', stuck: 'stuck', stopped: 'failed', ended_unknown: 'stuck' };
+const MARK_OF_WARNING = { stopped: 'failed', burning_fast: 'failed', stuck: 'stuck', ended_unknown: 'stuck' };
 
 const HELPER_WORDS = {
   working: 'Working',
@@ -111,7 +117,7 @@ function Warnings({ warnings }) {
       {warnings.map((warning, index) => (
         <li key={`${warning.kind}-${index}`} className={styles.warning} data-kind={warning.kind}>
           <p className={styles.warningTitle}>
-            <Mark state={warning.kind === 'stuck' ? 'stuck' : 'failed'} />
+            <Mark state={MARK_OF_WARNING[warning.kind] ?? 'failed'} />
             <span>{warning.title}</span>
           </p>
           <p className={styles.warningText}>{warning.text}</p>
@@ -309,8 +315,8 @@ export function RunView({ initialSnapshot }) {
             <div className={styles.panelTop}>
               <div>
                 <h1 className={styles.title}>{run.title}</h1>
-                <p className={styles.runLine}>
-                  <Mark state={run.status === 'stuck' ? 'stuck' : run.status === 'stopped' ? 'failed' : 'working'} />
+                <p className={styles.runLine} data-run-state={run.status}>
+                  <Mark state={MARK_OF_STATE[run.status] ?? 'working'} />
                   <span>
                     {STATE_WORDS[run.status] ?? run.status} · {duration(run.runningMs)}
                   </span>
@@ -360,7 +366,7 @@ export function RunView({ initialSnapshot }) {
         </section>
 
         <p className={styles.legend}>
-          Filled tick: done. Ring: working. Dashed box: stuck. Cross: stopped. Dotted edge: burning. Struck title: stopped.
+          Filled tick: done. Ring: working. Dashed box: stuck or ended without a result. Cross: stopped. Dotted edge: burning. Struck title: stopped.
         </p>
       </main>
     </div>
