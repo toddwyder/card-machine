@@ -1,0 +1,12 @@
+[Unit]
+Description=Server memory and cgroup watcher
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/ubuntu/.local/bin/memory-watch.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

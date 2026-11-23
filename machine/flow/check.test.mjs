@@ -194,26 +194,27 @@ test('workflow sends a failed check back to build with the reason and proceeds t
   assert.equal(result.result.landed, true);
 });
 
-test('a second check failure stops at the check step with both reasons and separate report counts', async () => {
+test('a third check failure after two returns stops at the check step with all reasons and separate report counts', async () => {
   let calls = 0;
   const { result, shippingCalls, reportText } = await runCheckFlow({
     kind: 'product',
     check: {
       run: async () => {
         calls += 1;
-        return { ok: false, reason: calls === 1 ? 'task list: "Step 1" is pending' : 'playbook: missing step "Step 2"' };
+        return { ok: false, reason: `failure ${calls}` };
       },
     },
   });
 
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
   assert.equal(shippingCalls.length, 0, 'Shipping never runs when check stops the card');
   assert.equal(result.status, 'success');
   assert.equal(result.result.stopped, true);
   assert.equal(result.result.landed, false);
   assert.match(reportText, /Part: check step/);
-  assert.match(reportText, /stopped at the check step: \(1\) task list: "Step 1" is pending; \(2\) playbook: missing step "Step 2"/);
+  assert.match(reportText, /stopped at the check step: \(1\) failure 1; \(2\) failure 2; \(3\) failure 3/);
   assert.match(reportText, /Check returns: 2/);
+  assert.match(reportText, /Build rounds: 3/);
   assert.match(reportText, /Shipping failures: 0/);
 });
 
@@ -336,4 +337,69 @@ test('selfScript throws a clear error naming all tried paths when no candidate e
       return true;
     },
   );
+});
+
+test('workflow halts before build when memory record is stopped and includes lowest free RAM in report when running', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'flow-mw-workflow-'));
+  process.env.FLOW_SCRATCH = join(dir, 'scratch');
+  const repo = studioRepo(dir);
+  const caseDir = join(dir, 'run');
+  openScratch(caseDir);
+  const stub = text => ({
+    generate: async () => { throw new Error('Bad Request: Stream must be set to true'); },
+    stream: async () => ({ text: Promise.resolve(text) }),
+  });
+  let buildCalled = false;
+  const build = {
+    id: 'build',
+    tools: { task_write: {}, task_update: {}, task_complete: {}, task_check: {} },
+    stream: async () => {
+      buildCalled = true;
+      return { text: Promise.resolve('built'), tripwire: Promise.resolve(null) };
+    },
+  };
+  const shared = {
+    agents: {
+      build,
+      shipping: { stream: async () => ({ text: Promise.resolve('VERDICT: PASS\nCRITERION 1: PASS — ok\nNOTES: none') }) },
+      remediation: stub('fixed'),
+      retro: stub('retro'),
+    },
+    dir: caseDir,
+    repo,
+    preflight: async () => ({ ok: true }),
+    review: {
+      findPr: () => ({ pr: 498 }),
+      readCard: async identifier => ({ identifier, title: 'MW card', description: '## Acceptance criteria\n- works' }),
+      moveCard: async () => {},
+      headCommit: () => 'abc123',
+      postPrComment: () => {},
+      openPr: () => ({ ok: true, pr: 498 }),
+    },
+    check: { run: async () => ({ ok: true }) },
+  };
+
+  const stoppedWf = buildCardPath({
+    ...shared,
+    memoryWatch: { check: () => ({ ok: false, reason: 'Memory record is stopped: no samples.' }), lowest: () => null },
+  });
+  const m1 = await openMastra({ card: CARD, stateDb: join(dir, 's1.db'), traceDb: join(dir, 't1.duckdb'), workflow: stoppedWf });
+  const r1 = await (await m1.getWorkflow(stoppedWf.id).createRun()).start({ inputData: { card: CARD, kind: 'machine' } });
+  await m1.shutdown();
+  assert.equal(buildCalled, false, 'build never runs when memory record is stopped');
+  assert.equal(r1.result.stopped, true);
+  assert.match(readFileSync(join(caseDir, CARD, 'reports', `${CARD}.md`), 'utf8'), /Memory record is stopped: no samples\./);
+
+  const runningWf = buildCardPath({
+    ...shared,
+    memoryWatch: { check: () => ({ ok: true }), lowest: () => ({ lowestMb: 2816, at: '2026-11-23T01:00:10Z', samples: 4 }) },
+  });
+  const caseDir2 = join(dir, 'run2');
+  openScratch(caseDir2);
+  const m2 = await openMastra({ card: CARD, stateDb: join(dir, 's2.db'), traceDb: join(dir, 't2.duckdb'), workflow: buildCardPath({ ...shared, dir: caseDir2, memoryWatch: { check: () => ({ ok: true }), lowest: () => ({ lowestMb: 2816, at: '2026-11-23T01:00:10Z', samples: 4 }) } }) });
+  const r2 = await (await m2.getWorkflow(runningWf.id).createRun()).start({ inputData: { card: CARD, kind: 'machine' } });
+  await m2.shutdown();
+  assert.equal(r2.result.landed, true);
+  assert.match(readFileSync(join(caseDir2, CARD, 'reports', `${CARD}.md`), 'utf8'), /Lowest free RAM: 2816 MB \(at 2026-11-23T01:00:10Z\)/);
+  try { rmSync(dir, { recursive: true, force: true }); } catch {}
 });

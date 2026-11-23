@@ -10,16 +10,18 @@ import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
 
 import { stopIfAccessMissing, verifyRunAccess } from './access.mjs';
-import { realCheck } from './check.mjs';
+import { checkStateUpdate, realCheck } from './check.mjs';
 import { closeCopy, findLeftoverWork, openCopy } from './copy.mjs';
 import { sendCardCostRecord } from './cost-record.mjs';
 import { pruneTrace } from './mastra.mjs';
-import { acceptanceWaitMessage, notifyCard, reportText, tripwireStop } from './report.mjs';
+import { resolveMemoryWatch } from './memory-watch.mjs';
+import { openCardPullRequest } from './pr.mjs';
+import { acceptanceWaitMessage, notifyCard, reportText, tripwireStop, withLowestFreeRam } from './report.mjs';
 import { stopIfResourcesShort } from './resources.mjs';
 import { REVIEW_TIME_LIMIT_MS, parseVerdict, realReview, reviewTask, verdictComment } from './review.mjs';
 import { cardState, flowData, runInput } from './schema.mjs';
 import { nextVerdict, openRun, readArtifact, sweepBuild, writeArtifact, writeLanding, writeReport, writeRetro } from './scratch.mjs';
-import { criteriaFromCard, taskFromCard } from './task.mjs';
+import { buildTaskPrompt, criteriaFromCard } from './task.mjs';
 
 const step = (id, execute, extra = {}) =>
   createStep({ id, inputSchema: flowData, outputSchema: flowData, ...extra, execute });
@@ -29,7 +31,8 @@ const REQUIRED_TASK_TOOLS = ['task_write', 'task_update', 'task_complete', 'task
 const finishCard = ({ mastra, card, status }) =>
   Promise.allSettled([sendCardCostRecord({ mastra, card, status }), pruneTrace(mastra)]);
 
-export function createStages({ agents, dir, repo, projectRepo = repo, review = realReview, check = realCheck, preflight = verifyRunAccess }) {
+export function createStages({ agents, dir, repo, projectRepo = repo, githubRepo = '', review = realReview, check = realCheck, preflight = verifyRunAccess, memoryWatch }) {
+  const watch = resolveMemoryWatch(memoryWatch);
   const cardDir = (card) => join(dir, card);
 
   const halt = async ({ inputData, state }) =>
@@ -37,15 +40,19 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
 
   const haltOrShort = async context => (await halt(context)) ?? stopIfResourcesShort(context, dir);
 
+  const stopFromTripwire = async ({ inputData, state, setState }, tripwire) => {
+    const stop = tripwireStop(tripwire);
+    await setState({ ...state, ...stop, stopped: true });
+    return { ...inputData, stopped: true, detail: stop.stopWhy };
+  };
+
   const refused = async ({ inputData, state, setState }, error) => {
     if (error?.name !== 'TripWire' && !/TripWire/.test(String(error?.message ?? error))) return null;
-    const stop = tripwireStop({
+    return stopFromTripwire({ inputData, state, setState }, {
       reason: error?.message,
       processorId: error?.processorId,
       metadata: error?.options?.metadata,
     });
-    await setState({ ...state, ...stop, stopped: true });
-    return { card: state.card, kind: state.kind, ...inputData, stopped: true, detail: stop.stopWhy };
   };
 
   const start = createStep({
@@ -62,6 +69,13 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
       openRun(dir, inputData.card);
       const short = await stopIfResourcesShort({ inputData, state: { ...state, card: inputData.card, kind: inputData.kind }, setState }, dir);
       if (short) return short;
+      if (watch?.check) {
+        const mw = await watch.check();
+        if (!mw.ok) {
+          await setState({ ...state, card: inputData.card, kind: inputData.kind, stopPart: 'Memory record', stopWhy: mw.reason, stopped: true });
+          return { card: inputData.card, kind: inputData.kind, stopped: true, detail: mw.reason };
+        }
+      }
       const denied = preflight === verifyRunAccess
         ? await stopIfAccessMissing({ inputData, state: { ...state, card: inputData.card, kind: inputData.kind }, setState }, { agents, checkout: projectRepo, repo })
         : await preflight({ agents, checkout: projectRepo, repo }).then(async r => r.ok ? null : (await setState({ ...state, card: inputData.card, kind: inputData.kind, stopPart: 'Access', stopWhy: r.reason, stopped: true }), { card: inputData.card, kind: inputData.kind, stopped: true, detail: r.reason }));
@@ -94,13 +108,12 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
     requestContext?.set?.('flowCard', card);
     requestContext?.set?.('mastra__threadId', requestId);
     requestContext?.set?.('mastra__resourceId', card);
-    await setState({ ...state, buildRounds, requestId, copy: copy.folder, base: copy.base, playbook: '', playbookCall: 0 });
+    const buildStartedAt = state.buildStartedAt || new Date().toISOString();
+    await setState({ ...state, buildRounds, buildStartedAt, requestId, copy: copy.folder, base: copy.base, playbook: '', playbookCall: 0 });
     const issue = await review.readCard(card);
     if (!issue) throw new Error(`Linear card ${card} could not be read.`);
     if (buildRounds === 1) await review.moveCard(card, 'Implementation');
-    const backNote = state.checkReasons?.length > 0 ? `\n\n## Previous check failure\n${state.checkReasons.at(-1)}` : '';
-    const playbookNote = '\n\n## Playbook step\nAs your first act before any other tool call, call `choose_playbook` with the poteto-mode playbook name for this card (for example `feature`, `bug-fix`, `investigation`, `refactoring`). You have no shell or file-writing tools; delegate every command, code edit, test, git operation, Linear update, and verification to the appropriate helper. The checkout named above is the only place to work: every path written must be inside it, and card commands run with the rest of the server read only. Its dependencies are already installed, so never run an installer (npm ci, npm install, bun install, pnpm install) and never make another copy or worktree of a repository; tell a helper to report a missing dependency to you instead. Keep every `playbook_*` item\'s content word for word (only append `skip: <reason>` when leaving a step undone); use `task_complete` or `task_update` with `status` alone to mark a step done (read a named skill\'s `SKILL.md` before marking its step done), and place any step-required sub-items (such as Feature step 3\'s four throughput checkpoint items) immediately after that step rather than overwriting it.';
-    return { ...inputData, card, detail: `build round ${buildRounds} started in ${copy.folder}`, prompt: `${taskFromCard(issue)}${backNote}${playbookNote}` };
+    return { ...inputData, card, detail: `build round ${buildRounds} started in ${copy.folder}`, prompt: buildTaskPrompt(issue, state.checkReasons) };
   });
 
   const buildAgent = createStep({
@@ -122,11 +135,13 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
         return { text: '' };
       } finally {
         const chosen = requestContext?.get?.('flowPlaybook');
-        if (stop || chosen?.playbook) {
+        const prDraft = requestContext?.get?.('flowPr');
+        if (stop || chosen?.playbook || prDraft) {
           await setState({
             ...state,
             ...(stop ?? {}),
             ...(chosen?.playbook ? { playbook: chosen.playbook, playbookCall: chosen.callNumber ?? 0 } : {}),
+            ...(prDraft ? { prTitle: prDraft.title, prBody: prDraft.body } : {}),
           });
         }
       }
@@ -153,15 +168,29 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
     const stopped = await halt(context);
     if (stopped) return stopped;
     const { inputData, state, setState, mastra } = context;
-    const result = await check.run({ mastra, threadId: state.requestId, playbook: state.playbook, repo })
-      .catch(error => ({ ok: false, fatal: true, reason: String(error?.message ?? error) }));
-    if (result.ok) return { ...inputData, checkPassed: true, checkReason: '' };
-    const checkReturns = result.fatal ? state.checkReturns : state.checkReturns + 1;
-    const checkReasons = result.fatal ? state.checkReasons : [...state.checkReasons, result.reason];
-    const stop = result.fatal || checkReturns >= 2;
-    const stopWhy = result.fatal ? `stopped at the check step: ${result.reason}` : `stopped at the check step: (1) ${checkReasons[0]}; (2) ${checkReasons[1]}`;
-    await setState({ ...state, checkReturns, checkReasons, ...(stop ? { stopPart: 'check step', stopWhy } : {}) });
-    return { ...inputData, checkPassed: false, checkReason: result.reason, stopped: stop, detail: result.reason };
+    const result = await check.run({
+      mastra, threadId: state.requestId, playbook: state.playbook, repo,
+      checkout: state.copy, base: state.base, projectRepo, card: state.card,
+      prTitle: state.prTitle, prBody: state.prBody,
+    }).catch(error => ({ ok: false, fatal: true, reason: String(error?.message ?? error) }));
+    const { nextState, output } = checkStateUpdate(state, result);
+    if (nextState !== state) await setState(nextState);
+    return { ...inputData, ...output };
+  });
+
+  const openPr = step('open-pr', async (context) => {
+    const stopped = await halt(context);
+    if (stopped) return stopped;
+    const { inputData, state, setState } = context;
+    const res = (review.openPr ?? openCardPullRequest)({
+      card: state.card, checkout: state.copy, base: state.base,
+      projectRepo, githubRepo, title: state.prTitle, body: state.prBody,
+    });
+    if (!res.ok) {
+      await setState({ ...state, stopPart: 'Pull request', stopWhy: res.reason, stopped: true });
+      return { ...inputData, stopped: true, detail: res.reason };
+    }
+    return { ...inputData, pr: res.pr ?? inputData.pr, detail: res.skipped ? res.reason : `opened pull request #${res.pr}` };
   });
 
   const shipping = step('shipping', async (context) => {
@@ -188,11 +217,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
       );
       const text = (await result.text) ?? '';
       const tripwire = await result.tripwire;
-      if (tripwire) {
-        const stop = tripwireStop(tripwire);
-        await context.setState({ ...state, ...stop, stopped: true });
-        return { ...inputData, stopped: true, detail: stop.stopWhy };
-      }
+      if (tripwire) return stopFromTripwire(context, tripwire);
       return { ...inputData, pr: found.pr, sha, answer: text, criteriaCount: criteria.length, detail: text };
     } catch (error) {
       if (clock.aborted) return unreviewed(`the review ran longer than ${REVIEW_TIME_LIMIT_MS / 60_000} minutes and was ended`);
@@ -208,13 +233,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
     const { inputData, state, setState } = context;
     const reviewRound = state.reviewRound + 1;
     const unreviewed = async reason => {
-      await setState({
-        ...state,
-        reviewRound,
-        unreviewed: true,
-        stopPart: 'Shipping',
-        stopWhy: `The card is unreviewed: ${reason}. No failure was counted.`,
-      });
+      await setState({ ...state, reviewRound, unreviewed: true, stopPart: 'Shipping', stopWhy: `The card is unreviewed: ${reason}. No failure was counted.` });
       return { ...inputData, verdict: null, unreviewed: true, detail: `shipping round ${reviewRound} gave no verdict: ${reason}` };
     };
     if (inputData.unreviewed) return unreviewed(inputData.detail);
@@ -227,12 +246,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
     }
     const failCount = answer === 'FAIL' ? state.failCount + 1 : state.failCount;
     await setState({ ...state, failCount, reviewRound });
-    return {
-      ...inputData,
-      verdict: answer,
-      failCount,
-      detail: `shipping round ${reviewRound} returned ${answer} on pull request #${inputData.pr}`,
-    };
+    return { ...inputData, verdict: answer, failCount, detail: `shipping round ${reviewRound} returned ${answer} on pull request #${inputData.pr}` };
   });
 
   const remediation = step('remediation', async (context) => {
@@ -249,11 +263,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
       );
       const text = (await result.text) ?? '';
       const tripwire = await result.tripwire;
-      if (tripwire) {
-        const stop = tripwireStop(tripwire);
-        await context.setState({ ...state, ...stop, stopped: true });
-        return { ...inputData, stopped: true, detail: stop.stopWhy };
-      }
+      if (tripwire) return stopFromTripwire(context, tripwire);
       writeArtifact(cardDir(state.card), state.card, text || artifact);
       return { ...inputData, detail: text };
     } catch (error) {
@@ -283,32 +293,18 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
     return { ...inputData, stopped: true };
   });
 
-  const acceptance = step(
-    'acceptance',
-    async (context) => {
-      const stopped = await halt(context);
-      if (stopped) return stopped;
-      const { inputData, state, setState, resumeData, suspend, suspendData } = context;
-      const open = suspendData?.request ?? state.requestId;
-
-      if (!resumeData || resumeData.request !== open) {
-        await notifyCard(review, state.card, acceptanceWaitMessage(state.card, open), cardDir(state.card));
-        return await suspend({ request: open });
-      }
-
-      await setState({ ...state, answer: resumeData.answer });
-      return {
-        ...inputData,
-        accepted: resumeData.answer === 'yes',
-        rejected: resumeData.answer !== 'yes',
-        detail: `Todd answered ${resumeData.answer} to ${open}`,
-      };
-    },
-    {
-      suspendSchema: z.object({ request: z.string() }),
-      resumeSchema: z.object({ request: z.string(), answer: z.enum(['yes', 'no']) }),
-    },
-  );
+  const acceptance = step('acceptance', async (context) => {
+    const stopped = await halt(context);
+    if (stopped) return stopped;
+    const { inputData, state, setState, resumeData, suspend, suspendData } = context;
+    const open = suspendData?.request ?? state.requestId;
+    if (!resumeData || resumeData.request !== open) {
+      await notifyCard(review, state.card, acceptanceWaitMessage(state.card, open), cardDir(state.card));
+      return await suspend({ request: open });
+    }
+    await setState({ ...state, answer: resumeData.answer });
+    return { ...inputData, accepted: resumeData.answer === 'yes', rejected: resumeData.answer !== 'yes', detail: `Todd answered ${resumeData.answer} to ${open}` };
+  }, { suspendSchema: z.object({ request: z.string() }), resumeSchema: z.object({ request: z.string(), answer: z.enum(['yes', 'no']) }) });
 
   const machineAccept = step('machine-accept', async (context) => {
     const stopped = await halt(context);
@@ -335,12 +331,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
     await setState({
       ...state,
       failCount,
-      ...(answer === 'FAIL'
-        ? {
-            stopPart: 'live smoke test',
-            stopWhy: `The live smoke test failed with ${failCount} failures counted.`,
-          }
-        : {}),
+      ...(answer === 'FAIL' ? { stopPart: 'live smoke test', stopWhy: `The live smoke test failed with ${failCount} failures counted.` } : {}),
     });
     return { ...inputData, smoke: answer, failCount, detail: `live smoke test returned ${answer}` };
   });
@@ -349,7 +340,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
 
   const stopReport = step('stop-report', async ({ inputData, state, mastra }) => {
     await finishCard({ mastra, card: state.card, status: 'stopped' });
-    const report = reportText(state, inputData.detail);
+    const report = reportText(withLowestFreeRam(state, watch), inputData.detail);
     const path = writeReport(cardDir(state.card), state.card, report);
     await notifyCard(review, state.card, report, cardDir(state.card));
     return { ...inputData, stopped: true, finished: true, detail: `stop report at ${path}` };
@@ -368,11 +359,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
       );
       const text = (await result.text) ?? '';
       const tripwire = await result.tripwire;
-      if (tripwire) {
-        const stop = tripwireStop(tripwire);
-        await context.setState({ ...state, ...stop, stopped: true });
-        return { ...inputData, stopped: true, detail: stop.stopWhy };
-      }
+      if (tripwire) return stopFromTripwire(context, tripwire);
       writeRetro(cardDir(state.card), state.card, text);
       return { ...inputData, detail: text };
     } catch (error) {
@@ -386,7 +373,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
     if (!state.stopped) await finishCard({ mastra, card: state.card, status: 'finished' });
     closeCopy({ repo: projectRepo, card: state.card });
     const report = join(cardDir(state.card), 'reports', `${state.card}.md`);
-    if (!existsSync(report)) writeReport(cardDir(state.card), state.card, reportText(state, inputData.detail));
+    if (!existsSync(report)) writeReport(cardDir(state.card), state.card, reportText(withLowestFreeRam(state, watch), inputData.detail));
     sweepBuild(cardDir(state.card));
     return { ...inputData, finished: true, detail: `${state.card} cleaned up` };
   });
@@ -394,7 +381,7 @@ export function createStages({ agents, dir, repo, projectRepo = repo, review = r
   const hold = step('hold', async ({ inputData }) => inputData);
 
   return {
-    start, startBuild, buildAgent, finishBuild, buildCheck, shipping, verdict, remediation, passNote,
+    start, startBuild, buildAgent, finishBuild, buildCheck, openPr, shipping, verdict, remediation, passNote,
     gate, acceptance, land, smoke, smokePass, stopReport, retro, hold, machineAccept, cleanup,
   };
 }

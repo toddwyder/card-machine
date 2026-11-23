@@ -3,7 +3,11 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { BUILDER_SLICE, COMMAND_MEMORY_MAX } from './bounded-sandbox.mjs';
+import { studioUnit } from './interrupted.mjs';
 import { resolvePlaybook } from './playbook.mjs';
+import { validatePrDraft } from './pr.mjs';
+import { changedFiles, runRepoChecks } from './repo-checks.mjs';
 
 const TASK_STATE_TYPE = 'task';
 const SKIP_PATTERN = /\b(?:skip|n\/a)\s*:\s*\S/i;
@@ -89,15 +93,47 @@ const runCheckInChild = (payload) =>
     child.stdin.end(JSON.stringify(payload));
   });
 
+export function checkStateUpdate(state, result) {
+  if (result.ok) {
+    return { nextState: state, output: { checkPassed: true, checkReason: '' } };
+  }
+  const stop = Boolean(result.fatal || state.checkReturns >= 2);
+  const checkReturns = result.fatal || stop ? state.checkReturns : state.checkReturns + 1;
+  const checkReasons = result.fatal ? state.checkReasons : [...state.checkReasons, result.reason];
+  const stopWhy = result.fatal
+    ? `stopped at the check step: ${result.reason}`
+    : `stopped at the check step: ${checkReasons.map((r, i) => `(${i + 1}) ${r}`).join('; ')}`;
+  return {
+    nextState: { ...state, checkReturns, checkReasons, ...(stop ? { stopPart: 'check step', stopWhy } : {}) },
+    output: { checkPassed: false, checkReason: result.reason, stopped: stop, detail: result.reason },
+  };
+}
+
 export const realCheck = {
-  async run({ mastra, threadId, playbook, repo }) {
+  async run({ mastra, threadId, playbook, repo, checkout, base, projectRepo, card, prTitle, prBody }) {
     const entry = playbook ? resolvePlaybook(repo, playbook) : null;
     const store = await mastra?.getStorage?.()?.getStore?.('threadState');
     const tasks = store && threadId ? await store.getState({ threadId, type: TASK_STATE_TYPE }) : [];
-    return runCheckInChild({
+    const taskResult = await runCheckInChild({
       tasks: Array.isArray(tasks) ? tasks : [],
       steps: entry?.steps ?? [],
       playbook: entry?.slug ?? String(playbook ?? ''),
+    });
+    if (!taskResult.ok) return taskResult;
+    if (!checkout || !base) return { ok: true };
+    const files = changedFiles(checkout, base);
+    if (files.length === 0) return { ok: true };
+    const prCheck = validatePrDraft({ card, title: prTitle, body: prBody });
+    if (!prCheck.ok) {
+      return { ok: false, reason: `${prCheck.reason} Call write_pr with a title and body that name ${card} before finishing.` };
+    }
+    const unit = studioUnit();
+    const studio = unit && /^card-machine-(self-)?studio\.service$/.test(unit);
+    return runRepoChecks({
+      checkout,
+      base,
+      projectRepo: projectRepo ?? repo,
+      ...(studio ? { slice: BUILDER_SLICE, memoryMax: COMMAND_MEMORY_MAX, ownerUnit: unit } : {}),
     });
   },
 };
