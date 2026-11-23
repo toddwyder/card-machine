@@ -79,3 +79,13 @@ export function taskFromCard(card) {
   if (sections.length === 0) return description.trim() ? `${named}\n\n${description.trim()}` : named;
   return [named, ...sections.map(({ part, body }) => `## ${part}\n${body}`)].join('\n\n');
 }
+
+const PLAYBOOK_NOTE = [
+  '## Playbook step',
+  'As your first act before any other tool call, call `choose_playbook` with the poteto-mode playbook name for this card (for example `feature`, `bug-fix`, `investigation`, `refactoring`). You have no shell or file-writing tools; delegate every command, code edit, test, git operation, Linear update, and verification to the appropriate helper. The checkout named above is the only place to work: every path written must be inside it, and card commands run with the rest of the server read only. Its dependencies are already installed, so never run an installer (npm ci, npm install, bun install, pnpm install) and never make another copy or worktree of a repository; tell a helper to report a missing dependency to you instead. Keep every `playbook_*` item\'s content word for word (only append `skip: <reason>` when leaving a step undone); use `task_complete` or `task_update` with `status` alone to mark a step done (read a named skill\'s `SKILL.md` before marking its step done), and place any step-required sub-items (such as Feature step 3\'s four throughput checkpoint items) immediately after that step rather than overwriting it. Do not push or run `gh pr create` yourself; the machine runs the repository checks and opens the pull request. For the **Opening a PR** step, call `write_pr` with the PR `title` and `body` (naming the card and following Opening a PR\'s sections) after your code is committed.',
+].join('\n');
+
+export function buildTaskPrompt(issue, checkReasons = []) {
+  const backNote = checkReasons.length > 0 ? `\n\n## Previous check failure\n${checkReasons.at(-1)}` : '';
+  return `${taskFromCard(issue)}${backNote}\n\n${PLAYBOOK_NOTE}`;
+}
