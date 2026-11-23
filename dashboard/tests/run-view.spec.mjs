@@ -6,12 +6,21 @@
 // zone is pinned to UTC as well, because a subscription's reset date is a calendar day.
 
 import { expect, test } from '@playwright/test';
-import { appendModelCall, prepare } from './flow-fixture.mjs';
+import { appendModelCall, NOW, prepare } from './flow-fixture.mjs';
 
 const SHOTS = 'docs/run-view-proof';
 const API = '/control/api/run-view';
 
 test.use({ timezoneId: 'UTC' });
+
+// The pin that keeps the committed pictures stable is one environment line in
+// `tests/start-server.mjs`. Without it the screen still looks right and only the files change, so
+// this asks the server what instant it folded at and fails when that line is gone. It runs once,
+// before the scenes, because the answer is the same for every one of them.
+test('folds the screen at the instant the proof pictures are pinned to', async ({ page }) => {
+  const read = await snapshot(page);
+  expect(read.observedAt, 'the screen was not folded at the pinned instant: RUN_VIEW_NOW is missing from tests/start-server.mjs, so every committed picture in docs/run-view-proof would drift on each run').toBe(NOW);
+});
 
 async function openRunView(page) {
   await page.goto('/control/');
