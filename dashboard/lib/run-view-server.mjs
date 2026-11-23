@@ -54,11 +54,14 @@ async function readReadings() {
   }
 }
 
+// A test pins the instant it reads the screen at, so its pictures come out the same every run.
+const PINNED_NOW = Number(process.env.RUN_VIEW_NOW);
+
 /**
  * Read the whole Run view once.
  * @param {{flowDir?: string|null, now?: number, subscriptions?: unknown[], estimateUsd?: Function}} options
  */
-export async function readRunViewSnapshot({ flowDir = process.env.FLOW_DIR ?? null, now = Date.now(), subscriptions, estimateUsd } = {}) {
+export async function readRunViewSnapshot({ flowDir = process.env.FLOW_DIR ?? null, now = PINNED_NOW || Date.now(), subscriptions, estimateUsd } = {}) {
   const settings = readRunViewSettings();
   const logFile = chosenRunLog(flowDir);
   const [events, readings] = await Promise.all([

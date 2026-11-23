@@ -1,12 +1,17 @@
 // Drives the Run view through every state a run can be in, on the built app, against logs the
 // machine's own writer produced. Every state is asserted by shape as well as colour, and each one
-// leaves a picture in dashboard/docs/run-view-proof for the pull request.
+// leaves a picture in dashboard/docs/run-view-proof for the pull request. The fixture writes its
+// times and `tests/start-server.mjs` pins the app's clock to the same instant, so the pictures
+// repeat byte for byte instead of carrying the minute the suite happened to run in. The browser's
+// zone is pinned to UTC as well, because a subscription's reset date is a calendar day.
 
 import { expect, test } from '@playwright/test';
 import { appendModelCall, prepare } from './flow-fixture.mjs';
 
 const SHOTS = 'docs/run-view-proof';
 const API = '/control/api/run-view';
+
+test.use({ timezoneId: 'UTC' });
 
 async function openRunView(page) {
   await page.goto('/control/');
@@ -17,6 +22,12 @@ async function snapshot(page) {
   const response = await page.request.get(API);
   expect(response.ok()).toBeTruthy();
   return response.json();
+}
+
+// Every picture is taken the same way. The scene and the app read one fixed instant (see
+// `NOW` in the fixture), and a settled transition keeps the bytes the same on a rerun.
+async function shot(page, name) {
+  await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true, animations: 'disabled' });
 }
 
 function warning(page, kind) {
@@ -92,7 +103,7 @@ test.describe('the Run view on a laptop', () => {
       expect(await skipped.first().locator('span').evaluate(node => getComputedStyle(node).textDecorationLine)).toBe('line-through');
     }
 
-    await page.screenshot({ path: `${SHOTS}/laptop.png`, fullPage: true });
+    await shot(page, 'laptop');
   });
 
   test('lists each helper card newest action first', async ({ page }) => {
@@ -115,7 +126,7 @@ test.describe('the Run view on a laptop', () => {
     expect(read.run.stage.status).toBe('waiting');
     await expect(page.locator('main')).toContainText('Waiting for you');
     await expect(warning(page, 'stuck')).toHaveCount(0);
-    await page.screenshot({ path: `${SHOTS}/waiting-for-you.png`, fullPage: true });
+    await shot(page, 'waiting-for-you');
   });
 
   test('draws stuck as a dashed box and says how long it has been quiet', async ({ page }) => {
@@ -135,7 +146,7 @@ test.describe('the Run view on a laptop', () => {
     const panel = page.getByRole('region', { name: 'The running card' });
     await expect(panel.getByText(/Stuck · /)).toBeVisible();
 
-    await page.screenshot({ path: `${SHOTS}/stuck.png`, fullPage: true });
+    await shot(page, 'stuck');
   });
 
   test('draws a burning model call as a dotted warning that names the agent', async ({ page }) => {
@@ -147,7 +158,7 @@ test.describe('the Run view on a laptop', () => {
     expect(await borderTopStyle(burning)).toBe('dotted');
     await expect(burning).toContainText(/Feature Refactoring 1 used .* tokens in one model call\./);
 
-    await page.screenshot({ path: `${SHOTS}/burning-fast.png`, fullPage: true });
+    await shot(page, 'burning-fast');
   });
 
   test('draws a stopped run as a solid red warning with the title struck through', async ({ page }) => {
@@ -167,7 +178,7 @@ test.describe('the Run view on a laptop', () => {
     const panel = page.getByRole('region', { name: 'The running card' });
     await expect(panel.getByText(/Stopped · /)).toBeVisible();
 
-    await page.screenshot({ path: `${SHOTS}/stopped.png`, fullPage: true });
+    await shot(page, 'stopped');
   });
 
   test('says a run that reached its last stage ended, without inventing a result', async ({ page }) => {
@@ -191,7 +202,7 @@ test.describe('the Run view on a laptop', () => {
     await page.waitForTimeout(2500);
     expect(await runLine.textContent()).toBe(before);
 
-    await page.screenshot({ path: `${SHOTS}/ended-unknown.png`, fullPage: true });
+    await shot(page, 'ended-unknown');
   });
 
   test("draws a low window as a ringed bar, matched to that window's own reading", async ({ page }) => {
@@ -221,7 +232,7 @@ test.describe('the Run view on a laptop', () => {
       }
     }
 
-    await page.screenshot({ path: `${SHOTS}/quota-low.png`, fullPage: true });
+    await shot(page, 'quota-low');
   });
 
   test('tells an expired sign-in from no sign-in at all', async ({ page }) => {
@@ -247,7 +258,7 @@ test.describe('the Run view on a laptop', () => {
     await expect(page.getByRole('region', { name: 'The running card' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Subscriptions' })).toBeVisible();
 
-    await page.screenshot({ path: `${SHOTS}/nothing-running.png`, fullPage: true });
+    await shot(page, 'nothing-running');
   });
 
   test('shows a finished run as finished with no warnings', async ({ page }) => {
@@ -264,7 +275,7 @@ test.describe('the Run view on a laptop', () => {
     // Every task ticked, drawn as a filled mark.
     await expect(page.locator('svg[data-state="done"]').first()).toBeVisible();
 
-    await page.screenshot({ path: `${SHOTS}/finished.png`, fullPage: true });
+    await shot(page, 'finished');
   });
 
   test('keeps up without a refresh when the machine spends more tokens', async ({ page }) => {
@@ -320,7 +331,7 @@ test.describe('the Run view on a phone', () => {
     const narrow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(narrow).toBeLessThanOrEqual(1);
 
-    await page.screenshot({ path: `${SHOTS}/phone.png`, fullPage: true });
+    await shot(page, 'phone');
   });
 
   test('reads an ended run by its dashes on a narrow screen too', async ({ page }) => {

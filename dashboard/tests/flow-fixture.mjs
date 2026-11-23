@@ -13,6 +13,12 @@ export const SUBSCRIPTIONS_FILE = join(FLOW_DIR, 'subscriptions.json');
 
 const hours = 60 * 60 * 1000;
 
+// The one instant every scene and the app read the clock at. A scene writes its times as offsets
+// from here and the server folds the screen at the same number, so no label depends on how long
+// the test took to get to the screenshot. It still reads as a real run: 09:30 UTC on a Monday
+// morning, with the five-hour windows refilling that afternoon.
+export const NOW = Date.parse('2026-11-23T09:30:00Z');
+
 // What the three subscriptions read: two fresh, one that failed to read, and a set whose
 // five-hour window is nearly gone.
 const READINGS = {
@@ -50,7 +56,7 @@ const READINGS = {
 };
 
 /** Rebuild the run directory as one scene with one set of readings, and return its path. */
-export function prepare({ scene = 'running', readings = 'normal', now = Date.now() } = {}) {
+export function prepare({ scene = 'running', readings = 'normal', now = NOW } = {}) {
   rmSync(FLOW_DIR, { recursive: true, force: true });
   mkdirSync(FLOW_DIR, { recursive: true });
   writeScene(FLOW_DIR, scene, { now });
@@ -58,7 +64,7 @@ export function prepare({ scene = 'running', readings = 'normal', now = Date.now
   return FLOW_DIR;
 }
 
-export const buildFixture = (now = Date.now()) => prepare({ now });
+export const buildFixture = (now = NOW) => prepare({ now });
 
 /** Append one model call through the machine's own writer, the way a real run's tokens grow. */
 export function appendModelCall({ agent = 'pstack-feature-refactoring-1', inputTokens = 240000, outputTokens = 1200 } = {}) {
