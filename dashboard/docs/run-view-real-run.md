@@ -48,6 +48,18 @@ Two reads over HTTP, identical bodies for the whole run object:
 this document come from the run recorded while the card was open; a rerun moves them by a few
 milliseconds and leaves every delta below at 0–1 ms.
 
+### The screen as it looked
+
+Both pictures come from that same run, served on port 4314 at 03:23Z.
+
+![The Run view on a laptop, 1280 wide](run-view-proof/real-run-laptop.png)
+
+Laptop, 1280 wide.
+
+![The Run view on a phone, 390 wide](run-view-proof/real-run-phone.png)
+
+Phone, 390 wide.
+
 ## Pairing each action with the trace
 
 The Lead's actions, as the screen lists them (newest first) beside the `tool_call` span for the same
