@@ -335,7 +335,7 @@ export function buildCleanScript(evaluation) {
         }
         break;
       case 'user-unit':
-        if (IN_USE_SPEC.userUnits.has(item.name)) {
+        if (IN_USE_SPEC.userUnits.has(item.name) || IN_USE_SPEC.systemUnits.has(item.name)) {
           commands.push(`echo ${shellQuote(`refusing to delete protected unit ${item.name}`)} >&2`);
           break;
         }

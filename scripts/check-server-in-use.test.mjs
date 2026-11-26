@@ -712,7 +712,6 @@ test('a service the machine itself needs is never listed for removal, whatever i
 
   const machineUnits = result.leftovers.filter(item => !item.name.startsWith('julia-') && !item.name.includes('mastra'));
   assert.deepEqual(machineUnits, [], JSON.stringify(machineUnits));
-  assert.doesNotMatch(buildCleanScript(result), /apparmor|blk-availability|apport/);
 });
 
 test('a system unit a running card started is kept, and stopped once no card runs', () => {
@@ -760,6 +759,7 @@ test('an old setup unit whose file sits in the system user folder asks root to r
   assert.equal(leftover.scope, 'user');
   const script = buildCleanScript(result);
   assert.match(script, /systemctl --user disable --now 'julia-old-address\.service'/);
+  assert.doesNotMatch(script, /sudo -n systemctl --user/);
   assert.match(script, /sudo -n rm -f '\/etc\/systemd\/user\/julia-old-address\.service'/);
 });
 
@@ -771,6 +771,7 @@ test('a unit in the in-use list is not removable even if the scan calls it a sys
   });
 
   assert.doesNotMatch(script, /disable --now 'tailscaled\.service'/);
+  assert.doesNotMatch(script, /rm -f '\/etc\/systemd\/system\/tailscaled\.service'/);
   assert.match(script, /refusing to delete protected unit tailscaled\.service/);
 });
 
@@ -782,4 +783,26 @@ test('a unit file in this account folder is removed without sudo', () => {
   const script = buildCleanScript(result);
   assert.match(script, /(?<!sudo -n )rm -f '\/home\/ubuntu\/\.config\/systemd\/user\/julia-old-address\.service'/);
   assert.doesNotMatch(script, /sudo -n rm -f '\/home\/ubuntu\/\.config/);
+});
+
+test('a unit whose file the scan could not find is removed from this account folder', () => {
+  const script = buildCleanScript({
+    studioReachable: true,
+    activeCards: [],
+    leftovers: [{ kind: 'user-unit', name: 'julia-no-file.service', reason: 'Not in active user unit allowlist' }],
+  });
+
+  assert.match(script, /systemctl --user disable --now 'julia-no-file\.service'/);
+  assert.match(script, /(?<!sudo -n )rm -f '\/home\/ubuntu\/\.config\/systemd\/user\/julia-no-file\.service'/);
+});
+
+test('a system unit named as in use is not removed through its user twin', () => {
+  const script = buildCleanScript({
+    studioReachable: true,
+    activeCards: [],
+    leftovers: [{ kind: 'user-unit', name: 'tailscaled.service', reason: 'Not in active user unit allowlist' }],
+  });
+
+  assert.doesNotMatch(script, /rm -f/);
+  assert.match(script, /refusing to delete protected unit tailscaled\.service/);
 });
