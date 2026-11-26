@@ -135,6 +135,34 @@ test('warns and removes nothing when Studio stays silent after a wake attempt', 
   assert.equal(step, 1);
 });
 
+test('a card that starts between the cleanup and the reclaim keeps the caches', async () => {
+  let step = 0;
+  let reclaimed = false;
+  await runDailyResourceCheck({
+    env: {},
+    collect: () => {
+      step += 1;
+      if (step === 1) {
+        return cleanSnapshot({
+          processes: [{ pid: 999, rssKb: 4000000, cmd: 'orphan-proc', serviceUnit: null }],
+        });
+      }
+      return cleanSnapshot({ activeCards: ['JUL-417'] });
+    },
+    reclaim: () => {
+      reclaimed = true;
+      return { freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] };
+    },
+    clean: () => {},
+    statfs: () => ({ bavail: 2_000_000, bfree: 2_000_000, blocks: 40_000_000, bsize: 1000 }),
+    readMemoryMb: () => 4096,
+    readLargestFolders: () => [],
+    sendAlert: async () => ({ comment: 'unused' }),
+  });
+
+  assert.equal(reclaimed, false, 'the answer taken just before reclaim is the one that counts');
+});
+
 test('waits for a quiet server before reclaiming while a card runs', async () => {
   let reclaimed = false;
   const result = await runDailyResourceCheck({

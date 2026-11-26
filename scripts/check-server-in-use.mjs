@@ -175,27 +175,31 @@ for unit_dir in UNIT_DIRS:
         for name in files:
             if not name.endswith(('.service', '.timer')):
                 continue
-            entry = {'file': os.path.join(root, name)}
+            entry = {'file': os.path.join(root, name), 'values': {}}
             try:
                 for line in open(entry['file'], errors='replace'):
                     line = line.strip()
                     for key in ('ExecStart', 'WorkingDirectory'):
-                        if line.startswith(key + '='):
-                            entry[key] = line[len(key) + 1:]
+                        if line.startswith(key + '=') and line[len(key) + 1:].strip():
+                            entry['values'].setdefault(key, []).append(line[len(key) + 1:].strip())
             except Exception:
                 continue
-            if len(entry) > 1:
-                unit_files.setdefault(name, entry)
+            unit_files.setdefault(name, entry)
 
 # A unit's address can also come from a drop-in, so its text counts as the unit's own.
+# systemd appends ExecStart lines and replaces WorkingDirectory, and an empty assignment
+# clears what came before, so the drop-ins are read in order and applied the same way.
 for unit_dir in UNIT_DIRS:
     for root, dirs, _files in os.walk(unit_dir):
-        for drop_in_dir in [d for d in dirs if d.endswith('.d')]:
-            unit_name = drop_in_dir[:-2]
-            entry = unit_files.get(unit_name)
+        for drop_in_dir in sorted(d for d in dirs if d.endswith('.d')):
+            entry = unit_files.get(drop_in_dir[:-2])
             if not entry:
                 continue
-            for conf in sorted(os.listdir(os.path.join(root, drop_in_dir))):
+            try:
+                confs = sorted(os.listdir(os.path.join(root, drop_in_dir)))
+            except OSError:
+                continue
+            for conf in confs:
                 if not conf.endswith('.conf'):
                     continue
                 try:
@@ -205,13 +209,20 @@ for unit_dir in UNIT_DIRS:
                             if not line.startswith(key + '='):
                                 continue
                             value = line[len(key) + 1:].strip()
-                            # A drop-in replaces what it sets, and an empty assignment clears it, as systemd does.
-                            if value:
-                                entry['dropins'] = (entry.get('dropins', '') + ' ' + value).strip()
+                            if not value:
+                                entry['values'][key] = []
+                            elif key == 'WorkingDirectory':
+                                entry['values'][key] = [value]
                             else:
-                                entry.pop(key, None)
+                                entry['values'].setdefault(key, []).append(value)
                 except Exception:
                     continue
+
+unit_files = {
+    name: dict({'file': entry['file']}, **{key: ' '.join(vals) for key, vals in entry['values'].items() if vals})
+    for name, entry in unit_files.items()
+    if any(entry['values'].values())
+}
 
 print(json.dumps({
     'studioReachable': studio_reachable,
@@ -307,7 +318,7 @@ export function buildCleanScript(evaluation, options = {}) {
         break;
       case 'user-unit':
         if (IN_USE_SPEC.userUnits.has(item.name)) {
-          commands.push(`echo 'refusing to delete protected unit ${item.name}' >&2`);
+          commands.push(`echo ${shellQuote(`refusing to delete protected unit ${item.name}`)} >&2`);
           break;
         }
         commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
@@ -319,7 +330,7 @@ export function buildCleanScript(evaluation, options = {}) {
         break;
       case 'old-setup-unit':
         if (IN_USE_SPEC.userUnits.has(item.name) || IN_USE_SPEC.systemUnits.has(item.name)) {
-          commands.push(`echo 'refusing to delete protected unit ${item.name}' >&2`);
+          commands.push(`echo ${shellQuote(`refusing to delete protected unit ${item.name}`)} >&2`);
           break;
         }
         if (item.scope === 'user') {

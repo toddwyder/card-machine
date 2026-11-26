@@ -190,7 +190,38 @@ function oldPlaywrightBrowsers(nowMs, playwrightDir = PLAYWRIGHT_DIR) {
   return stale.filter(() => nowMs > 0);
 }
 
-function oldTmpEntries(nowMs, tmpDir = TMP_DIR) {
+// A folder is in use when a process holds the folder itself or one of the files inside it.
+function heldAnywhere(path, isHeld, limit = 200) {
+  if (isHeld(path)) return true;
+  let stats;
+  try {
+    stats = statSync(path);
+  } catch {
+    return false;
+  }
+  if (!stats.isDirectory()) return false;
+  const queue = [path];
+  let seen = 0;
+  while (queue.length > 0 && seen < limit) {
+    const dir = queue.shift();
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (seen >= limit) break;
+      seen += 1;
+      const child = join(dir, entry.name);
+      if (isHeld(child)) return true;
+      if (entry.isDirectory()) queue.push(child);
+    }
+  }
+  return false;
+}
+
+function oldTmpEntries(nowMs, tmpDir = TMP_DIR, isHeld = () => false) {
   if (!existsSync(tmpDir)) return [];
   const stale = [];
   for (const name of readdirSync(tmpDir)) {
@@ -199,7 +230,7 @@ function oldTmpEntries(nowMs, tmpDir = TMP_DIR) {
     const path = join(tmpDir, name);
     try {
       const stats = statSync(path);
-      if (nowMs - stats.mtimeMs > TMP_MAX_AGE_MS) stale.push(path);
+      if (nowMs - stats.mtimeMs > TMP_MAX_AGE_MS && !heldAnywhere(path, isHeld)) stale.push(path);
     } catch {
       // A file that vanishes mid-scan is already gone.
     }
@@ -310,7 +341,7 @@ export function planReclaim({
       return removeQuietly(traceStorePath);
     },
   });
-  const tmpStale = oldTmpEntries(now, tmpDir);
+  const tmpStale = oldTmpEntries(now, tmpDir, isHeld);
   steps.push({
     id: 'tmp-old-entries',
     what: `Scratch files in /tmp older than 24h (${tmpStale.length} entries)`,

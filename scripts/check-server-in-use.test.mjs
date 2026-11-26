@@ -497,6 +497,19 @@ test('a leftover unit found outside the home config folder is removed where it a
   assert.match(buildCleanScript(result), /rm -f '\/etc\/systemd\/user\/jul-old-job\.service'/);
 });
 
+test('a worktree a running card made without its name in the path stays', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    activeCards: ['JUL-417'],
+    worktrees: [
+      ...cleanSnapshot().worktrees,
+      { path: '/home/ubuntu/wt-verify-1', diskMb: 200 },
+    ],
+  }));
+
+  assert.equal(result.leftovers.length, 0, JSON.stringify(result.leftovers));
+  assert.ok(result.kept.some(item => item.name === '/home/ubuntu/wt-verify-1'));
+});
+
 test('a Studio database a live session writes is named in use, not left to a lucky file scan', () => {
   for (const name of ['mastra-vectors.db', 'mastra-vectors.db-wal', 'mastra-vectors.db-shm', 'observability.duckdb.wal']) {
     assert.ok(IN_USE_SPEC.mastracodeFixed.has(name), `${name} must be in use`);

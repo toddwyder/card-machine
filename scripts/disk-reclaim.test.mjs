@@ -161,7 +161,7 @@ test('reclaimDisk falls through to caches and /tmp while free space is under the
     now: Date.now() + 48 * 60 * 60 * 1000,
     docker: true,
     traceStorePath: join(fixture.root, 'no-trace.duckdb'),
-    isHeld: () => true,
+    isHeld: () => false,
     ...fixture,
   });
 
@@ -171,6 +171,27 @@ test('reclaimDisk falls through to caches and /tmp while free space is under the
   assert.deepEqual(readdirSync(fixture.playwrightDir), ['chromium-1255']);
   assert.deepEqual(readdirSync(fixture.tmpDir), []);
   fixture.cleanup();
+});
+
+test('the /tmp sweep keeps an entry a live process holds open', () => {
+  const root = mkdtempSync(join(tmpdir(), 'reclaim-tmp-'));
+  writeFileSync(join(root, 'held.sock'), 'x');
+  writeFileSync(join(root, 'gone.txt'), 'x');
+  const run = (command, args) => (command === 'du' ? '1\t' + args.at(-1) + '\n' : '');
+
+  const steps = planReclaim({
+    run,
+    docker: false,
+    cacheDirs: [],
+    tmpDir: root,
+    now: Date.now() + 48 * 60 * 60 * 1000,
+    isHeld: path => path.endsWith('held.sock'),
+  });
+  steps.find(step => step.id === 'tmp-old-entries').action();
+
+  assert.equal(existsSync(join(root, 'held.sock')), true, 'a held socket stays');
+  assert.equal(existsSync(join(root, 'gone.txt')), false, 'an untouched file goes');
+  rmSync(root, { recursive: true, force: true });
 });
 
 test('the /tmp sweep leaves systemd private folders alone', () => {

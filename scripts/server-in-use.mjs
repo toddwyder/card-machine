@@ -138,6 +138,9 @@ const cardFolderNames = card => [String(card), String(card).replace(/[^\w.-]+/g,
 // A run folder or scratch copy is named after its card; anything else with a name like that is an ended run.
 const looksLikeCardName = name => /^[A-Z][A-Z0-9]*-\d+$/.test(name);
 
+// A folder named after a card that is not one of the running ones belongs to a run that ended.
+const namesAnotherCard = (path, activeSet) => path.split('/').some(segment => looksLikeCardName(segment) && !activeSet.has(segment));
+
 const pathMentionsCard = (path, cards) => {
   const segments = path.split('/');
   return cards.find(card => cardFolderNames(card).some(name => segments.includes(name))) ?? null;
@@ -231,7 +234,7 @@ export function evaluateServerState(snapshot) {
       kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: allowedReason });
     } else if (card) {
       kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: `Checkout of active Studio card ${card}` });
-    } else if (activeCards.length > 0) {
+    } else if (activeCards.length > 0 && !namesAnotherCard(checkout.path, activeSet)) {
       // A clone a running card made to verify its own work is indistinguishable from a stray one until the card ends.
       kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: `A card is running (${activeCards.join(', ')}); a clone may be its verification` });
     } else {
@@ -243,8 +246,10 @@ export function evaluateServerState(snapshot) {
     const isDashboard = wt.path === '/home/ubuntu/julia-dashboard';
     const isMainRepo = IN_USE_SPEC.checkouts.has(wt.path);
     const card = pathMentionsCard(wt.path, activeCards);
-    const isActiveCard = Boolean(card) || !studioReachable;
-    if (isDashboard || isMainRepo || isActiveCard) {
+    // A worktree a running card checks its own work out into need not carry the card's name.
+    const runningCard = Boolean(card) || !studioReachable
+      || (activeCards.length > 0 && !namesAnotherCard(wt.path, activeSet));
+    if (isDashboard || isMainRepo || runningCard) {
       kept.push({
         kind: 'worktree',
         name: wt.path,
@@ -252,7 +257,9 @@ export function evaluateServerState(snapshot) {
         diskMb: wt.diskMb ?? 0,
         usedBy: card
           ? (studioReachable ? `Active Studio card ${card}` : `Studio unreachable; preserving card worktree ${card}`)
-          : (IN_USE_SPEC.checkouts.get(wt.path) ?? 'Registered main checkout'),
+          : (IN_USE_SPEC.checkouts.get(wt.path) ?? (activeCards.length > 0
+            ? `A card is running (${activeCards.join(', ')}); a worktree may be its verification`
+            : 'Registered main checkout')),
       });
     } else {
       leftovers.push({ kind: 'worktree', name: wt.path, rssMb: 0, diskMb: wt.diskMb ?? 0, reason: 'Leftover git worktree not tied to an active card' });
