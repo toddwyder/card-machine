@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { parseSizeMb, planReclaim, reclaimDisk, supersededRollbacks } from './disk-reclaim.mjs';
+import { parseSizeMb, planReclaim, reclaimDisk, supersededRollbacks, unusedImages } from './disk-reclaim.mjs';
 
 function fixturePaths() {
   const root = mkdtempSync(join(tmpdir(), 'reclaim-test-'));
@@ -48,6 +48,10 @@ function fakeRun({ free } = {}) {
     if (args.includes('system') && args.includes('df')) {
       return ['{"Type":"Images","Size":"10.65GB"}', '{"Type":"Build Cache","Size":"6.642GB"}'].join('\n');
     }
+    if (args.includes('ps')) {
+      return args.includes('-aq') ? 'c1\nc2\n' : 'moneypenny-web:latest\npgvector/pgvector:pg16\n';
+    }
+    if (args.includes('inspect')) return 'sha256:latest\nsha256:pg\n';
     if (free && (args.includes('prune') || args.includes('rmi'))) free.bytes += 3_000_000_000;
     return '';
   };
@@ -64,6 +68,17 @@ test('parseSizeMb reads docker and du size strings', () => {
 test('supersededRollbacks keeps the newest rollback tag per repository', () => {
   const superseded = supersededRollbacks(IMAGES);
   assert.deepEqual(superseded.map(image => image.id).sort(), ['sha256:old', 'sha256:older']);
+});
+
+test('unusedImages spares what a container runs and every rollback tag', () => {
+  const images = [
+    { repository: 'moneypenny-web', tag: 'latest', id: 'sha256:live', createdMs: 0, sizeMb: 2490 },
+    { repository: 'mp-check-web', tag: 'latest', id: 'sha256:check', createdMs: 0, sizeMb: 2490 },
+    { repository: 'oven/bun', tag: '1.4.4', id: 'sha256:bun', createdMs: 0, sizeMb: 353 },
+    { repository: 'moneypenny-web', tag: 'live-before-pr6-20261126T065901Z', id: 'sha256:roll', createdMs: 0, sizeMb: 2450 },
+  ];
+  const unused = unusedImages(images, ['moneypenny-web:latest']);
+  assert.deepEqual(unused.map(image => image.id).sort(), ['sha256:bun', 'sha256:check']);
 });
 
 test('planReclaim measures sizes without deleting anything', () => {

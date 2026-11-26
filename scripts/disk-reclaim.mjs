@@ -117,6 +117,34 @@ export function readDockerImages(run = defaultRun) {
     });
 }
 
+export function readDockerUsedImages(run = defaultRun) {
+  const ids = run('sudo', ['-n', 'docker', 'ps', '-aq'])
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+  const byId = ids.length === 0
+    ? []
+    : run('sudo', ['-n', 'docker', 'inspect', '--format', '{{.Image}}', ...ids])
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+  const byName = run('sudo', ['-n', 'docker', 'ps', '-a', '--format', '{{.Image}}'])
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+  return [...byId, ...byName];
+}
+
+export function unusedImages(images, usedRefs) {
+  const short = id => String(id).replace(/^sha256:/, '').slice(0, 12);
+  return images.filter(image => {
+    if (image.tag === '<none>') return false;
+    if (/-before-/.test(image.tag)) return false;
+    const name = `${image.repository}:${image.tag}`;
+    return !usedRefs.some(ref => ref === name || short(ref) === short(image.id));
+  });
+}
+
 export function readDockerBuildCacheMb(run = defaultRun) {
   const raw = run('sudo', ['-n', 'docker', 'system', 'df', '--format', '{{json .}}']);
   for (const line of raw.split('\n')) {
@@ -226,6 +254,16 @@ export function planReclaim({
         action: () => (superseded.length === 0
           ? 'nothing to remove'
           : dockerCommand(run, ['rmi', ...superseded.map(image => image.id)])),
+      });
+      const unused = unusedImages(images, readDockerUsedImages(run));
+      steps.push({
+        id: 'docker-unused-images',
+        what: `Docker images no container uses and no rollback needs (${unused.map(image => `${image.repository}:${image.tag}`).join(', ') || 'none'})`,
+        sizeMb: unused.reduce((acc, image) => acc + image.sizeMb, 0),
+        always: true,
+        action: () => (unused.length === 0
+          ? 'nothing to remove'
+          : dockerCommand(run, ['rmi', ...unused.map(image => image.id)])),
       });
     } catch (error) {
       steps.push({ id: 'docker-unavailable', what: `Docker cleanup unavailable (${error.message.split('\n')[0]})`, sizeMb: 0, always: true, action: () => 'skipped' });
