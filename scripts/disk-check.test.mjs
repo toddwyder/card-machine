@@ -73,3 +73,60 @@ test('alerts on JUL-276 when disk or memory stays short after cleanup', async ()
   assert.match(sentBody, /Memory: 400 MB available/);
   assert.match(sentBody, /\/var\/log: 5\.0 GB/);
 });
+
+test('wakes Studio and keeps everything when it answers, instead of cleaning a silent server', async () => {
+  let step = 0;
+  let woken = false;
+  let cleaned = false;
+  const result = await runDailyResourceCheck({
+    env: {},
+    collect: () => {
+      step += 1;
+      if (step === 1) return cleanSnapshot({ studioReachable: false, studioError: 'Connection refused' });
+      if (cleaned) return cleanSnapshot();
+      return cleanSnapshot({
+        processes: [{ pid: 999, rssKb: 4000000, cmd: 'orphan-proc', serviceUnit: null }],
+      });
+    },
+    wake: () => {
+      woken = true;
+      return true;
+    },
+    clean: () => {
+      cleaned = true;
+    },
+    statfs: () => ({ bavail: 20_000_000, bfree: 20_000_000, blocks: 40_000_000, bsize: 1000 }),
+    readMemoryMb: () => 4096,
+    sendAlert: async () => ({ comment: 'unused' }),
+  });
+
+  assert.equal(woken, true);
+  assert.equal(cleaned, true);
+  assert.equal(result.alert, false);
+});
+
+test('warns and removes nothing when Studio stays silent after a wake attempt', async () => {
+  let cleaned = false;
+  let step = 0;
+  const result = await runDailyResourceCheck({
+    env: {},
+    collect: () => {
+      step += 1;
+      return cleanSnapshot({
+        studioReachable: false,
+        studioError: 'Connection refused',
+        processes: [{ pid: 999, rssKb: 4000000, cmd: 'orphan-proc', serviceUnit: null }],
+      });
+    },
+    wake: () => false,
+    clean: () => {
+      cleaned = true;
+    },
+    statfs: () => ({ bavail: 20_000_000, bfree: 20_000_000, blocks: 40_000_000, bsize: 1000 }),
+    readMemoryMb: () => 4096,
+    sendAlert: async () => ({ comment: 'unused' }),
+  });
+
+  assert.equal(cleaned, false);
+  assert.equal(step, 1);
+});

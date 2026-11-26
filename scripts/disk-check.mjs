@@ -8,6 +8,29 @@ import { cleanLeftovers, collectSnapshot } from './check-server-in-use.mjs';
 import { DEFAULT_TARGET_GB, reclaimDisk } from './disk-reclaim.mjs';
 import { evaluateServerState } from './server-in-use.mjs';
 
+export function wakeStudio({ waitMs = 30_000, sleep = ms => execFileSync('sleep', [String(ms / 1000)]) } = {}) {
+  const studioUrl = (process.env.FLOW_STUDIO_URL ?? 'http://127.0.0.1:4112').replace(/\/$/, '');
+  const answers = () => {
+    try {
+      execFileSync('curl', ['-sf', '--max-time', '3', `${studioUrl}/api/workflows/card-path/runs`], { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (answers()) return true;
+  try {
+    execFileSync('systemctl', ['--user', 'start', 'card-machine-studio.service'], { stdio: 'ignore' });
+  } catch {
+    return false;
+  }
+  for (let waited = 0; waited < waitMs; waited += 1000) {
+    if (answers()) return true;
+    sleep(1000);
+  }
+  return answers();
+}
+
 function largestFolders() {
   let folders;
   try {
@@ -35,6 +58,7 @@ function largestFolders() {
 export async function runDailyResourceCheck({
   env = process.env,
   collect = () => collectSnapshot({ local: true }),
+  wake = () => wakeStudio(),
   clean = evaluation => cleanLeftovers(evaluation, { local: true, allowStudioRestart: true }),
   reclaim = options => reclaimDisk(options),
   statfs = () => statfsSync('/'),
@@ -55,7 +79,9 @@ export async function runDailyResourceCheck({
     throw new Error('JULIA_MEMORY_THRESHOLD_MB must be a positive number');
   }
 
-  const before = evaluateServerState(collect());
+  let snapshot = collect();
+  if (snapshot.studioReachable === false && wake()) snapshot = collect();
+  const before = evaluateServerState(snapshot);
   if (before.leftovers.length > 0) clean(before);
   const after = before.leftovers.length > 0 ? evaluateServerState(collect()) : before;
 

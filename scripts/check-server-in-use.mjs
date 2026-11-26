@@ -73,11 +73,14 @@ while cur > 1 and cur not in ancestor_pids:
         break
 
 processes = []
-for line in run(['ps', '-u', 'ubuntu', '-o', 'pid=,rss=,args=']).splitlines():
-    m = re.match(r'^\\s*(\\d+)\\s+(\\d+)\\s+(.*)$', line)
+ppid_of = {}
+attached_pids = set()
+for line in run(['ps', '-u', 'ubuntu', '-o', 'pid=,ppid=,rss=,args=']).splitlines():
+    m = re.match(r'^\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(.*)$', line)
     if not m:
         continue
-    pid, rss_kb, cmd = int(m.group(1)), int(m.group(2)), m.group(3)
+    pid, ppid, rss_kb, cmd = int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4)
+    ppid_of[pid] = ppid
     service_unit = None
     try:
         cg = open(f'/proc/{pid}/cgroup').read()
@@ -86,6 +89,14 @@ for line in run(['ps', '-u', 'ubuntu', '-o', 'pid=,rss=,args=']).splitlines():
             service_unit = matches[-1]
     except Exception:
         pass
+    attached = False
+    if pid != os.getpid():
+        try:
+            attached = os.readlink(f'/proc/{pid}/fd/0').startswith(('/dev/pts/', '/dev/tty'))
+        except Exception:
+            pass
+    if attached:
+        attached_pids.add(pid)
     in_use_op = False
     if re.search(r'\\bop daemon\\b', cmd):
         try:
@@ -93,7 +104,26 @@ for line in run(['ps', '-u', 'ubuntu', '-o', 'pid=,rss=,args=']).splitlines():
             in_use_op = cwd == '/home/ubuntu' or cwd == '/home/ubuntu/julia-builder'
         except Exception:
             pass
-    processes.append({'pid': pid, 'rssKb': rss_kb, 'cmd': cmd, 'serviceUnit': service_unit, 'inUseOpDaemon': in_use_op, 'isSelfOrAncestor': pid in ancestor_pids})
+    processes.append({'pid': pid, 'ppid': ppid, 'rssKb': rss_kb, 'cmd': cmd, 'serviceUnit': service_unit, 'inUseOpDaemon': in_use_op, 'isSelfOrAncestor': pid in ancestor_pids, 'attachedToTerminal': attached})
+
+operator_session = set(attached_pids)
+for pid in list(ppid_of):
+    walk = pid
+    for _ in range(64):
+        walk = ppid_of.get(walk)
+        if not walk:
+            break
+        if walk in attached_pids:
+            operator_session.add(pid)
+            break
+walk = None
+for pid in attached_pids:
+    walk = ppid_of.get(pid)
+    while walk:
+        operator_session.add(walk)
+        walk = ppid_of.get(walk)
+for proc in processes:
+    proc['operatorSession'] = proc['pid'] in operator_session
 
 checkouts = []
 worktrees = []

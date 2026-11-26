@@ -89,6 +89,9 @@ function classifyProcess(proc, activeCards) {
       return { allowed: true, usedBy: 'Current SSH inspection session' };
     }
   }
+  if (proc.operatorSession) {
+    return { allowed: true, usedBy: 'Part of a terminal session a person is using' };
+  }
   if (/\bop daemon\b/.test(cmd) && proc.inUseOpDaemon) {
     return { allowed: true, usedBy: '1Password daemon for active Studio/dashboard services' };
   }
