@@ -80,7 +80,7 @@ export async function defaultCleanIdle({ card, studioUrl = process.env.FLOW_STUD
     });
     const evaluation = evaluateServerState(snapshot);
     if (evaluation.studioReachable === false || evaluation.leftovers.length === 0) return false;
-    await cleanLeftoversAsync(evaluation, { local: true, allowStudioRestart: false });
+    await cleanLeftoversAsync(evaluation, { local: true });
     return true;
   } catch {
     return false;

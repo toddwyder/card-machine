@@ -1,0 +1,19 @@
+[Unit]
+Description=Julia Run view (mission control) for the current machine run
+Documentation=https://github.com/toddwyder/card-machine/blob/main/dashboard/docs/run-view-real-run.md
+After=card-machine-studio.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/card-machine/dashboard
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+Environment=DASHBOARD_HOST=127.0.0.1
+Environment=DASHBOARD_PORT=4314
+Environment=FLOW_DIR=/home/ubuntu/card-machine/.artifacts/flow/studio
+ExecStart=/usr/local/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 4314
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

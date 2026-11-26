@@ -32,7 +32,7 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/start.mjs` | Assembles a run to read it back and to resume a card. | `b6405831ccaadcba1726fc7619ab83ac706add1fb5e53c30db803b35286dc35d` |
 | `machine/flow/run.mjs` | Answers a waiting card and reads a run. No way to start one. | `6aa66f1d72561054364ad8ffe90a19d5d3119ebcd8dd3539df3cbb57c14f4338` |
 | `machine/flow/report.mjs` | Builds the card report and tripwire stop helper. | `69fe294d4ee99428ff3a4f342dcbc4d7e48ae3ba6eece7515cf79cd43d323246` |
-| `machine/flow/resources.mjs` | Checks memory and disk before and during every card and clears idle leftovers when short. | `7b254635af43ccd2ddf383f8b075112bd4591c637a3e76e049a8b91405d5b36f` |
+| `machine/flow/resources.mjs` | Checks memory and disk before and during every card and clears idle leftovers when short. | `3f066dac9f0f10f4288bca203c90e79914b7036cd6ae97b813d06d5179ed44ea` |
 | `machine/flow/memory-watch.mjs` | Checks that the server memory record is running before the build and reads lowest free RAM for the run report. | `13ba2bd23ae1ac1cae059de177a3a4dd71eac333fb05c44a9ec87c16a3120638` |
 | `machine/flow/repo-checks.mjs` | Runs the repository checks from CI under the builder lock before opening a pull request. | `e1c87e53d83248dd49941a7aede64e51c92efb5f133426d90d8707618ad4206c` |
 | `machine/flow/pr.mjs` | Lets the Lead write the pull request title and body and opens the pull request on GitHub after checks pass. | `7f496b8dd0613629fca9f2961a20613201fc7378f53401107ea456cdb732f96b` |
