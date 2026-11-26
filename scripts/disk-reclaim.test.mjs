@@ -79,6 +79,11 @@ test('unusedImages spares what a container runs and every rollback tag', () => {
   ];
   const unused = unusedImages(images, ['moneypenny-web:latest']);
   assert.deepEqual(unused.map(image => image.id).sort(), ['sha256:bun', 'sha256:check']);
+
+  // Docker also reports an image a container runs by its id, so an id match keeps it too.
+  const byId = unusedImages(images, ['sha256:check']);
+  assert.ok(!byId.some(image => image.id === 'sha256:check'), 'an image a container runs by id stays');
+  assert.ok(byId.some(image => image.id === 'sha256:bun'), 'an image nothing runs is still unused');
 });
 
 test('planReclaim measures sizes without deleting anything', () => {
@@ -99,7 +104,17 @@ test('reclaimDisk runs the docker steps and leaves package caches alone once the
   const { run, calls } = fakeRun({ free });
   const statfs = () => ({ bavail: free.bytes / 1000, bfree: free.bytes / 1000, blocks: 80_000_000, bsize: 1000 });
 
-  const result = reclaimDisk({ targetGb: 20, run, statfs, now: Date.now(), docker: true, ...fixture });
+  const result = reclaimDisk({
+    targetGb: 20,
+    // The trace-store step runs whatever the free space is, so it is aimed at a throwaway file, never the real one.
+    traceStorePath: join(fixture.root, 'no-trace.duckdb'),
+    isHeld: () => true,
+    run,
+    statfs,
+    now: Date.now(),
+    docker: true,
+    ...fixture,
+  });
 
   assert.equal(result.steps.find(step => step.id === 'docker-build-cache').ran, true);
   assert.equal(result.steps.find(step => step.id === 'docker-superseded').ran, true);

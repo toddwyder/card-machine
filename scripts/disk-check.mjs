@@ -92,8 +92,9 @@ export async function runDailyResourceCheck({
   if (before.leftovers.length > 0) clean(before);
   const after = before.leftovers.length > 0 ? evaluateServerState(collect()) : before;
 
-  // A running card's build is using the caches, images and scratch space, so reclaim waits for a quiet server.
-  const quiet = before.activeCards.length === 0;
+  // A running card's build is using the caches, images and scratch space, and a silent Studio cannot say
+  // whether one is running, so reclaim waits for a quiet, answering server.
+  const quiet = before.studioReachable !== false && before.activeCards.length === 0;
   const reclaimed = quiet ? reclaim({ targetGb, statfs }) : { freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] };
   const reclaimedMb = Math.round((reclaimed.freeAfterBytes - reclaimed.freeBeforeBytes) / 1_000_000);
 
@@ -112,6 +113,8 @@ export async function runDailyResourceCheck({
     problems.push(`Disk: ${usedPercent}% used, ${gb(freeBytes)} GB available on / (threshold: ${thresholdGb} GB, target ${targetGb} GB).`);
     if (quiet) {
       problems.push(`Disk reclaim freed ${reclaimedMb} MB (target ${targetGb} GB): ${reclaimed.steps.filter(step => step.ran).map(step => `${step.id} ${step.freedMb} MB`).join(', ') || 'no steps ran'}.`);
+    } else if (before.studioReachable === false) {
+      problems.push('Disk reclaim waited: Studio did not answer, so no build was assumed idle.');
     } else {
       problems.push(`Disk reclaim waited: a card is running (${before.activeCards.join(', ')}) and its build is using the machine.`);
     }

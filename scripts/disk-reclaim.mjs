@@ -17,6 +17,7 @@ const PLAYWRIGHT_DIR = '/home/ubuntu/.cache/ms-playwright';
 const TMP_DIR = '/tmp';
 const TMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TMP_KEEP = new Set(['mc']);
+const TMP_KEEP_PREFIX = 'systemd-private-';
 const MASTRACODE_TRACE_DB = '/home/ubuntu/.local/share/mastracode/observability.duckdb';
 const MASTRACODE_TRACE_MAX_MB = 2048;
 
@@ -193,7 +194,8 @@ function oldTmpEntries(nowMs, tmpDir = TMP_DIR) {
   if (!existsSync(tmpDir)) return [];
   const stale = [];
   for (const name of readdirSync(tmpDir)) {
-    if (TMP_KEEP.has(name)) continue;
+    // The socket folder belongs to Mastra Code, and a systemd private folder belongs to a live service.
+    if (TMP_KEEP.has(name) || name.startsWith(TMP_KEEP_PREFIX)) continue;
     const path = join(tmpDir, name);
     try {
       const stats = statSync(path);

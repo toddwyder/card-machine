@@ -345,7 +345,7 @@ test('a Mastra Code file a live session holds open is kept, and a stray one is n
   const { join } = await import('node:path');
   const { homedir } = await import('node:os');
   const dir = mkdtempSync(join(homedir(), '.local', 'state', 'julia-scratch', 'held-'));
-  const heldPath = join(dir, 'mastra-vectors.db');
+  const heldPath = join(dir, 'session-store.duckdb');
   writeFileSync(heldPath, 'open in this session');
   const strayPath = join(dir, 'leftover.duckdb');
   writeFileSync(strayPath, 'nobody holds this');
@@ -355,7 +355,7 @@ test('a Mastra Code file a live session holds open is kept, and a stray one is n
     const evaluation = evaluateServerState({
       ...cleanSnapshot(),
       mastracodeEntries: [
-        { name: 'mastra-vectors.db', path: heldPath, diskMb: 11 },
+        { name: 'session-store.duckdb', path: heldPath, diskMb: 11 },
         { name: 'leftover.duckdb', path: strayPath, diskMb: 5 },
       ],
     });
@@ -418,4 +418,75 @@ test('a leftover name from the run form is quoted, so it can never run a command
 
   assert.ok(script.startsWith("rm -rf '/home/ubuntu/dist/$(id)`whoami`'"), script);
   assert.doesNotMatch(script, /rm -rf (?!')[^\n]*\$\(id\)/);
+});
+
+test('a name with a single quote in it is escaped, not handed to the shell', () => {
+  const script = buildCleanScript({
+    studioReachable: true,
+    activeCards: [],
+    leftovers: [{ kind: 'scratch', name: "/home/ubuntu/.local/state/julia-scratch/it's", diskMb: 1, reason: 'Leftover scratch' }],
+  });
+
+  assert.ok(script.startsWith(`rm -rf '/home/ubuntu/.local/state/julia-scratch/it'\\''s'`), script);
+});
+
+test('while a card runs, scratch folders and build output that carry no card name stay', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    activeCards: ['JUL-417'],
+    scratchEntries: [
+      ...cleanSnapshot().scratchEntries,
+      { name: 'dashboard-model-catalog-3f2a', path: '/home/ubuntu/.local/state/julia-scratch/dashboard-model-catalog-3f2a', diskMb: 20 },
+    ],
+    flowStudioEntries: [
+      ...cleanSnapshot().flowStudioEntries,
+      { name: 'archived-runs', path: '/home/ubuntu/julia-flow-repo/.artifacts/flow/studio/archived-runs', diskMb: 2 },
+    ],
+    homeExtras: [{ name: 'dist', path: '/home/ubuntu/dist', diskMb: 30 }],
+  }));
+
+  assert.equal(result.leftovers.length, 0, JSON.stringify(result.leftovers));
+  assert.ok(result.kept.some(item => item.name.endsWith('dashboard-model-catalog-3f2a')));
+  assert.ok(result.kept.some(item => item.name.endsWith('/archived-runs')));
+  assert.ok(result.kept.some(item => item.name === '/home/ubuntu/dist'));
+});
+
+test('the same folders are leftovers again once no card runs', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    scratchEntries: [
+      ...cleanSnapshot().scratchEntries,
+      { name: 'dashboard-model-catalog-3f2a', path: '/home/ubuntu/.local/state/julia-scratch/dashboard-model-catalog-3f2a', diskMb: 20 },
+    ],
+    homeExtras: [{ name: 'dist', path: '/home/ubuntu/dist', diskMb: 30 }],
+  }));
+
+  assert.ok(result.leftovers.some(item => item.name.endsWith('dashboard-model-catalog-3f2a')));
+  assert.ok(result.leftovers.some(item => item.name === '/home/ubuntu/dist'));
+});
+
+test('a Studio database a live session writes is named in use, not left to a lucky file scan', () => {
+  for (const name of ['mastra-vectors.db', 'mastra-vectors.db-wal', 'mastra-vectors.db-shm', 'observability.duckdb.wal']) {
+    assert.ok(IN_USE_SPEC.mastracodeFixed.has(name), `${name} must be in use`);
+  }
+});
+
+test('a drop-in that points at the old setup makes its unit a leftover, and the real file is the one removed', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'julia-old-address.service', load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      'julia-old-address.service': {
+        file: '/home/ubuntu/.config/systemd/user/julia-old-address.service',
+        ExecStart: '/usr/bin/node /home/ubuntu/card-machine/scripts/x.mjs',
+        dropins: '/home/ubuntu/julia-dashboard',
+      },
+    },
+  }));
+
+  const leftover = result.leftovers.find(item => item.kind === 'old-setup-unit');
+  assert.ok(leftover, JSON.stringify(result.leftovers));
+  assert.equal(leftover.file, '/home/ubuntu/.config/systemd/user/julia-old-address.service');
+  const script = buildCleanScript(result);
+  assert.match(script, /rm -f '\/home\/ubuntu\/\.config\/systemd\/user\/julia-old-address\.service'/);
 });

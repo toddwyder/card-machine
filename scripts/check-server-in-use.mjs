@@ -167,8 +167,10 @@ for name in ('dist', '%ln'):
         mb = int(out.split()[0]) if out else 0
         home_extras.append({'name': name, 'path': p, 'diskMb': mb})
 
+UNIT_DIRS = ('/home/ubuntu/.config/systemd/user', '/etc/systemd/user', '/etc/systemd/system',
+             '/usr/lib/systemd/system', '/lib/systemd/system', '/usr/lib/systemd/user')
 unit_files = {}
-for unit_dir in ('/home/ubuntu/.config/systemd/user', '/etc/systemd/system', '/usr/lib/systemd/system', '/lib/systemd/system'):
+for unit_dir in UNIT_DIRS:
     for root, _dirs, files in os.walk(unit_dir):
         for name in files:
             if not name.endswith(('.service', '.timer')):
@@ -184,6 +186,26 @@ for unit_dir in ('/home/ubuntu/.config/systemd/user', '/etc/systemd/system', '/u
                 continue
             if len(entry) > 1:
                 unit_files.setdefault(name, entry)
+
+# A unit's address can also come from a drop-in, so its text counts as the unit's own.
+for unit_dir in UNIT_DIRS:
+    for root, dirs, _files in os.walk(unit_dir):
+        for drop_in_dir in [d for d in dirs if d.endswith('.d')]:
+            unit_name = drop_in_dir[:-2]
+            entry = unit_files.get(unit_name)
+            if not entry:
+                continue
+            for conf in sorted(os.listdir(os.path.join(root, drop_in_dir))):
+                if not conf.endswith('.conf'):
+                    continue
+                try:
+                    for line in open(os.path.join(root, drop_in_dir, conf), errors='replace'):
+                        line = line.strip()
+                        for key in ('ExecStart', 'WorkingDirectory'):
+                            if line.startswith(key + '='):
+                                entry['dropins'] = (entry.get('dropins', '') + ' ' + line[len(key) + 1:]).strip()
+                except Exception:
+                    continue
 
 print(json.dumps({
     'studioReachable': studio_reachable,
@@ -296,7 +318,7 @@ export function buildCleanScript(evaluation, options = {}) {
         }
         if (item.scope === 'user') {
           commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
-          commands.push(`rm -f /home/ubuntu/.config/systemd/user/${shellQuote(item.name)} 2>/dev/null || true`);
+          commands.push(`rm -f ${shellQuote(item.file ?? `/home/ubuntu/.config/systemd/user/${item.name}`)} 2>/dev/null || true`);
         } else if (item.scope === 'system') {
           commands.push(`sudo -n systemctl disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
           commands.push(`sudo -n rm -f ${shellQuote(item.file ?? `/etc/systemd/system/${item.name}`)} 2>/dev/null || true`);

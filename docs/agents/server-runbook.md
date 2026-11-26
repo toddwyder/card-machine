@@ -70,24 +70,11 @@ the CLI and takes about a minute.
 
 ## The dashboard service
 
-The dashboard runs here as `julia-dashboard.service` from `/home/ubuntu/julia-dashboard`, a
-worktree of `main` and never the operator checkout. Its settings are in `/etc/julia-dashboard.env`
-(`root:root` 0600, no secret), its state that must outlive a checkout reset is in
-`/var/lib/julia-dashboard`, and two timers keep it current (update every 5 minutes) and watch it
-(health every minute).
-
-```sh
-systemctl status julia-dashboard
-systemctl restart julia-dashboard
-journalctl -u julia-dashboard -n 100 --no-pager
-sudo node dashboard/scripts/install-service.mjs --host 100.119.112.9
-```
-
-Install from the checkout the units should copy from. The installer refuses to run off this server
-or from the operator checkout or a lane worktree, and running it twice is safe. When the watchdog
-gives up three probes in a row it tells Todd through JUL-276 rather than creating a service issue.
-Read `dashboard/docs/service.md` for the unit list, the run-file format, and what each log line
-means.
+There is no dashboard service anymore. `julia-dashboard.service`, its update, watchdog and sweep
+timers, and its environment file are gone: the dashboard folder under `/home/ubuntu/julia-dashboard`
+is kept together with JUL-410, which owns the address it used to answer on, and the Run view Todd
+opens is served by `card-machine-run-view.service` (see below). Nothing in the nightly cleanup
+removes the folder; the card that moves its address does.
 
 ## Merging a dashboard pull request
 
@@ -110,8 +97,9 @@ in which case the next timer run does the work.
 
 Throwaway copies use `~/.local/state/julia-scratch` by default. Studio run state stays
 in `.artifacts/flow` so a run waiting for Todd can resume after any number of days. The user tmpfiles configuration `~/.config/user-tmpfiles.d/julia-scratch.conf`
-cleans entries untouched for three days. The cleaner does not cover `/tmp`; Ubuntu clears that directory at reboot. The stock
-`systemd-tmpfiles-clean.timer` runs daily.
+cleans entries untouched for three days. The disk check also sweeps `/tmp`, removing entries untouched for
+24 hours except `/tmp/mc` and `systemd-private-*` folders, which belong to Mastra Code and to a live
+service respectively. The stock `systemd-tmpfiles-clean.timer` runs daily.
 User lingering is enabled, so user timers continue without a login. Inspect them with
 `systemctl --user list-timers --all` and inspect cleanup with
 `journalctl --user -u systemd-tmpfiles-clean.service`. `julia-disk-check.timer` also runs daily. Its unit file lives in `~/.config/systemd/user`.
@@ -119,6 +107,8 @@ The disk check alerts Todd on JUL-276 only when the machine fails to recover alo
 Inspect its result with `journalctl --user -u julia-disk-check.service`.
 
 The check wakes Studio before it judges anything: if the Studio address refuses, it starts `card-machine-studio.service` and waits up to 30 seconds for an answer. Studio runs under `mastra dev`, which restarts on every change under the repository, so a check that ran while a card was being written would otherwise see a silent server. While Studio stays silent the check deletes nothing at all: every item is kept with the reason `Studio unreachable`, and the run reports FAIL so the silence is visible. Cleanup decisions need Studio's answer because that answer is what says which cards are running, waiting or resumable.
+
+Disk reclaim waits for a quiet server too: it runs only when Studio answers and no card is running, because a card's build is what fills the image list, the package caches and `/tmp`. It reports the wait as a problem and frees nothing rather than guess.
 
 Each state file under `.artifacts/flow/studio` is kept, as are the checkouts and services the machine is built from. Files a live process holds open are kept too. A fixed list would go stale, so `scripts/server-in-use.mjs` asks: a user or system unit is in use when it is named in `IN_USE_SPEC`, a process is in use when it belongs to one of those units, to a terminal a person is using, or to a running card, and a folder is in use when a named current use points at it. An enabled unit whose `ExecStart` or `WorkingDirectory` points into the old setup is a leftover, unless its name is in `IN_USE_SPEC` — the unit that owns that address has to move it, not the nightly cleanup. The Studio folder itself is never pruned: `trace.duckdb` is what the Run view reads, so it stays even when no card is running.
 

@@ -57,7 +57,11 @@ export const IN_USE_SPEC = {
     ['mastra.db-shm', 'Datasette database SHM'],
     ['settings.json', 'Mastra Code configuration'],
     ['auth.json', 'Mastra Code provider credentials'],
+    ['mastra-vectors.db', 'Mastra Code vector store'],
+    ['mastra-vectors.db-wal', 'Mastra Code vector store write-ahead log'],
+    ['mastra-vectors.db-shm', 'Mastra Code vector store shared memory'],
     ['observability.duckdb', 'Mastra Code observability store'],
+    ['observability.duckdb.wal', 'Mastra Code observability write-ahead log'],
     ['observability.duckdb.tmp', 'Mastra Code observability temp dir'],
     ['locks', 'Mastra Code lock directory'],
     ['patches', 'Mastra Code patch directory'],
@@ -118,18 +122,21 @@ export function oldSetupUnits(snapshot) {
     if (IN_USE_SPEC.userUnits.has(name) || IN_USE_SPEC.systemUnits.has(name)) continue;
     const timer = name.replace(/\.service$/, '.timer');
     if (!active.has(name) && !active.has(timer)) continue;
-    const text = `${definition.ExecStart ?? ''} ${definition.WorkingDirectory ?? ''}`;
+    const text = `${definition.ExecStart ?? ''} ${definition.WorkingDirectory ?? ''} ${definition.dropins ?? ''}`;
     // Whole paths only: /home/ubuntu/julia-dashboard-2 is not the old dashboard.
     const tokens = text.split(/[\s:=]+/);
     const path = OLD_SETUP_PATHS.find(candidate => tokens.some(token => token === candidate || token.startsWith(`${candidate}/`)));
     if (!path) continue;
-    found.set(name, { path, scope: userNames.has(name) ? 'user' : 'system' });
+    found.set(name, { path, scope: userNames.has(name) ? 'user' : 'system', file: definition.file });
   }
   return found;
 }
 
 // A card's folder is named after the card, cleaned the way the copy step cleans it.
 const cardFolderNames = card => [String(card), String(card).replace(/[^\w.-]+/g, '-')];
+
+// A run folder or scratch copy is named after its card; anything else with a name like that is an ended run.
+const looksLikeCardName = name => /^[A-Za-z][\w.]*-\d+$/.test(name);
 
 const pathMentionsCard = (path, cards) => {
   const segments = path.split('/');
@@ -150,7 +157,15 @@ export function evaluateServerState(snapshot) {
     if (ownedElsewhere) {
       kept.push({ kind: 'user-unit', name, rssMb: 0, diskMb: 0, usedBy: ownedElsewhere });
     } else {
-      leftovers.push({ kind: 'old-setup-unit', name, scope: hit.scope, rssMb: 0, diskMb: 0, reason: `Runs from the old setup (${hit.path})` });
+      leftovers.push({
+        kind: 'old-setup-unit',
+        name,
+        scope: hit.scope,
+        file: hit.file,
+        rssMb: 0,
+        diskMb: 0,
+        reason: `Runs from the old setup (${hit.path})`,
+      });
     }
   }
 
@@ -244,6 +259,14 @@ export function evaluateServerState(snapshot) {
       kept.push({ kind: 'scratch', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: allowedReason });
     } else if (card) {
       kept.push({ kind: 'scratch', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: `Working copy of active Studio card ${card}` });
+    } else if (activeCards.length > 0 && !looksLikeCardName(entry.name)) {
+      kept.push({
+        kind: 'scratch',
+        name: entry.path,
+        rssMb: 0,
+        diskMb: entry.diskMb ?? 0,
+        usedBy: `A card is running (${activeCards.join(', ')}); its build may use this scratch folder`,
+      });
     } else {
       leftovers.push({ kind: 'scratch', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Leftover scratch file or directory' });
     }
@@ -287,6 +310,16 @@ export function evaluateServerState(snapshot) {
         diskMb: entry.diskMb ?? 0,
         usedBy: studioReachable ? `Active Studio card ${entry.name}` : `Studio unreachable; preserving Studio card folder ${entry.name}`,
       });
+    } else if (activeCards.length > 0 && !looksLikeCardName(entry.name)) {
+      // A new kind of folder can appear in the Studio directory; while a card runs, none of it is touched.
+      // A folder named after some other card is that card's finished run, so it still goes.
+      kept.push({
+        kind: 'flow-studio',
+        name: entry.path,
+        rssMb: 0,
+        diskMb: entry.diskMb ?? 0,
+        usedBy: `A card is running (${activeCards.join(', ')}); the Studio folder is not pruned`,
+      });
     } else {
       leftovers.push({ kind: 'flow-studio-card', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Finished or abandoned Studio card run folder' });
     }
@@ -313,9 +346,18 @@ export function evaluateServerState(snapshot) {
   }
 
   for (const entry of snapshot.homeExtras ?? []) {
-    if (IN_USE_SPEC.homeDisallowed.has(entry.name)) {
-      leftovers.push({ kind: 'home-extra', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Stray build or scratch output in /home/ubuntu' });
+    if (!IN_USE_SPEC.homeDisallowed.has(entry.name)) continue;
+    if (activeCards.length > 0) {
+      kept.push({
+        kind: 'home-extra',
+        name: entry.path,
+        rssMb: 0,
+        diskMb: entry.diskMb ?? 0,
+        usedBy: `A card is running (${activeCards.join(', ')}); its build may be writing here`,
+      });
+      continue;
     }
+    leftovers.push({ kind: 'home-extra', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Stray build or scratch output in /home/ubuntu' });
   }
 
   if (!studioReachable) {
