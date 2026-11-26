@@ -36,6 +36,7 @@ test('does not alert when cleanup recovers leftovers and disk and memory are hea
       }
       return cleanSnapshot();
     },
+    reclaim: () => ({ freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] }),
     clean: () => {
       cleaned = true;
     },
@@ -57,6 +58,7 @@ test('alerts on JUL-276 when disk or memory stays short after cleanup', async ()
   const result = await runDailyResourceCheck({
     env: {},
     collect: () => cleanSnapshot(),
+    reclaim: () => ({ freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] }),
     clean: () => {},
     statfs: () => ({ bavail: 2_000_000, bfree: 2_000_000, blocks: 40_000_000, bsize: 1000 }),
     readMemoryMb: () => 400,
@@ -92,6 +94,7 @@ test('wakes Studio and keeps everything when it answers, instead of cleaning a s
       woken = true;
       return true;
     },
+    reclaim: () => ({ freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] }),
     clean: () => {
       cleaned = true;
     },
@@ -119,6 +122,7 @@ test('warns and removes nothing when Studio stays silent after a wake attempt', 
       });
     },
     wake: () => false,
+    reclaim: () => ({ freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] }),
     clean: () => {
       cleaned = true;
     },

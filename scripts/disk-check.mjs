@@ -81,7 +81,12 @@ export async function runDailyResourceCheck({
 
   let snapshot = collect();
   if (snapshot.studioReachable === false && wake()) snapshot = collect();
-  const before = evaluateServerState(snapshot);
+  let before = evaluateServerState(snapshot);
+  if (before.leftovers.length > 0 && before.studioReachable) {
+    // Ask Studio again the moment before deleting: a card may have started since the first answer.
+    const again = evaluateServerState(collect());
+    if (again.activeCards.some(card => !before.activeCards.includes(card))) before = again;
+  }
   if (before.leftovers.length > 0) clean(before);
   const after = before.leftovers.length > 0 ? evaluateServerState(collect()) : before;
 

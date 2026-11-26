@@ -53,12 +53,20 @@ try:
                 studio_error = 'Unexpected Studio response shape'
             else:
                 studio_reachable = True
+                ended = ('success', 'failed', 'canceled', 'cancelled', 'error', 'tripwire')
                 for r in runs:
                     snap = r.get('snapshot') or {}
-                    if snap.get('status') in ('running', 'suspended', 'waiting'):
-                        card = (snap.get('value') or {}).get('card')
-                        if card:
-                            active_cards.append(card)
+                    status = str(snap.get('status') or '').lower()
+                    # Anything Studio has not finished still needs its folders, whatever it is called now.
+                    if status in ended:
+                        continue
+                    value = snap.get('value') or {}
+                    initial = snap.get('initialState') or {}
+                    context = snap.get('context') or {}
+                    entered = (context.get('input') or {}) if isinstance(context, dict) else {}
+                    card = value.get('card') or initial.get('card') or entered.get('card')
+                    if card:
+                        active_cards.append(str(card))
 except Exception as exc:
     studio_error = str(exc)
 
@@ -242,6 +250,9 @@ export async function collectSnapshotAsync(options = {}) {
   return parseSnapshot(raw, options.extraActiveCards);
 }
 
+// A delete target can come from the Studio run form, so it is quoted, never interpolated.
+const shellQuote = value => `'${String(value).replace(/'/g, `'\\''`)}'`;
+
 export function buildCleanScript(evaluation, options = {}) {
   if (evaluation.studioReachable === false) {
     return "echo 'Studio unreachable: keeping everything until Studio answers' >&2";
@@ -266,16 +277,20 @@ export function buildCleanScript(evaluation, options = {}) {
           commands.push(`echo 'refusing to delete protected unit ${item.name}' >&2`);
           break;
         }
-        commands.push(`systemctl --user disable --now ${JSON.stringify(item.name)} 2>/dev/null || true`);
-        commands.push(`rm -f /home/ubuntu/.config/systemd/user/${JSON.stringify(item.name)} 2>/dev/null || true`);
+        commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
+        commands.push(`rm -f /home/ubuntu/.config/systemd/user/${shellQuote(item.name)} 2>/dev/null || true`);
         break;
       case 'old-setup-unit':
+        if (IN_USE_SPEC.userUnits.has(item.name) || IN_USE_SPEC.systemUnits.has(item.name)) {
+          commands.push(`echo 'refusing to delete protected unit ${item.name}' >&2`);
+          break;
+        }
         if (item.scope === 'user') {
-          commands.push(`systemctl --user disable --now ${JSON.stringify(item.name)} 2>/dev/null || true`);
-          commands.push(`rm -f /home/ubuntu/.config/systemd/user/${JSON.stringify(item.name)} 2>/dev/null || true`);
+          commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
+          commands.push(`rm -f /home/ubuntu/.config/systemd/user/${shellQuote(item.name)} 2>/dev/null || true`);
         } else if (item.scope === 'system') {
-          commands.push(`sudo -n systemctl disable --now ${JSON.stringify(item.name)} 2>/dev/null || true`);
-          commands.push(`sudo -n rm -f /etc/systemd/system/${JSON.stringify(item.name)} 2>/dev/null || true`);
+          commands.push(`sudo -n systemctl disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
+          commands.push(`sudo -n rm -f /etc/systemd/system/${shellQuote(item.name)} 2>/dev/null || true`);
         }
         break;
       case 'trace-db':
@@ -289,7 +304,7 @@ export function buildCleanScript(evaluation, options = {}) {
       case 'flow-studio-card':
       case 'mastracode':
       case 'home-extra':
-        commands.push(`rm -rf ${JSON.stringify(item.name)}`);
+        commands.push(`rm -rf ${shellQuote(item.name)}`);
         break;
       default:
         break;
@@ -315,9 +330,9 @@ export function buildCleanScript(evaluation, options = {}) {
     const studioUrl = (options.studioUrl ?? process.env.FLOW_STUDIO_URL ?? 'http://127.0.0.1:4112').replace(/\/$/, '');
     const studioDir = options.studioDir ?? process.env.FLOW_STUDIO_DIR ?? '/home/ubuntu/card-machine/.artifacts/flow/studio';
     commands.push('systemctl --user stop card-machine-studio.service');
-    commands.push(`rm -f ${JSON.stringify(studioDir)}/trace.duckdb ${JSON.stringify(studioDir)}/trace.duckdb.wal`);
+    commands.push(`rm -f ${shellQuote(`${studioDir}/trace.duckdb`)} ${shellQuote(`${studioDir}/trace.duckdb.wal`)}`);
     commands.push('systemctl --user start card-machine-studio.service');
-    commands.push(`for _i in $(seq 1 30); do curl -sf ${studioUrl}/api/workflows/card-path/runs >/dev/null 2>&1 && break; sleep 1; done`);
+    commands.push(`for _i in $(seq 1 30); do curl -sf ${shellQuote(`${studioUrl}/api/workflows/card-path/runs`)} >/dev/null 2>&1 && break; sleep 1; done`);
   }
 
   return commands.join('\n');

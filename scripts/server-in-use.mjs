@@ -5,7 +5,6 @@ export const IN_USE_SPEC = {
     ['card-machine-studio.service', 'Card Machine Mastra Studio on :4112, which hosts the Run view'],
     ['card-machine-run-view.service', 'The Run view Todd opens at /control over Tailscale, on :4314'],
     ['memory-watch.service', 'Server memory and cgroup recorder that the run start reads'],
-    ['julia-studio.service', 'Live Mastra Studio on :4111'],
     ['datasette-viewer.service', 'Datasette read-only viewer on :8801 opened by Todd'],
     ['julia-disk-check.timer', 'Daily server resource check alerting Todd on JUL-276'],
     ['julia-disk-check.service', 'Daily server resource check service'],
@@ -25,22 +24,14 @@ export const IN_USE_SPEC = {
     ['launchpadlib-cache-clean.service', 'Ubuntu Launchpadlib cache cleanup service'],
   ]),
   systemUnits: new Map([
-    ['julia-dashboard.service', 'Live Julia dashboard on :4313 opened by Todd'],
-    ['julia-dashboard-update.timer', 'Updates julia-dashboard from main every 5 minutes'],
-    ['julia-dashboard-update.service', 'Updates julia-dashboard from main'],
-    ['julia-dashboard-watchdog.timer', 'Watches julia-dashboard /api/health every minute'],
-    ['julia-dashboard-watchdog.service', 'Probes julia-dashboard /api/health'],
-    ['julia-dashboard-sweep.timer', 'Sweeps model prices for the dashboard'],
-    ['julia-dashboard-sweep.service', 'Sweeps model prices for the dashboard'],
     ['tailscaled.service', 'Tailscale network daemon'],
   ]),
   checkouts: new Map([
     ['/home/ubuntu/card-machine', 'card-machine-studio.service FLOW_REPO, julia-disk-check.service and the operator checkout'],
     ['/home/ubuntu/card-machine-project', 'card-machine-studio.service FLOW_PROJECT_REPO, the target project checkout runs copy'],
-    ['/home/ubuntu/julia-builder', 'julia-studio.service WorkingDirectory'],
-    ['/home/ubuntu/julia-flow-repo', 'julia-studio.service FLOW_REPO and julia-disk-check.service'],
-    ['/home/ubuntu/julia-dashboard', 'julia-dashboard.service checkout (main worktree)'],
-    ['/home/ubuntu/julia-mastra', 'Parent git repository for /home/ubuntu/julia-dashboard worktree'],
+    ['/home/ubuntu/julia-flow-repo', 'Checkout the skill-update and update-report units run from (JUL-412, JUL-413)'],
+    ['/home/ubuntu/julia-dashboard', 'Dashboard folder kept for JUL-410'],
+    ['/home/ubuntu/julia-mastra', 'Parent repository for the julia-dashboard worktree'],
   ]),
   scratchFixed: new Map([
     ['cards', 'Container for active card worktrees (empty when no card is running)'],
@@ -122,6 +113,8 @@ export function oldSetupUnits(snapshot) {
   const userNames = new Set((snapshot.userUnits ?? []).map(unit => unit.name));
   const found = new Map();
   for (const [name, definition] of Object.entries(snapshot.unitFiles ?? {})) {
+    // A unit the in-use list names is used now; its address has to be moved by the card that owns it.
+    if (IN_USE_SPEC.userUnits.has(name) || IN_USE_SPEC.systemUnits.has(name)) continue;
     const timer = name.replace(/\.service$/, '.timer');
     if (!active.has(name) && !active.has(timer)) continue;
     const text = `${definition.ExecStart ?? ''} ${definition.WorkingDirectory ?? ''}`;
@@ -132,11 +125,19 @@ export function oldSetupUnits(snapshot) {
   return found;
 }
 
+// A card's folder is named after the card, cleaned the way the copy step cleans it.
+const cardFolderNames = card => [String(card), String(card).replace(/[^\w.-]+/g, '-')];
+
+const pathMentionsCard = (path, cards) => {
+  const segments = path.split('/');
+  return cards.find(card => cardFolderNames(card).some(name => segments.includes(name))) ?? null;
+};
+
 export function evaluateServerState(snapshot) {
   const studioReachable = snapshot.studioReachable !== false;
   const studioError = snapshot.studioError ?? null;
   const activeCards = [...new Set(snapshot.activeCards ?? [])].sort();
-  const activeSet = new Set(activeCards);
+  const activeSet = new Set(activeCards.flatMap(cardFolderNames));
   const kept = [];
   const leftovers = [];
   const fromOldSetup = oldSetupUnits(snapshot);
@@ -207,16 +208,16 @@ export function evaluateServerState(snapshot) {
   for (const wt of snapshot.worktrees ?? []) {
     const isDashboard = wt.path === '/home/ubuntu/julia-dashboard';
     const isMainRepo = IN_USE_SPEC.checkouts.has(wt.path);
-    const cardMatch = wt.path.match(/\/\.local\/state\/julia-scratch\/cards\/([^/]+)$/);
-    const isActiveCard = cardMatch && (activeSet.has(cardMatch[1]) || !studioReachable);
+    const card = pathMentionsCard(wt.path, activeCards);
+    const isActiveCard = Boolean(card) || !studioReachable;
     if (isDashboard || isMainRepo || isActiveCard) {
       kept.push({
         kind: 'worktree',
         name: wt.path,
         rssMb: 0,
         diskMb: wt.diskMb ?? 0,
-        usedBy: isActiveCard
-          ? (studioReachable ? `Active Studio card ${cardMatch[1]}` : `Studio unreachable; preserving card worktree ${cardMatch[1]}`)
+        usedBy: card
+          ? (studioReachable ? `Active Studio card ${card}` : `Studio unreachable; preserving card worktree ${card}`)
           : (IN_USE_SPEC.checkouts.get(wt.path) ?? 'Registered main checkout'),
       });
     } else {
@@ -226,21 +227,25 @@ export function evaluateServerState(snapshot) {
 
   for (const entry of snapshot.scratchEntries ?? []) {
     const allowedReason = IN_USE_SPEC.scratchFixed.get(entry.name);
+    const card = pathMentionsCard(entry.path, activeCards);
     if (allowedReason) {
       kept.push({ kind: 'scratch', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: allowedReason });
+    } else if (card) {
+      kept.push({ kind: 'scratch', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: `Working copy of active Studio card ${card}` });
     } else {
       leftovers.push({ kind: 'scratch', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Leftover scratch file or directory' });
     }
   }
 
   for (const cardEntry of snapshot.scratchCards ?? []) {
-    if (activeSet.has(cardEntry.name) || !studioReachable) {
+    const card = pathMentionsCard(cardEntry.path, activeCards) ?? (activeSet.has(cardEntry.name) ? cardEntry.name : null);
+    if (card || !studioReachable) {
       kept.push({
         kind: 'scratch-card',
         name: cardEntry.path,
         rssMb: 0,
         diskMb: cardEntry.diskMb ?? 0,
-        usedBy: studioReachable ? `Active Studio card ${cardEntry.name}` : `Studio unreachable; preserving card copy ${cardEntry.name}`,
+        usedBy: studioReachable ? `Active Studio card ${card ?? cardEntry.name}` : `Studio unreachable; preserving card copy ${cardEntry.name}`,
       });
     } else {
       leftovers.push({ kind: 'scratch-card', name: cardEntry.path, rssMb: 0, diskMb: cardEntry.diskMb ?? 0, reason: 'Inactive, finished, paused, or abandoned card copy' });
@@ -248,7 +253,12 @@ export function evaluateServerState(snapshot) {
   }
 
   for (const entry of snapshot.builderArtifacts ?? []) {
-    leftovers.push({ kind: 'builder-artifact', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Stale artifact in julia-builder/.artifacts (Studio uses FLOW_REPO)' });
+    const card = pathMentionsCard(entry.path, activeCards);
+    if (card) {
+      kept.push({ kind: 'builder-artifact', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: `Run folder of active Studio card ${card}` });
+    } else {
+      leftovers.push({ kind: 'builder-artifact', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Stale artifact in julia-builder/.artifacts (Studio uses FLOW_REPO)' });
+    }
   }
 
   for (const entry of snapshot.flowStudioEntries ?? []) {
@@ -259,7 +269,7 @@ export function evaluateServerState(snapshot) {
       } else {
         kept.push({ kind: 'flow-studio', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: allowedReason });
       }
-    } else if (activeSet.has(entry.name) || !studioReachable) {
+    } else if (pathMentionsCard(entry.path, activeCards) || activeSet.has(entry.name) || !studioReachable) {
       kept.push({
         kind: 'flow-studio-card',
         name: entry.path,

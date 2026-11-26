@@ -7,31 +7,26 @@ function cleanSnapshot(overrides = {}) {
   return {
     activeCards: [],
     userUnits: [
-      { name: 'julia-studio.service', load: 'loaded', active: 'active', sub: 'running' },
+      { name: 'card-machine-studio.service', load: 'loaded', active: 'active', sub: 'running' },
       { name: 'datasette-viewer.service', load: 'loaded', active: 'active', sub: 'running' },
       { name: 'julia-disk-check.timer', load: 'loaded', active: 'active', sub: 'waiting' },
       { name: 'dbus.service', load: 'loaded', active: 'active', sub: 'running' },
     ],
     systemUnits: [
-      { name: 'julia-dashboard.service', load: 'loaded', active: 'active', sub: 'running' },
-      { name: 'julia-dashboard-update.timer', load: 'loaded', active: 'active', sub: 'waiting' },
-      { name: 'julia-dashboard-watchdog.timer', load: 'loaded', active: 'active', sub: 'waiting' },
       { name: 'tailscaled.service', load: 'loaded', active: 'active', sub: 'running' },
     ],
     processes: [
-      { pid: 100, rssKb: 720000, cmd: 'node mastra dev', serviceUnit: 'julia-studio.service' },
-      { pid: 101, rssKb: 120000, cmd: 'node dashboard/server.js', serviceUnit: 'julia-dashboard.service' },
+      { pid: 100, rssKb: 720000, cmd: 'node mastra dev', serviceUnit: 'card-machine-studio.service' },
+      { pid: 101, rssKb: 120000, cmd: 'node dashboard/server.js', serviceUnit: 'card-machine-run-view.service' },
       { pid: 102, rssKb: 35000, cmd: 'datasette serve mastra.db', serviceUnit: 'datasette-viewer.service' },
       { pid: 103, rssKb: 7000, cmd: 'sshd: ubuntu@notty', serviceUnit: null },
     ],
     checkouts: [
-      { path: '/home/ubuntu/julia-builder', diskMb: 3800 },
       { path: '/home/ubuntu/julia-flow-repo', diskMb: 40 },
       { path: '/home/ubuntu/julia-dashboard', diskMb: 1800 },
       { path: '/home/ubuntu/julia-mastra', diskMb: 2450 },
     ],
     worktrees: [
-      { path: '/home/ubuntu/julia-builder', diskMb: 3800 },
       { path: '/home/ubuntu/julia-dashboard', diskMb: 1800 },
     ],
     scratchEntries: [
@@ -292,8 +287,8 @@ test('a service that runs from the old setup fails the check and is removed by t
   assert.match(leftover.reason, /old setup \(\/home\/ubuntu\/julia-dashboard\)/);
 
   const script = buildCleanScript(result, { allowStudioRestart: false });
-  assert.match(script, /sudo -n systemctl disable --now "?julia-studio-health\.service"?/);
-  assert.match(script, /sudo -n rm -f \/etc\/systemd\/system\/"?julia-studio-health\.service"?/);
+  assert.match(script, /sudo -n systemctl disable --now 'julia-studio-health\.service'/);
+  assert.match(script, /sudo -n rm -f \/etc\/systemd\/system\/'julia-studio-health\.service'/);
 });
 
 test('a timer wakes a service that runs from the old setup, so an inactive service still fails', () => {
@@ -366,4 +361,54 @@ test('a Mastra Code file a live session holds open is kept, and a stray one is n
     closeSync(fd);
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('a unit the in-use list names is kept even while it still runs from an old folder', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'card-machine-run-view.service', load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      'card-machine-run-view.service': {
+        file: '/home/ubuntu/.config/systemd/user/card-machine-run-view.service',
+        WorkingDirectory: '/home/ubuntu/julia-dashboard',
+        ExecStart: '/usr/local/bin/node node_modules/next/dist/bin/next start',
+      },
+    },
+  }));
+
+  assert.equal(result.leftovers.length, 0);
+  assert.ok(result.kept.some(item => item.name === 'card-machine-run-view.service'));
+  assert.equal(buildCleanScript(result), '');
+});
+
+test('a running card keeps its copy and worktree wherever the run put them', () => {
+  const comment = 'nothing below the card folder is a leftover while that card runs';
+  const result = evaluateServerState(cleanSnapshot({
+    activeCards: ['JUL-417'],
+    worktrees: [
+      ...cleanSnapshot().worktrees,
+      { path: '/home/ubuntu/.local/state/julia-scratch/cards/JUL-417/repo', diskMb: 620 },
+    ],
+    scratchEntries: [
+      ...cleanSnapshot().scratchEntries,
+      { name: 'remediation', path: '/home/ubuntu/.local/state/julia-scratch/remediation/JUL-417/build', diskMb: 410 },
+    ],
+  }));
+
+  assert.equal(result.leftovers.length, 0, comment);
+  assert.ok(result.kept.some(item => item.name.endsWith('/cards/JUL-417/repo')));
+  assert.ok(result.kept.some(item => item.name.endsWith('/remediation/JUL-417/build')));
+});
+
+test('a leftover name from the run form is quoted, so it can never run a command', () => {
+  const script = buildCleanScript({
+    studioReachable: true,
+    activeCards: [],
+    leftovers: [{ kind: 'home-extra', name: '/home/ubuntu/dist/$(id)`whoami`', diskMb: 3, reason: 'Stray build output' }],
+  });
+
+  assert.ok(script.startsWith("rm -rf '/home/ubuntu/dist/$(id)`whoami`'"), script);
+  assert.doesNotMatch(script, /rm -rf (?!')[^\n]*\$\(id\)/);
 });
