@@ -191,7 +191,7 @@ function oldPlaywrightBrowsers(nowMs, playwrightDir = PLAYWRIGHT_DIR) {
 }
 
 // A folder is in use when a process holds the folder itself or one of the files inside it.
-function heldAnywhere(path, isHeld, limit = 200) {
+function heldAnywhere(path, isHeld, limit = 5000) {
   if (isHeld(path)) return true;
   let stats;
   try {

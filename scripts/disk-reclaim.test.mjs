@@ -227,3 +227,28 @@ test('the /tmp sweep never touches the Mastra Code socket folder', () => {
   assert.equal(existsSync(stale), false, 'an ordinary old entry goes');
   rmSync(root, { recursive: true, force: true });
 });
+
+test('the /tmp sweep keeps a directory whose contents a live process holds open', () => {
+  const root = mkdtempSync(join(tmpdir(), 'reclaim-tmp-'));
+  const busy = join(root, 'sockets');
+  const idle = join(root, 'old-logs');
+  mkdirSync(busy, { recursive: true });
+  mkdirSync(idle, { recursive: true });
+  writeFileSync(join(busy, 'agent.sock'), 'x');
+  writeFileSync(join(idle, 'out.log'), 'x');
+  const run = (command, args) => (command === 'du' ? '1\t' + args.at(-1) + '\n' : '');
+
+  const steps = planReclaim({
+    run,
+    docker: false,
+    cacheDirs: [],
+    tmpDir: root,
+    now: Date.now() + 48 * 60 * 60 * 1000,
+    isHeld: path => path.endsWith('agent.sock'),
+  });
+  steps.find(step => step.id === 'tmp-old-entries').action();
+
+  assert.equal(existsSync(join(busy, 'agent.sock')), true, 'a socket inside the folder is still open');
+  assert.equal(existsSync(idle), false, 'a folder nobody holds goes');
+  rmSync(root, { recursive: true, force: true });
+});

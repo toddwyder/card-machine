@@ -135,11 +135,13 @@ export function oldSetupUnits(snapshot) {
 // A card's folder is named after the card, cleaned the way the copy step cleans it.
 const cardFolderNames = card => [String(card), String(card).replace(/[^\w.-]+/g, '-')];
 
-// A run folder or scratch copy is named after its card; anything else with a name like that is an ended run.
-const looksLikeCardName = name => /^[A-Z][A-Z0-9]*-\d+$/.test(name);
+// A folder belongs to a finished run when its name is a card Studio says is over. Guessing from the
+// shape of a name caught folders a running build made, such as NODE-22 or PG-16.
+const endedFolderNames = snapshot => new Set((snapshot.runs ?? [])
+  .filter(run => run.ended && run.card)
+  .flatMap(run => cardFolderNames(run.card)));
 
-// A folder named after a card that is not one of the running ones belongs to a run that ended.
-const namesAnotherCard = (path, activeSet) => path.split('/').some(segment => looksLikeCardName(segment) && !activeSet.has(segment));
+const namesEndedCard = (path, endedNames) => path.split('/').some(segment => endedNames.has(segment));
 
 const pathMentionsCard = (path, cards) => {
   const segments = path.split('/');
@@ -151,6 +153,7 @@ export function evaluateServerState(snapshot) {
   const studioError = snapshot.studioError ?? null;
   const activeCards = [...new Set(snapshot.activeCards ?? [])].sort();
   const activeSet = new Set(activeCards.flatMap(cardFolderNames));
+  const endedNames = endedFolderNames(snapshot);
   const kept = [];
   const leftovers = [];
   const fromOldSetup = oldSetupUnits(snapshot);
@@ -159,6 +162,14 @@ export function evaluateServerState(snapshot) {
     const ownedElsewhere = UNITS_OWNED_ELSEWHERE.get(name);
     if (ownedElsewhere) {
       kept.push({ kind: 'user-unit', name, rssMb: 0, diskMb: 0, usedBy: ownedElsewhere });
+    } else if (activeCards.length > 0) {
+      kept.push({
+        kind: 'old-setup-unit',
+        name,
+        rssMb: 0,
+        diskMb: 0,
+        usedBy: `A card is running (${activeCards.join(', ')}); a unit is not stopped under it`,
+      });
     } else {
       leftovers.push({
         kind: 'old-setup-unit',
@@ -185,6 +196,16 @@ export function evaluateServerState(snapshot) {
       continue;
     }
     const failed = unit.active === 'failed' || unit.sub === 'failed';
+    if (activeCards.length > 0 && unit.active === 'active') {
+      kept.push({
+        kind: 'user-unit',
+        name: unit.name,
+        rssMb: 0,
+        diskMb: 0,
+        usedBy: `A card is running (${activeCards.join(', ')}); it may have started or moved this unit`,
+      });
+      continue;
+    }
     if (unit.active === 'active' || unit.sub === 'running' || unit.sub === 'waiting' || failed || unit.name.startsWith('julia-') || unit.name.startsWith('jul')) {
       leftovers.push({
         kind: 'user-unit',
@@ -207,6 +228,14 @@ export function evaluateServerState(snapshot) {
     const allowedReason = IN_USE_SPEC.systemUnits.get(unit.name);
     if (allowedReason) {
       kept.push({ kind: 'system-unit', name: unit.name, rssMb: 0, diskMb: 0, usedBy: allowedReason });
+    } else if (activeCards.length > 0 && (unit.active === 'active' || unit.sub === 'running')) {
+      kept.push({
+        kind: 'system-unit',
+        name: unit.name,
+        rssMb: 0,
+        diskMb: 0,
+        usedBy: `A card is running (${activeCards.join(', ')}); it may have started or moved this unit`,
+      });
     } else if (unit.name.startsWith('julia-') || unit.name.startsWith('jul') || unit.name.includes('mastra')) {
       leftovers.push({ kind: 'system-unit', name: unit.name, rssMb: 0, diskMb: 0, reason: 'Not in active system unit allowlist' });
     }
@@ -234,7 +263,7 @@ export function evaluateServerState(snapshot) {
       kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: allowedReason });
     } else if (card) {
       kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: `Checkout of active Studio card ${card}` });
-    } else if (activeCards.length > 0 && !namesAnotherCard(checkout.path, activeSet)) {
+    } else if (activeCards.length > 0 && !namesEndedCard(checkout.path, endedNames)) {
       // A clone a running card made to verify its own work is indistinguishable from a stray one until the card ends.
       kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: `A card is running (${activeCards.join(', ')}); a clone may be its verification` });
     } else {
@@ -248,7 +277,7 @@ export function evaluateServerState(snapshot) {
     const card = pathMentionsCard(wt.path, activeCards);
     // A worktree a running card checks its own work out into need not carry the card's name.
     const runningCard = Boolean(card) || !studioReachable
-      || (activeCards.length > 0 && !namesAnotherCard(wt.path, activeSet));
+      || (activeCards.length > 0 && !namesEndedCard(wt.path, endedNames));
     if (isDashboard || isMainRepo || runningCard) {
       kept.push({
         kind: 'worktree',
@@ -273,7 +302,7 @@ export function evaluateServerState(snapshot) {
       kept.push({ kind: 'scratch', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: allowedReason });
     } else if (card) {
       kept.push({ kind: 'scratch', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: `Working copy of active Studio card ${card}` });
-    } else if (activeCards.length > 0 && !looksLikeCardName(entry.name)) {
+    } else if (activeCards.length > 0 && !endedNames.has(entry.name)) {
       kept.push({
         kind: 'scratch',
         name: entry.path,
@@ -305,6 +334,14 @@ export function evaluateServerState(snapshot) {
     const card = pathMentionsCard(entry.path, activeCards);
     if (card) {
       kept.push({ kind: 'builder-artifact', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: `Run folder of active Studio card ${card}` });
+    } else if (activeCards.length > 0) {
+      kept.push({
+        kind: 'builder-artifact',
+        name: entry.path,
+        rssMb: 0,
+        diskMb: entry.diskMb ?? 0,
+        usedBy: `A card is running (${activeCards.join(', ')}); its run folder is not a leftover`,
+      });
     } else {
       leftovers.push({ kind: 'builder-artifact', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Stale artifact in julia-builder/.artifacts (Studio uses FLOW_REPO)' });
     }
@@ -324,7 +361,7 @@ export function evaluateServerState(snapshot) {
         diskMb: entry.diskMb ?? 0,
         usedBy: studioReachable ? `Active Studio card ${entry.name}` : `Studio unreachable; preserving Studio card folder ${entry.name}`,
       });
-    } else if (activeCards.length > 0 && !looksLikeCardName(entry.name)) {
+    } else if (activeCards.length > 0 && !endedNames.has(entry.name)) {
       // A new kind of folder can appear in the Studio directory; while a card runs, none of it is touched.
       // A folder named after some other card is that card's finished run, so it still goes.
       kept.push({

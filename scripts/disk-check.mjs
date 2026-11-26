@@ -79,20 +79,40 @@ export async function runDailyResourceCheck({
     throw new Error('JULIA_MEMORY_THRESHOLD_MB must be a positive number');
   }
 
-  let snapshot = collect();
-  if (snapshot.studioReachable === false && wake()) snapshot = collect();
+  // A failed measurement is a problem to report, not a reason to end the run without an alert.
+  const safeCollect = () => {
+    try {
+      return collect();
+    } catch (error) {
+      return {
+        studioReachable: false,
+        studioError: `the server check could not read the machine (${error.message ?? error})`,
+        activeCards: [],
+        runs: [],
+      };
+    }
+  };
+
+  let snapshot = safeCollect();
+  if (snapshot.studioReachable === false && wake()) snapshot = safeCollect();
   let before = evaluateServerState(snapshot);
   if (before.leftovers.length > 0 && before.studioReachable) {
     // Ask Studio again the moment before deleting: a card may have started since the first answer.
-    const again = evaluateServerState(collect());
+    const again = evaluateServerState(safeCollect());
     const cardStarted = again.activeCards.some(card => !before.activeCards.includes(card));
     // Studio going silent, or a card starting, makes the second answer the one to trust.
     if (cardStarted || again.studioReachable === false) before = again;
   }
-  if (before.leftovers.length > 0) clean(before);
+  if (before.leftovers.length > 0) {
+    try {
+      clean(before);
+    } catch (error) {
+      before = { ...before, cleanupError: error.message ?? String(error) };
+    }
+  }
   // Reclaim is the step that removes caches, images and scratch space, so it acts on an answer taken
   // after the cleanup rather than one taken before it.
-  const after = before.studioReachable === false ? before : evaluateServerState(collect());
+  const after = before.studioReachable === false ? before : evaluateServerState(safeCollect());
 
   // A running card's build is using the caches, images and scratch space, and a silent Studio cannot say
   // whether one is running, so reclaim waits for a quiet, answering server.
@@ -126,6 +146,9 @@ export async function runDailyResourceCheck({
   }
   if (after.studioReachable === false) {
     problems.push(`Studio unreachable (${after.studioError ?? 'unknown error'}); active cards could not be verified.`);
+  }
+  if (before.cleanupError) {
+    problems.push(`Cleanup stopped early (${before.cleanupError}); leftovers may remain.`);
   }
   if (after.leftovers.length > 0) {
     problems.push(`Leftovers remaining after cleanup (${after.leftovers.length}): ${after.leftovers.map(item => item.name).join(', ')}.`);

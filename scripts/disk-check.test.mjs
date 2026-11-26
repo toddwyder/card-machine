@@ -210,3 +210,56 @@ test('stops reclaiming when the second look says Studio went silent', async () =
 
   assert.equal(reclaimed, false, 'a silent Studio means no reclaim at all');
 });
+
+test('a card that starts while the cleanup runs keeps the caches even when nothing needed cleaning', async () => {
+  let step = 0;
+  let reclaimed = false;
+  const result = await runDailyResourceCheck({
+    env: {},
+    collect: () => {
+      step += 1;
+      return step === 1 ? cleanSnapshot() : cleanSnapshot({ activeCards: ['JUL-417'] });
+    },
+    reclaim: () => {
+      reclaimed = true;
+      return { freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] };
+    },
+    clean: () => {},
+    statfs: () => ({ bavail: 2_000_000, bfree: 2_000_000, blocks: 40_000_000, bsize: 1000 }),
+    readMemoryMb: () => 4096,
+    readLargestFolders: () => [],
+    sendAlert: async () => ({ comment: 'unused' }),
+  });
+
+  assert.equal(reclaimed, false, 'reclaim reads a snapshot taken after the cleanup, not before it');
+  assert.match(result.problems.join('\n'), /Disk reclaim waited: a card is running/);
+});
+
+test('a machine the check cannot read is reported instead of ending the run without an alert', async () => {
+  let alerted = '';
+  let cleaned = false;
+  const result = await runDailyResourceCheck({
+    env: {},
+    collect: () => {
+      throw new Error('ssh: connect to host ovh port 22: Connection timed out');
+    },
+    reclaim: () => {
+      throw new Error('reclaim must not run without a reading');
+    },
+    clean: () => {
+      cleaned = true;
+    },
+    statfs: () => ({ bavail: 2_000_000, bfree: 2_000_000, blocks: 40_000_000, bsize: 1000 }),
+    readMemoryMb: () => 4096,
+    readLargestFolders: () => [],
+    sendAlert: async body => {
+      alerted = body;
+      return { comment: 'unused' };
+    },
+  });
+
+  assert.equal(cleaned, false);
+  assert.equal(result.alert, true);
+  assert.match(alerted, /could not read the machine/);
+  assert.match(alerted, /Studio unreachable/);
+});

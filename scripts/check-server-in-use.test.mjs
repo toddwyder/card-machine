@@ -119,6 +119,10 @@ test('fails on leftover timer/service, failed unit, process, worktree, scratch, 
 test('allows an active Studio card worktree and run folder, but rejects inactive ones', () => {
   const result = evaluateServerState(cleanSnapshot({
     activeCards: ['JUL-410'],
+    runs: [
+      { card: 'JUL-410', status: 'running', ended: false },
+      { card: 'JUL-387', status: 'success', ended: true },
+    ],
     worktrees: [
       ...cleanSnapshot().worktrees,
       { path: '/home/ubuntu/.local/state/julia-scratch/cards/JUL-410', diskMb: 300 },
@@ -453,10 +457,16 @@ test('while a card runs, scratch folders and build output that carry no card nam
 test('a folder named like pr-42 is work, not an ended card run, so a running card keeps it', () => {
   const result = evaluateServerState(cleanSnapshot({
     activeCards: ['JUL-417'],
+    runs: [
+      { card: 'JUL-417', status: 'running', ended: false },
+      { card: 'JUL-387', status: 'success', ended: true },
+    ],
     scratchEntries: [
       ...cleanSnapshot().scratchEntries,
       { name: 'pr-42', path: '/home/ubuntu/.local/state/julia-scratch/pr-42', diskMb: 120 },
       { name: 'build-2', path: '/home/ubuntu/.local/state/julia-scratch/build-2', diskMb: 40 },
+      // Shaped like a card name, but no run lists it, so it is a build's folder, not a finished card's.
+      { name: 'NODE-22', path: '/home/ubuntu/.local/state/julia-scratch/NODE-22', diskMb: 40 },
       { name: 'JUL-387', path: '/home/ubuntu/.local/state/julia-scratch/cards/JUL-387', diskMb: 90 },
     ],
   }));
@@ -536,4 +546,41 @@ test('a drop-in that points at the old setup makes its unit a leftover, and the 
   assert.equal(leftover.file, '/home/ubuntu/.config/systemd/user/julia-old-address.service');
   const script = buildCleanScript(result);
   assert.match(script, /rm -f '\/home\/ubuntu\/\.config\/systemd\/user\/julia-old-address\.service'/);
+});
+
+test('a unit a running card started is kept, and stopped once no card runs', () => {
+  const snapshot = {
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'julia-card-service.service', load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    builderArtifacts: [
+      { name: 'run-123', path: '/home/ubuntu/julia-builder/.artifacts/run-123', diskMb: 40 },
+    ],
+  };
+  const running = evaluateServerState(cleanSnapshot({ ...snapshot, activeCards: ['JUL-417'] }));
+  assert.equal(running.leftovers.length, 0, JSON.stringify(running.leftovers));
+  assert.ok(running.kept.some(item => item.name === 'julia-card-service.service'));
+  assert.ok(running.kept.some(item => item.name.endsWith('/run-123')));
+
+  const idle = evaluateServerState(cleanSnapshot(snapshot));
+  assert.ok(idle.leftovers.some(item => item.name === 'julia-card-service.service'));
+  assert.ok(idle.leftovers.some(item => item.name.endsWith('/run-123')));
+});
+
+test('a unit that runs from the old setup is still stopped while no card runs', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'julia-old-address.service', load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      'julia-old-address.service': {
+        file: '/home/ubuntu/.config/systemd/user/julia-old-address.service',
+        ExecStart: '/usr/bin/node /home/ubuntu/julia-dashboard/server.js',
+      },
+    },
+  }));
+
+  assert.ok(result.leftovers.some(item => item.kind === 'old-setup-unit' && item.name === 'julia-old-address.service'));
 });

@@ -41,6 +41,7 @@ def du_entries(base):
     return items
 
 active_cards = []
+runs_list = []
 studio_reachable = False
 studio_error = None
 studio_url = os.environ.get('FLOW_STUDIO_URL', 'http://127.0.0.1:4112').rstrip('/')
@@ -60,21 +61,25 @@ try:
                 for r in runs:
                     snap = r.get('snapshot') or {}
                     status = str(snap.get('status') or '').lower()
-                    # Anything Studio has not finished still needs its folders, whatever it is called now.
-                    if status in ended:
-                        continue
                     value = snap.get('value') or {}
                     initial = snap.get('initialState') or {}
                     context = snap.get('context') or {}
                     entered = (context.get('input') or {}) if isinstance(context, dict) else {}
                     card = value.get('card') or initial.get('card') or entered.get('card')
                     if card:
+                        # Every run Studio still holds is listed, so a folder is only a finished run's
+                        # when Studio says that card is over. Nothing is guessed from the folder name.
+                        runs_list.append({'card': str(card), 'status': status, 'ended': status in ended})
+                        if status in ended:
+                            continue
+                        # Anything Studio has not finished still needs its folders, whatever it is called now.
                         active_cards.append(str(card))
 except Exception as exc:
     studio_error = str(exc)
-    # Half a run list cannot be trusted to say which cards are running.
+    # Half a run list cannot be trusted to say which cards are running, so nothing is called ended.
     studio_reachable = False
     active_cards = []
+    runs_list = []
 
 ancestor_pids = set()
 cur = os.getpid()
@@ -189,7 +194,8 @@ for unit_dir in UNIT_DIRS:
 # A unit's address can also come from a drop-in, so its text counts as the unit's own.
 # systemd appends ExecStart lines and replaces WorkingDirectory, and an empty assignment
 # clears what came before, so the drop-ins are read in order and applied the same way.
-for unit_dir in UNIT_DIRS:
+# systemd reads the lowest-priority unit folder first, so the last value applied is the one it obeys.
+for unit_dir in reversed(UNIT_DIRS):
     for root, dirs, _files in os.walk(unit_dir):
         for drop_in_dir in sorted(d for d in dirs if d.endswith('.d')):
             entry = unit_files.get(drop_in_dir[:-2])
@@ -230,6 +236,7 @@ print(json.dumps({
     'enabledUnits': sorted(set(unit_files_by_state('user') + unit_files_by_state('system'))),
     'studioError': studio_error,
     'activeCards': active_cards,
+    'runs': runs_list,
     'userUnits': parse_units(['systemctl', '--user', 'list-units', '--type=service,timer', '--all', '--no-legend', '--plain']),
     'systemUnits': parse_units(['systemctl', 'list-units', '--type=service,timer', '--all', '--no-legend', '--plain']),
     'processes': processes,
