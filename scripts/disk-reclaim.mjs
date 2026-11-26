@@ -22,6 +22,7 @@ const MASTRACODE_TRACE_MAX_MB = 2048;
 
 export function fileIsHeld(path) {
   const targets = [path, `${path}-wal`];
+  const myUid = process.getuid?.() ?? null;
   let pids = [];
   try {
     pids = readdirSync('/proc').filter(name => /^\d+$/.test(name));
@@ -31,8 +32,13 @@ export function fileIsHeld(path) {
   for (const pid of pids) {
     let fds = [];
     try {
+      // The files this guard protects live in this user's home, so only this user's processes can
+      // hold them open. Another account's file descriptors are not a reason to keep one forever.
+      if (myUid !== null && statSync(`/proc/${pid}`).uid !== myUid) continue;
       fds = readdirSync(`/proc/${pid}/fd`);
     } catch {
+      // A process that hides its own descriptors (sshd, sudo, anything setuid or non-dumpable) is not
+      // the Mastra Code session that would hold this store, so its silence is not a reason to keep it.
       continue;
     }
     for (const fd of fds) {

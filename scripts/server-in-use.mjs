@@ -4,6 +4,7 @@ export const IN_USE_SPEC = {
   userUnits: new Map([
     ['card-machine-studio.service', 'Card Machine Mastra Studio on :4112, which hosts the Run view'],
     ['card-machine-run-view.service', 'The Run view Todd opens at /control over Tailscale, on :4314'],
+    ['card-machine-self-studio.service', 'Card Machine Studio started by the self-studio wrapper'],
     ['memory-watch.service', 'Server memory and cgroup recorder that the run start reads'],
     ['datasette-viewer.service', 'Datasette read-only viewer on :8801 opened by Todd'],
     ['julia-disk-check.timer', 'Daily server resource check alerting Todd on JUL-276'],
@@ -48,6 +49,7 @@ export const IN_USE_SPEC = {
     ['landing', 'Studio scratch subfolder'],
     ['reports', 'Studio scratch subfolder'],
     ['retro', 'Studio scratch subfolder'],
+    ['interrupted', 'Studio heartbeat that tells a restart which run is still going'],
   ]),
   mastracodeFixed: new Map([
     ['mastra.db', 'Datasette read-only viewer database (datasette-viewer.service)'],
@@ -61,7 +63,6 @@ export const IN_USE_SPEC = {
     ['patches', 'Mastra Code patch directory'],
   ]),
   homeDisallowed: new Set(['dist', '%ln']),
-  maxIdleTraceMb: 500,
 };
 
 function classifyProcess(proc, activeCards) {
@@ -118,7 +119,9 @@ export function oldSetupUnits(snapshot) {
     const timer = name.replace(/\.service$/, '.timer');
     if (!active.has(name) && !active.has(timer)) continue;
     const text = `${definition.ExecStart ?? ''} ${definition.WorkingDirectory ?? ''}`;
-    const path = OLD_SETUP_PATHS.find(candidate => text.includes(candidate));
+    // Whole paths only: /home/ubuntu/julia-dashboard-2 is not the old dashboard.
+    const tokens = text.split(/[\s:=]+/);
+    const path = OLD_SETUP_PATHS.find(candidate => tokens.some(token => token === candidate || token.startsWith(`${candidate}/`)));
     if (!path) continue;
     found.set(name, { path, scope: userNames.has(name) ? 'user' : 'system' });
   }
@@ -191,6 +194,9 @@ export function evaluateServerState(snapshot) {
       kept.push({ kind: 'process', name: `${proc.pid} ${proc.cmd}`, pid: proc.pid, rssMb, diskMb: 0, usedBy: verdict.usedBy });
     } else if (!studioReachable) {
       kept.push({ kind: 'process', name: `${proc.pid} ${proc.cmd}`, pid: proc.pid, rssMb, diskMb: 0, usedBy: 'Studio unreachable; preserving potential card process' });
+    } else if (activeCards.length > 0) {
+      // A card's commands run in transient scopes that carry no card name, so none of them is a leftover while a card runs.
+      kept.push({ kind: 'process', name: `${proc.pid} ${proc.cmd}`, pid: proc.pid, rssMb, diskMb: 0, usedBy: `A card is running (${activeCards.join(', ')}); its commands are not leftovers` });
     } else {
       leftovers.push({ kind: 'process', name: `${proc.pid} ${proc.cmd}`, pid: proc.pid, rssMb, diskMb: 0, reason: 'Orphaned or non-service process' });
     }
@@ -198,8 +204,14 @@ export function evaluateServerState(snapshot) {
 
   for (const checkout of snapshot.checkouts ?? []) {
     const allowedReason = IN_USE_SPEC.checkouts.get(checkout.path);
+    const card = pathMentionsCard(checkout.path, activeCards);
     if (allowedReason) {
       kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: allowedReason });
+    } else if (card) {
+      kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: `Checkout of active Studio card ${card}` });
+    } else if (activeCards.length > 0) {
+      // A clone a running card made to verify its own work is indistinguishable from a stray one until the card ends.
+      kept.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, usedBy: `A card is running (${activeCards.join(', ')}); a clone may be its verification` });
     } else {
       leftovers.push({ kind: 'checkout', name: checkout.path, rssMb: 0, diskMb: checkout.diskMb ?? 0, reason: 'Extra checkout outside in-use list' });
     }
@@ -264,11 +276,9 @@ export function evaluateServerState(snapshot) {
   for (const entry of snapshot.flowStudioEntries ?? []) {
     const allowedReason = IN_USE_SPEC.flowStudioFixed.get(entry.name);
     if (allowedReason) {
-      if (entry.name === 'trace.duckdb' && studioReachable && activeCards.length === 0 && (entry.diskMb ?? 0) > IN_USE_SPEC.maxIdleTraceMb) {
-        leftovers.push({ kind: 'trace-db', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: `Idle trace.duckdb exceeds ${IN_USE_SPEC.maxIdleTraceMb} MB` });
-      } else {
-        kept.push({ kind: 'flow-studio', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: allowedReason });
-      }
+      // The Run view serves this folder, so nothing in it is a leftover: a trace database under a running
+      // viewer is data in use, and the tool that writes it reuses the file.
+      kept.push({ kind: 'flow-studio', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: allowedReason });
     } else if (pathMentionsCard(entry.path, activeCards) || activeSet.has(entry.name) || !studioReachable) {
       kept.push({
         kind: 'flow-studio-card',
@@ -284,15 +294,18 @@ export function evaluateServerState(snapshot) {
 
   for (const entry of snapshot.mastracodeEntries ?? []) {
     const allowedReason = IN_USE_SPEC.mastracodeFixed.get(entry.name);
-    // A session that has the file open is using it, whatever the file is called.
-    const held = !allowedReason && fileIsHeld(entry.path);
+    // A session that has the file open is using it, whatever the file is called. A folder can be written
+    // without any of its files being held open at the moment of the scan, so folders stay too.
+    const held = !allowedReason && (entry.isDir === true || fileIsHeld(entry.path));
     if (allowedReason || held) {
       kept.push({
         kind: 'mastracode',
         name: entry.path,
         rssMb: 0,
         diskMb: entry.diskMb ?? 0,
-        usedBy: allowedReason ?? 'A live Mastra Code session holds this file open',
+        usedBy: allowedReason ?? (entry.isDir === true
+          ? 'Mastra Code folder a live session may be writing into'
+          : 'A live Mastra Code session holds this file open'),
       });
     } else {
       leftovers.push({ kind: 'mastracode', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Unused Mastra Code trace, backup, or vector database' });

@@ -42,7 +42,7 @@ test('a cleanup removes an ended run and a dead service while a waiting card kee
         { kind: 'process', name: `${dead.pid} sleep 300`, pid: dead.pid, rssMb: 0, diskMb: 0, reason: 'Ended run' },
       ],
     },
-    { local: true, allowStudioRestart: false },
+    { local: true },
   );
 
   assert.deepEqual(
@@ -78,7 +78,7 @@ test('a cleanup leaves every planted file alone while Studio does not answer', a
       kept: [],
       leftovers: planted.map(path => ({ kind: 'scratch', name: path, rssMb: 0, diskMb: 1, reason: 'Leftover' })),
     },
-    { local: true, allowStudioRestart: false },
+    { local: true },
   );
 
   assert.deepEqual(

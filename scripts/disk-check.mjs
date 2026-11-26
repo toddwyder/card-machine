@@ -59,7 +59,7 @@ export async function runDailyResourceCheck({
   env = process.env,
   collect = () => collectSnapshot({ local: true }),
   wake = () => wakeStudio(),
-  clean = evaluation => cleanLeftovers(evaluation, { local: true, allowStudioRestart: true }),
+  clean = evaluation => cleanLeftovers(evaluation, { local: true }),
   reclaim = options => reclaimDisk(options),
   statfs = () => statfsSync('/'),
   readMemoryMb = () => readAvailableMemoryMb(),
@@ -85,12 +85,16 @@ export async function runDailyResourceCheck({
   if (before.leftovers.length > 0 && before.studioReachable) {
     // Ask Studio again the moment before deleting: a card may have started since the first answer.
     const again = evaluateServerState(collect());
-    if (again.activeCards.some(card => !before.activeCards.includes(card))) before = again;
+    const cardStarted = again.activeCards.some(card => !before.activeCards.includes(card));
+    // Studio going silent, or a card starting, makes the second answer the one to trust.
+    if (cardStarted || again.studioReachable === false) before = again;
   }
   if (before.leftovers.length > 0) clean(before);
   const after = before.leftovers.length > 0 ? evaluateServerState(collect()) : before;
 
-  const reclaimed = reclaim({ targetGb, statfs });
+  // A running card's build is using the caches, images and scratch space, so reclaim waits for a quiet server.
+  const quiet = before.activeCards.length === 0;
+  const reclaimed = quiet ? reclaim({ targetGb, statfs }) : { freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] };
   const reclaimedMb = Math.round((reclaimed.freeAfterBytes - reclaimed.freeBeforeBytes) / 1_000_000);
 
   const disk = statfs();
@@ -106,7 +110,11 @@ export async function runDailyResourceCheck({
       (100 * (Number(disk.blocks) - Number(disk.bfree))) / (Number(disk.blocks) - Number(disk.bfree) + Number(disk.bavail)),
     );
     problems.push(`Disk: ${usedPercent}% used, ${gb(freeBytes)} GB available on / (threshold: ${thresholdGb} GB, target ${targetGb} GB).`);
-    problems.push(`Disk reclaim freed ${reclaimedMb} MB (target ${targetGb} GB): ${reclaimed.steps.filter(step => step.ran).map(step => `${step.id} ${step.freedMb} MB`).join(', ') || 'no steps ran'}.`);
+    if (quiet) {
+      problems.push(`Disk reclaim freed ${reclaimedMb} MB (target ${targetGb} GB): ${reclaimed.steps.filter(step => step.ran).map(step => `${step.id} ${step.freedMb} MB`).join(', ') || 'no steps ran'}.`);
+    } else {
+      problems.push(`Disk reclaim waited: a card is running (${before.activeCards.join(', ')}) and its build is using the machine.`);
+    }
   }
   if (memoryShort) {
     problems.push(`Memory: ${availableMemoryMb} MB available (threshold: ${minMemoryMb} MB).`);

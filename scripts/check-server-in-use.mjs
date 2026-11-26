@@ -32,9 +32,12 @@ def du_entries(base):
     items = []
     for name in sorted(os.listdir(base)):
         path = os.path.join(base, name)
-        out = run(['du', '-sm', path]).strip()
-        mb = int(out.split()[0]) if out else 0
-        items.append({'name': name, 'path': path, 'diskMb': mb})
+        try:
+            out = run(['du', '-sm', path]).strip()
+            mb = int(out.split()[0]) if out else 0
+        except Exception:
+            mb = 0
+        items.append({'name': name, 'path': path, 'diskMb': mb, 'isDir': os.path.isdir(path)})
     return items
 
 active_cards = []
@@ -69,6 +72,9 @@ try:
                         active_cards.append(str(card))
 except Exception as exc:
     studio_error = str(exc)
+    # Half a run list cannot be trusted to say which cards are running.
+    studio_reachable = False
+    active_cards = []
 
 ancestor_pids = set()
 cur = os.getpid()
@@ -260,7 +266,6 @@ export function buildCleanScript(evaluation, options = {}) {
   if (evaluation.leftovers.length === 0) return '';
 
   const commands = [];
-  let resetFlowStudio = false;
 
   const killedPids = [];
   for (const item of evaluation.leftovers) {
@@ -280,6 +285,10 @@ export function buildCleanScript(evaluation, options = {}) {
         commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
         commands.push(`rm -f /home/ubuntu/.config/systemd/user/${shellQuote(item.name)} 2>/dev/null || true`);
         break;
+      case 'system-unit':
+        commands.push(`sudo -n systemctl disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
+        commands.push(`sudo -n rm -f ${shellQuote(item.file ?? `/etc/systemd/system/${item.name}`)} 2>/dev/null || true`);
+        break;
       case 'old-setup-unit':
         if (IN_USE_SPEC.userUnits.has(item.name) || IN_USE_SPEC.systemUnits.has(item.name)) {
           commands.push(`echo 'refusing to delete protected unit ${item.name}' >&2`);
@@ -290,11 +299,8 @@ export function buildCleanScript(evaluation, options = {}) {
           commands.push(`rm -f /home/ubuntu/.config/systemd/user/${shellQuote(item.name)} 2>/dev/null || true`);
         } else if (item.scope === 'system') {
           commands.push(`sudo -n systemctl disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
-          commands.push(`sudo -n rm -f /etc/systemd/system/${shellQuote(item.name)} 2>/dev/null || true`);
+          commands.push(`sudo -n rm -f ${shellQuote(item.file ?? `/etc/systemd/system/${item.name}`)} 2>/dev/null || true`);
         }
-        break;
-      case 'trace-db':
-        resetFlowStudio = true;
         break;
       case 'worktree':
       case 'checkout':
@@ -326,16 +332,8 @@ export function buildCleanScript(evaluation, options = {}) {
     commands.push(`for _i in $(seq 1 20); do alive=0; for p in ${killedPids.join(' ')}; do kill -0 "$p" 2>/dev/null && alive=1; done; [ "$alive" -eq 0 ] && break; sleep 0.1; done`);
   }
 
-  if (resetFlowStudio && options.allowStudioRestart === true && evaluation.studioReachable !== false) {
-    const studioUrl = (options.studioUrl ?? process.env.FLOW_STUDIO_URL ?? 'http://127.0.0.1:4112').replace(/\/$/, '');
-    const studioDir = options.studioDir ?? process.env.FLOW_STUDIO_DIR ?? '/home/ubuntu/card-machine/.artifacts/flow/studio';
-    commands.push('systemctl --user stop card-machine-studio.service');
-    commands.push(`rm -f ${shellQuote(`${studioDir}/trace.duckdb`)} ${shellQuote(`${studioDir}/trace.duckdb.wal`)}`);
-    commands.push('systemctl --user start card-machine-studio.service');
-    commands.push(`for _i in $(seq 1 30); do curl -sf ${shellQuote(`${studioUrl}/api/workflows/card-path/runs`)} >/dev/null 2>&1 && break; sleep 1; done`);
-  }
-
-  return commands.join('\n');
+  // The same folder can be found by two scans (a worktree that is also a card copy); it is removed once.
+  return [...new Set(commands)].join('\n');
 }
 
 export function cleanLeftovers(evaluation, options = {}) {

@@ -88,7 +88,8 @@ test('fails on leftover timer/service, failed unit, process, worktree, scratch, 
     ],
     mastracodeEntries: [
       ...cleanSnapshot().mastracodeEntries,
-      { name: 'traces', path: '/home/ubuntu/.local/share/mastracode/traces', diskMb: 2000 },
+      { name: 'traces', path: '/home/ubuntu/.local/share/mastracode/traces', diskMb: 2000, isDir: true },
+      { name: 'backup.duckdb', path: '/home/ubuntu/.local/share/mastracode/backup.duckdb', diskMb: 11, isDir: false },
     ],
     homeExtras: [
       { name: 'dist', path: '/home/ubuntu/dist', diskMb: 3 },
@@ -103,10 +104,15 @@ test('fails on leftover timer/service, failed unit, process, worktree, scratch, 
   assert.ok(kinds.has('scratch'));
   assert.ok(kinds.has('scratch-card'));
   assert.ok(kinds.has('builder-artifact'));
-  assert.ok(kinds.has('trace-db'));
   assert.ok(kinds.has('flow-studio-card'));
   assert.ok(kinds.has('mastracode'));
   assert.ok(kinds.has('home-extra'));
+  // The Run view serves the Studio folder, so its trace database is data in use, not a leftover.
+  assert.ok(result.kept.some(item => item.name.endsWith('/trace.duckdb')));
+  assert.ok(result.leftovers.every(item => !item.name.endsWith('/trace.duckdb')));
+  // A folder a session may be writing into stays; the stray file beside it goes.
+  assert.ok(result.kept.some(item => item.name.endsWith('/traces')));
+  assert.ok(result.leftovers.some(item => item.name.endsWith('/backup.duckdb')));
   assert.match(formatReport(result), /Server in-use check: FAIL/);
 });
 
@@ -191,7 +197,8 @@ test('when Studio is silent nothing counts as a leftover, so no cleanup can remo
     ],
     mastracodeEntries: [
       ...cleanSnapshot().mastracodeEntries,
-      { name: 'traces', path: '/home/ubuntu/.local/share/mastracode/traces', diskMb: 2000 },
+      { name: 'traces', path: '/home/ubuntu/.local/share/mastracode/traces', diskMb: 2000, isDir: true },
+      { name: 'backup.duckdb', path: '/home/ubuntu/.local/share/mastracode/backup.duckdb', diskMb: 11, isDir: false },
     ],
     homeExtras: [
       { name: 'dist', path: '/home/ubuntu/dist', diskMb: 3 },
@@ -286,9 +293,9 @@ test('a service that runs from the old setup fails the check and is removed by t
   assert.equal(leftover.scope, 'system');
   assert.match(leftover.reason, /old setup \(\/home\/ubuntu\/julia-dashboard\)/);
 
-  const script = buildCleanScript(result, { allowStudioRestart: false });
+  const script = buildCleanScript(result);
   assert.match(script, /sudo -n systemctl disable --now 'julia-studio-health\.service'/);
-  assert.match(script, /sudo -n rm -f \/etc\/systemd\/system\/'julia-studio-health\.service'/);
+  assert.match(script, /sudo -n rm -f '\/etc\/systemd\/system\/julia-studio-health\.service'/);
 });
 
 test('a timer wakes a service that runs from the old setup, so an inactive service still fails', () => {
