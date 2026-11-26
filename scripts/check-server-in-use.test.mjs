@@ -50,6 +50,31 @@ function cleanSnapshot(overrides = {}) {
   };
 }
 
+function withOldSetupUnit() {
+  return {
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'julia-old-address.service', load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      'julia-old-address.service': {
+        file: '/home/ubuntu/.config/systemd/user/julia-old-address.service',
+        WorkingDirectory: '/home/ubuntu/julia-dashboard',
+        ExecStart: '/usr/bin/node server.js',
+      },
+    },
+  };
+}
+
+function withStrayMastracodeFile() {
+  return {
+    mastracodeEntries: [
+      ...cleanSnapshot().mastracodeEntries,
+      { name: 'session-store.duckdb', path: '/home/ubuntu/.local/share/mastracode/session-store.duckdb', diskMb: 11, isDir: false },
+    ],
+  };
+}
+
 test('passes when the server holds only items in use right now', () => {
   const result = evaluateServerState(cleanSnapshot());
   assert.equal(result.ok, true);
@@ -246,7 +271,7 @@ test('keeps the memory recorder and Studio as in-use units, even when a unit rep
 test('never deletes the unit file of a unit that is in the in-use list', () => {
   for (const name of ['memory-watch.service', 'card-machine-studio.service']) {
     assert.ok(IN_USE_SPEC.userUnits.has(name), `${name} must stay in the in-use list`);
-    const script = buildCleanScript({ leftovers: [{ kind: 'user-unit', name }] });
+    const script = buildCleanScript({ studioReachable: true, activeCards: [], leftovers: [{ kind: 'user-unit', name }] });
     assert.doesNotMatch(script, /disable --now/, `${name} must not be disabled`);
     assert.doesNotMatch(script, new RegExp(`rm -f .*${name}`), `${name} unit file must not be removed`);
     assert.match(script, /refusing to delete protected unit/);
@@ -505,7 +530,8 @@ test('a leftover unit found outside the home config folder is removed where it a
 
   const leftover = result.leftovers.find(item => item.name === 'jul-old-job.service');
   assert.equal(leftover?.file, '/etc/systemd/user/jul-old-job.service');
-  assert.match(buildCleanScript(result), /rm -f '\/etc\/systemd\/user\/jul-old-job\.service'/);
+  // The user session lets go of the unit; root owns the file, so sudo removes it.
+  assert.match(buildCleanScript(result), /sudo -n rm -f '\/etc\/systemd\/user\/jul-old-job\.service'/);
 });
 
 test('a worktree a running card made without its name in the path stays', () => {
@@ -632,4 +658,45 @@ test('a unit whose file the system folder owns is stopped by the system, not the
   assert.equal(leftover.scope, 'system');
   const script = buildCleanScript(result);
   assert.match(script, /sudo -n systemctl disable --now 'julia-old-address\.service'/);
+});
+
+test('a cleanup given no answer from Studio deletes nothing', () => {
+  const script = buildCleanScript({
+    activeCards: [],
+    leftovers: [{ kind: 'scratch', name: '/home/ubuntu/.local/state/julia-scratch/ended', diskMb: 1, reason: 'Leftover scratch' }],
+  });
+
+  assert.doesNotMatch(script, /rm -rf/);
+  assert.match(script, /Studio unreachable: keeping everything until Studio answers/);
+});
+
+test('while a card runs, an old-setup unit is reported but not stopped', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    ...withOldSetupUnit(),
+    activeCards: ['JUL-417'],
+    runs: [{ card: 'JUL-417', status: 'running', ended: false }],
+  }));
+
+  assert.equal(result.leftovers.length, 0, JSON.stringify(result.leftovers));
+  assert.ok(result.kept.some(item => item.name === 'julia-old-address.service'), 'the unit waits for the card to finish');
+  assert.doesNotMatch(buildCleanScript(result), /disable --now/);
+});
+
+test('while a card runs, a Mastra Code file a session has not opened yet stays', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    ...withStrayMastracodeFile(),
+    activeCards: ['JUL-417'],
+    runs: [{ card: 'JUL-417', status: 'running', ended: false }],
+  }));
+
+  assert.equal(result.leftovers.length, 0, JSON.stringify(result.leftovers));
+  assert.ok(result.kept.some(item => item.name === '/home/ubuntu/.local/share/mastracode/session-store.duckdb'));
+});
+
+test('the Studio trace temp folder is named as in use, so a running Studio keeps it', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    flowStudioEntries: [{ name: 'trace.duckdb.tmp', path: '/home/ubuntu/.artifacts/flow/studio/trace.duckdb.tmp', diskMb: 12 }],
+  }));
+
+  assert.equal(result.leftovers.length, 0, JSON.stringify(result.leftovers));
 });

@@ -232,7 +232,8 @@ export function evaluateServerState(snapshot) {
     const allowedReason = IN_USE_SPEC.systemUnits.get(unit.name);
     if (allowedReason) {
       kept.push({ kind: 'system-unit', name: unit.name, rssMb: 0, diskMb: 0, usedBy: allowedReason });
-    } else if (unit.active === 'active' || unit.sub === 'running' || unit.name.startsWith('julia-') || unit.name.startsWith('jul') || unit.name.includes('mastra')) {
+    } else if (unit.name.startsWith('julia-') || unit.name.startsWith('jul') || unit.name.includes('mastra')) {
+      // A system service the machine itself needs is never ours to stop, whatever its state.
       if (activeCards.length > 0) {
         kept.push({
           kind: 'system-unit',
@@ -243,7 +244,14 @@ export function evaluateServerState(snapshot) {
         });
         continue;
       }
-      leftovers.push({ kind: 'system-unit', name: unit.name, rssMb: 0, diskMb: 0, reason: 'Not in active system unit allowlist' });
+      leftovers.push({
+        kind: 'system-unit',
+        name: unit.name,
+        file: snapshot.unitFiles?.[unit.name]?.file,
+        rssMb: 0,
+        diskMb: 0,
+        reason: 'Not in active system unit allowlist',
+      });
     }
   }
 

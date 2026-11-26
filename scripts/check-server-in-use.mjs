@@ -176,7 +176,9 @@ UNIT_DIRS = ('/home/ubuntu/.config/systemd/user', '/etc/systemd/user', '/etc/sys
              '/usr/lib/systemd/system', '/lib/systemd/system', '/usr/lib/systemd/user')
 unit_files = {}
 for unit_dir in UNIT_DIRS:
-    for root, _dirs, files in os.walk(unit_dir):
+    for root, dirs, files in os.walk(unit_dir):
+        # A .wants folder only holds links to units that live elsewhere.
+        dirs[:] = sorted(name for name in dirs if not name.endswith(('.wants', '.requires')))
         for name in files:
             if not name.endswith(('.service', '.timer')):
                 continue
@@ -305,8 +307,9 @@ export async function collectSnapshotAsync(options = {}) {
 // A delete target can come from the Studio run form, so it is quoted, never interpolated.
 const shellQuote = value => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
-export function buildCleanScript(evaluation, options = {}) {
-  if (evaluation.studioReachable === false) {
+export function buildCleanScript(evaluation) {
+  // Only an answer from Studio counts. A state with no answer is not a licence to delete.
+  if (evaluation.studioReachable !== true) {
     return "echo 'Studio unreachable: keeping everything until Studio answers' >&2";
   }
   if (evaluation.leftovers.length === 0) return '';
@@ -329,7 +332,9 @@ export function buildCleanScript(evaluation, options = {}) {
           break;
         }
         commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
-        commands.push(`rm -f ${shellQuote(item.file ?? `/home/ubuntu/.config/systemd/user/${item.name}`)} 2>/dev/null || true`);
+        // A unit file outside this account's own folder belongs to root, so the file needs sudo
+        // while the user session is still the one that has to let go of the unit.
+        commands.push(`${item.file && !item.file.startsWith('/home/ubuntu/.config/systemd/user/') ? 'sudo -n ' : ''}rm -f ${shellQuote(item.file ?? `/home/ubuntu/.config/systemd/user/${item.name}`)} 2>/dev/null || true`);
         break;
       case 'system-unit':
         commands.push(`sudo -n systemctl disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
