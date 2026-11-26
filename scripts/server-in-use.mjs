@@ -45,6 +45,7 @@ export const IN_USE_SPEC = {
     ['state.db-shm', 'Studio workflow state SHM'],
     ['trace.duckdb', 'Studio observability trace database'],
     ['trace.duckdb.wal', 'Studio observability trace WAL'],
+    ['trace.duckdb.tmp', 'Studio observability trace temp dir'],
     ['build', 'Studio scratch subfolder'],
     ['landing', 'Studio scratch subfolder'],
     ['reports', 'Studio scratch subfolder'],
@@ -122,12 +123,13 @@ export function oldSetupUnits(snapshot) {
     if (IN_USE_SPEC.userUnits.has(name) || IN_USE_SPEC.systemUnits.has(name)) continue;
     const timer = name.replace(/\.service$/, '.timer');
     if (!active.has(name) && !active.has(timer)) continue;
-    const text = `${definition.ExecStart ?? ''} ${definition.WorkingDirectory ?? ''} ${definition.dropins ?? ''}`;
+    const text = `${definition.ExecStart ?? ''} ${definition.WorkingDirectory ?? ''}`;
     // Whole paths only: /home/ubuntu/julia-dashboard-2 is not the old dashboard.
-    const tokens = text.split(/[\s:=]+/);
+    // systemd accepts quoted values, so the quotes are dropped before the path is compared.
+    const tokens = text.split(/[\s:=]+/).map(token => token.replace(/^["']|["']$/g, ''));
     const path = OLD_SETUP_PATHS.find(candidate => tokens.some(token => token === candidate || token.startsWith(`${candidate}/`)));
     if (!path) continue;
-    found.set(name, { path, scope: userNames.has(name) ? 'user' : 'system', file: definition.file });
+    found.set(name, { path, scope: definition.scope ?? (userNames.has(name) ? 'user' : 'system'), file: definition.file });
   }
   return found;
 }
@@ -149,7 +151,8 @@ const pathMentionsCard = (path, cards) => {
 };
 
 export function evaluateServerState(snapshot) {
-  const studioReachable = snapshot.studioReachable !== false;
+  // Only an answer from Studio counts as reachable. A snapshot without the key cannot say a build is idle.
+  const studioReachable = snapshot.studioReachable === true;
   const studioError = snapshot.studioError ?? null;
   const activeCards = [...new Set(snapshot.activeCards ?? [])].sort();
   const activeSet = new Set(activeCards.flatMap(cardFolderNames));
@@ -196,26 +199,27 @@ export function evaluateServerState(snapshot) {
       continue;
     }
     const failed = unit.active === 'failed' || unit.sub === 'failed';
-    if (activeCards.length > 0 && unit.active === 'active') {
+    const suspect = failed || unit.active === 'active' || unit.sub === 'running' || unit.sub === 'waiting'
+      || unit.name.startsWith('julia-') || unit.name.startsWith('jul');
+    if (!suspect) continue;
+    if (activeCards.length > 0) {
       kept.push({
         kind: 'user-unit',
         name: unit.name,
         rssMb: 0,
         diskMb: 0,
-        usedBy: `A card is running (${activeCards.join(', ')}); it may have started or moved this unit`,
+        usedBy: `A card is running (${activeCards.join(', ')}); a unit is not stopped under it`,
       });
       continue;
     }
-    if (unit.active === 'active' || unit.sub === 'running' || unit.sub === 'waiting' || failed || unit.name.startsWith('julia-') || unit.name.startsWith('jul')) {
-      leftovers.push({
-        kind: 'user-unit',
-        name: unit.name,
-        file: snapshot.unitFiles?.[unit.name]?.file,
-        rssMb: 0,
-        diskMb: 0,
-        reason: failed ? 'Failed transient/user unit' : 'Not in active user unit allowlist',
-      });
-    }
+    leftovers.push({
+      kind: 'user-unit',
+      name: unit.name,
+      file: snapshot.unitFiles?.[unit.name]?.file,
+      rssMb: 0,
+      diskMb: 0,
+      reason: failed ? 'Failed transient/user unit' : 'Not in active user unit allowlist',
+    });
   }
 
   for (const unit of snapshot.systemUnits ?? []) {
@@ -228,15 +232,17 @@ export function evaluateServerState(snapshot) {
     const allowedReason = IN_USE_SPEC.systemUnits.get(unit.name);
     if (allowedReason) {
       kept.push({ kind: 'system-unit', name: unit.name, rssMb: 0, diskMb: 0, usedBy: allowedReason });
-    } else if (activeCards.length > 0 && (unit.active === 'active' || unit.sub === 'running')) {
-      kept.push({
-        kind: 'system-unit',
-        name: unit.name,
-        rssMb: 0,
-        diskMb: 0,
-        usedBy: `A card is running (${activeCards.join(', ')}); it may have started or moved this unit`,
-      });
-    } else if (unit.name.startsWith('julia-') || unit.name.startsWith('jul') || unit.name.includes('mastra')) {
+    } else if (unit.active === 'active' || unit.sub === 'running' || unit.name.startsWith('julia-') || unit.name.startsWith('jul') || unit.name.includes('mastra')) {
+      if (activeCards.length > 0) {
+        kept.push({
+          kind: 'system-unit',
+          name: unit.name,
+          rssMb: 0,
+          diskMb: 0,
+          usedBy: `A card is running (${activeCards.join(', ')}); a unit is not stopped under it`,
+        });
+        continue;
+      }
       leftovers.push({ kind: 'system-unit', name: unit.name, rssMb: 0, diskMb: 0, reason: 'Not in active system unit allowlist' });
     }
   }
@@ -381,7 +387,9 @@ export function evaluateServerState(snapshot) {
     // A session that has the file open is using it, whatever the file is called. A folder can be written
     // without any of its files being held open at the moment of the scan, so folders stay too.
     const held = !allowedReason && (entry.isDir === true || fileIsHeld(entry.path));
-    if (allowedReason || held) {
+    // A file a running session has not opened yet looks unused at the moment of the scan.
+    const cardRunning = !allowedReason && activeCards.length > 0;
+    if (allowedReason || held || cardRunning) {
       kept.push({
         kind: 'mastracode',
         name: entry.path,
@@ -389,7 +397,9 @@ export function evaluateServerState(snapshot) {
         diskMb: entry.diskMb ?? 0,
         usedBy: allowedReason ?? (entry.isDir === true
           ? 'Mastra Code folder a live session may be writing into'
-          : 'A live Mastra Code session holds this file open'),
+          : cardRunning
+            ? `A card is running (${activeCards.join(', ')}); a session may open this file`
+            : 'A live Mastra Code session holds this file open'),
       });
     } else {
       leftovers.push({ kind: 'mastracode', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Unused Mastra Code trace, backup, or vector database' });

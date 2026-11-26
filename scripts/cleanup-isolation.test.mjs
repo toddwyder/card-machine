@@ -89,3 +89,47 @@ test('a cleanup leaves every planted file alone while Studio does not answer', a
 
   rmSync(root, { recursive: true, force: true });
 });
+
+test('the in-use rules keep a waiting card and hand the finished card folder to the cleanup', async () => {
+  const root = mkdtempSync(join(SCRATCH, 'cleanup-rules-'));
+  const waiting = join(root, 'cards', 'JUL-999');
+  const finished = join(root, 'cards', 'JUL-387');
+  mkdirSync(join(waiting, 'notes'), { recursive: true });
+  mkdirSync(join(finished, 'repo'), { recursive: true });
+  writeFileSync(join(waiting, 'notes', 'plan.md'), '# plan\n');
+  writeFileSync(join(finished, 'repo', 'old.mjs'), 'export const done = true;\n');
+
+  const { evaluateServerState } = await import('./server-in-use.mjs');
+  const { cleanLeftovers } = await import('./check-server-in-use.mjs');
+  const evaluation = evaluateServerState({
+    studioReachable: true,
+    activeCards: ['JUL-999'],
+    runs: [
+      { card: 'JUL-999', status: 'running', ended: false },
+      { card: 'JUL-387', status: 'success', ended: true },
+    ],
+    userUnits: [],
+    systemUnits: [],
+    processes: [],
+    checkouts: [],
+    worktrees: [],
+    scratchEntries: [
+      { name: 'JUL-999', path: waiting, diskMb: 1 },
+      { name: 'JUL-387', path: finished, diskMb: 1 },
+    ],
+    scratchCards: [],
+    builderArtifacts: [],
+    flowStudioEntries: [],
+    mastracodeEntries: [],
+    homeExtras: [],
+  });
+
+  assert.deepEqual(evaluation.leftovers.map(item => item.name), [finished]);
+  assert.ok(evaluation.kept.some(item => item.name === waiting));
+
+  cleanLeftovers(evaluation, { local: true });
+
+  assert.equal(existsSync(finished), false, 'the finished card folder is removed');
+  assert.ok(existsSync(join(waiting, 'notes', 'plan.md')), 'the waiting card keeps its notes');
+  rmSync(root, { recursive: true, force: true });
+});

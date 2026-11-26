@@ -138,6 +138,7 @@ test('warns and removes nothing when Studio stays silent after a wake attempt', 
 test('a card that starts between the cleanup and the reclaim keeps the caches', async () => {
   let step = 0;
   let reclaimed = false;
+  let cleaned = false;
   await runDailyResourceCheck({
     env: {},
     collect: () => {
@@ -153,7 +154,9 @@ test('a card that starts between the cleanup and the reclaim keeps the caches', 
       reclaimed = true;
       return { freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] };
     },
-    clean: () => {},
+    clean: () => {
+      cleaned = true;
+    },
     statfs: () => ({ bavail: 2_000_000, bfree: 2_000_000, blocks: 40_000_000, bsize: 1000 }),
     readMemoryMb: () => 4096,
     readLargestFolders: () => [],
@@ -161,6 +164,7 @@ test('a card that starts between the cleanup and the reclaim keeps the caches', 
   });
 
   assert.equal(reclaimed, false, 'the answer taken just before reclaim is the one that counts');
+  assert.equal(cleaned, false, 'the second look at Studio stops the cleanup as well');
 });
 
 test('waits for a quiet server before reclaiming while a card runs', async () => {
@@ -186,6 +190,7 @@ test('waits for a quiet server before reclaiming while a card runs', async () =>
 test('stops reclaiming when the second look says Studio went silent', async () => {
   let step = 0;
   let reclaimed = false;
+  let cleaned = false;
   await runDailyResourceCheck({
     env: {},
     collect: () => {
@@ -201,7 +206,9 @@ test('stops reclaiming when the second look says Studio went silent', async () =
       reclaimed = true;
       return { freeBeforeBytes: 0, freeAfterBytes: 0, steps: [] };
     },
-    clean: () => {},
+    clean: () => {
+      cleaned = true;
+    },
     statfs: () => ({ bavail: 2_000_000, bfree: 2_000_000, blocks: 40_000_000, bsize: 1000 }),
     readMemoryMb: () => 4096,
     readLargestFolders: () => [],
@@ -209,6 +216,7 @@ test('stops reclaiming when the second look says Studio went silent', async () =
   });
 
   assert.equal(reclaimed, false, 'a silent Studio means no reclaim at all');
+  assert.equal(cleaned, false, 'a Studio that stops answering says nothing is safe to delete');
 });
 
 test('a card that starts while the cleanup runs keeps the caches even when nothing needed cleaning', async () => {

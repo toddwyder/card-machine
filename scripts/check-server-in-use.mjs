@@ -180,7 +180,7 @@ for unit_dir in UNIT_DIRS:
         for name in files:
             if not name.endswith(('.service', '.timer')):
                 continue
-            entry = {'file': os.path.join(root, name), 'values': {}}
+            entry = {'file': os.path.join(root, name), 'values': {}, 'scope': 'user' if unit_dir.endswith('systemd/user') else 'system'}
             try:
                 for line in open(entry['file'], errors='replace'):
                     line = line.strip()
@@ -225,7 +225,7 @@ for unit_dir in reversed(UNIT_DIRS):
                     continue
 
 unit_files = {
-    name: dict({'file': entry['file']}, **{key: ' '.join(vals) for key, vals in entry['values'].items() if vals})
+    name: dict({'file': entry['file'], 'scope': entry['scope']}, **{key: ' '.join(vals) for key, vals in entry['values'].items() if vals})
     for name, entry in unit_files.items()
     if any(entry['values'].values())
 }

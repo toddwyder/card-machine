@@ -5,6 +5,7 @@ import { IN_USE_SPEC, evaluateServerState, formatDryRun, formatReport } from './
 
 function cleanSnapshot(overrides = {}) {
   return {
+    studioReachable: true,
     activeCards: [],
     userUnits: [
       { name: 'card-machine-studio.service', load: 'loaded', active: 'active', sub: 'running' },
@@ -536,7 +537,7 @@ test('a drop-in that points at the old setup makes its unit a leftover, and the 
       'julia-old-address.service': {
         file: '/home/ubuntu/.config/systemd/user/julia-old-address.service',
         ExecStart: '/usr/bin/node /home/ubuntu/card-machine/scripts/x.mjs',
-        dropins: '/home/ubuntu/julia-dashboard',
+        WorkingDirectory: '/home/ubuntu/julia-dashboard',
       },
     },
   }));
@@ -558,8 +559,10 @@ test('a unit a running card started is kept, and stopped once no card runs', () 
       { name: 'run-123', path: '/home/ubuntu/julia-builder/.artifacts/run-123', diskMb: 40 },
     ],
   };
+  snapshot.userUnits.push({ name: 'julia-card-timer.service', load: 'loaded', active: 'inactive', sub: 'dead' });
   const running = evaluateServerState(cleanSnapshot({ ...snapshot, activeCards: ['JUL-417'] }));
   assert.equal(running.leftovers.length, 0, JSON.stringify(running.leftovers));
+  assert.ok(running.kept.some(item => item.name === 'julia-card-timer.service'), 'a service its card has not started yet stays');
   assert.ok(running.kept.some(item => item.name === 'julia-card-service.service'));
   assert.ok(running.kept.some(item => item.name.endsWith('/run-123')));
 
@@ -583,4 +586,50 @@ test('a unit that runs from the old setup is still stopped while no card runs', 
   }));
 
   assert.ok(result.leftovers.some(item => item.kind === 'old-setup-unit' && item.name === 'julia-old-address.service'));
+});
+
+test('a unit whose drop-in writes the old path in quotes still counts as the old setup', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'julia-old-address.service', load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      'julia-old-address.service': {
+        file: '/home/ubuntu/.config/systemd/user/julia-old-address.service',
+        WorkingDirectory: '"/home/ubuntu/julia-dashboard"',
+      },
+    },
+  }));
+
+  const leftover = result.leftovers.find(item => item.kind === 'old-setup-unit');
+  assert.ok(leftover, JSON.stringify(result.leftovers));
+  assert.match(leftover.reason, /julia-dashboard/);
+});
+
+test('a unit whose file the system folder owns is stopped by the system, not the user session', () => {
+  const name = 'julia-old-address.service';
+  const result = evaluateServerState(cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name, load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    systemUnits: [
+      ...cleanSnapshot().systemUnits,
+      { name, load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      [name]: {
+        file: '/etc/systemd/system/julia-old-address.service',
+        scope: 'system',
+        ExecStart: '/usr/bin/node /home/ubuntu/julia-dashboard/server.js',
+      },
+    },
+  }));
+
+  const leftover = result.leftovers.find(item => item.kind === 'old-setup-unit');
+  assert.ok(leftover, JSON.stringify(result.leftovers));
+  assert.equal(leftover.scope, 'system');
+  const script = buildCleanScript(result);
+  assert.match(script, /sudo -n systemctl disable --now 'julia-old-address\.service'/);
 });
