@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { evaluateServerState, formatReport } from './server-in-use.mjs';
+import { buildCleanScript } from './check-server-in-use.mjs';
+import { IN_USE_SPEC, evaluateServerState, formatDryRun, formatReport } from './server-in-use.mjs';
 
 function cleanSnapshot(overrides = {}) {
   return {
@@ -170,4 +171,169 @@ test('when Studio is unreachable, every card worktree, copy, run folder, trace d
   assert.ok(result.kept.some(item => item.name.includes('command-code') && item.kind === 'process'));
   assert.ok(result.kept.some(item => item.name.includes('trace.duckdb') && item.kind === 'flow-studio'));
   assert.match(formatReport(result), /Studio unreachable: Connection refused; preserving card work/);
+});
+
+test('when Studio is silent nothing counts as a leftover, so no cleanup can remove anything in use', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    studioReachable: false,
+    studioError: 'Connection refused',
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'julia-studio-health.timer', load: 'loaded', active: 'active', sub: 'waiting' },
+      { name: 'jul324-start-machine.service', load: 'loaded', active: 'failed', sub: 'failed' },
+    ],
+    processes: [
+      ...cleanSnapshot().processes,
+      { pid: 999, rssKb: 230000, cmd: 'node stray-runner.js', serviceUnit: null },
+    ],
+    checkouts: [
+      ...cleanSnapshot().checkouts,
+      { path: '/home/ubuntu/julia-old', diskMb: 900 },
+    ],
+    scratchEntries: [
+      ...cleanSnapshot().scratchEntries,
+      { name: 'verify-julia', path: '/home/ubuntu/.local/state/julia-scratch/verify-julia', diskMb: 2200 },
+    ],
+    mastracodeEntries: [
+      ...cleanSnapshot().mastracodeEntries,
+      { name: 'traces', path: '/home/ubuntu/.local/share/mastracode/traces', diskMb: 2000 },
+    ],
+    homeExtras: [
+      { name: 'dist', path: '/home/ubuntu/dist', diskMb: 3 },
+    ],
+  }));
+
+  assert.equal(result.ok, false, 'a silent Studio is still reported as a problem');
+  assert.deepEqual(result.leftovers, []);
+  assert.equal(result.kept.length > 0, true);
+  assert.match(buildCleanScript(result), /Studio unreachable: keeping everything/);
+});
+
+test('keeps the memory recorder and Studio as in-use units, even when a unit reports failed', () => {  const snapshot = cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'memory-watch.service', load: 'loaded', active: 'active', sub: 'running' },
+      { name: 'card-machine-studio.service', load: 'loaded', active: 'failed', sub: 'failed' },
+    ],
+    checkouts: [
+      ...cleanSnapshot().checkouts,
+      { path: '/home/ubuntu/card-machine', diskMb: 5000 },
+      { path: '/home/ubuntu/card-machine-project', diskMb: 3200 },
+    ],
+  });
+
+  const result = evaluateServerState(snapshot);
+
+  assert.equal(result.ok, true);
+  for (const name of ['memory-watch.service', 'card-machine-studio.service']) {
+    assert.ok(
+      result.kept.some(item => item.kind === 'user-unit' && item.name === name),
+      `${name} must be kept in use`,
+    );
+  }
+  for (const path of ['/home/ubuntu/card-machine', '/home/ubuntu/card-machine-project']) {
+    assert.ok(result.kept.some(item => item.kind === 'checkout' && item.name === path), `${path} must be kept in use`);
+  }
+});
+
+test('never deletes the unit file of a unit that is in the in-use list', () => {
+  for (const name of ['memory-watch.service', 'card-machine-studio.service']) {
+    assert.ok(IN_USE_SPEC.userUnits.has(name), `${name} must stay in the in-use list`);
+    const script = buildCleanScript({ leftovers: [{ kind: 'user-unit', name }] });
+    assert.doesNotMatch(script, /disable --now/, `${name} must not be disabled`);
+    assert.doesNotMatch(script, new RegExp(`rm -f .*${name}`), `${name} unit file must not be removed`);
+    assert.match(script, /refusing to delete protected unit/);
+  }
+});
+
+test('a dry run lists kept services and what would be deleted, without cleaning', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'memory-watch.service', load: 'loaded', active: 'active', sub: 'running' },
+      { name: 'card-machine-studio.service', load: 'loaded', active: 'active', sub: 'running' },
+      { name: 'julia-studio-health.timer', load: 'loaded', active: 'active', sub: 'waiting' },
+    ],
+  }));
+
+  const report = formatDryRun(result, {
+    freeBytes: 5_000_000_000,
+    reclaim: [{ what: 'Docker build cache', sizeMb: 6000 }],
+  });
+
+  assert.match(report, /\[user-unit\] memory-watch\.service/);
+  assert.match(report, /\[user-unit\] card-machine-studio\.service/);
+  assert.match(report, /Would delete:/);
+  assert.match(report, /\[user-unit\] julia-studio-health\.timer: 0 MB disk/);
+  assert.match(report, /\[reclaim\] Docker build cache: 6000 MB/);
+  assert.match(report, /Free now: 5\.00 GB/);
+  assert.match(report, /Projected free after this cleanup: 11\.00 GB/);
+});
+
+test('a service that runs from the old setup fails the check and is removed by the next cleanup', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    systemUnits: [
+      ...cleanSnapshot().systemUnits,
+      { name: 'julia-studio-health.service', load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      'julia-studio-health.service': {
+        file: '/etc/systemd/system/julia-studio-health.service',
+        WorkingDirectory: '/home/ubuntu/julia-dashboard',
+        ExecStart: '/usr/bin/node scripts/health.mjs',
+      },
+    },
+  }));
+
+  assert.equal(result.ok, false);
+  const leftover = result.leftovers.find(item => item.kind === 'old-setup-unit');
+  assert.equal(leftover.name, 'julia-studio-health.service');
+  assert.equal(leftover.scope, 'system');
+  assert.match(leftover.reason, /old setup \(\/home\/ubuntu\/julia-dashboard\)/);
+
+  const script = buildCleanScript(result, { allowStudioRestart: false });
+  assert.match(script, /sudo -n systemctl disable --now "?julia-studio-health\.service"?/);
+  assert.match(script, /sudo -n rm -f \/etc\/systemd\/system\/"?julia-studio-health\.service"?/);
+});
+
+test('a timer wakes a service that runs from the old setup, so an inactive service still fails', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    systemUnits: [
+      ...cleanSnapshot().systemUnits,
+      { name: 'julia-dashboard-sweep.timer', load: 'loaded', active: 'active', sub: 'waiting' },
+      { name: 'julia-dashboard-sweep.service', load: 'loaded', active: 'inactive', sub: 'dead' },
+    ],
+    enabledUnits: ['julia-dashboard-sweep.timer'],
+    unitFiles: {
+      'julia-dashboard-sweep.service': {
+        file: '/etc/systemd/system/julia-dashboard-sweep.service',
+        WorkingDirectory: '/home/ubuntu/julia-dashboard',
+        ExecStart: '/usr/bin/node scripts/sweep.mjs',
+      },
+    },
+  }));
+
+  const caught = result.leftovers.filter(item => item.kind === 'old-setup-unit').map(item => item.name);
+  assert.deepEqual(caught, ['julia-dashboard-sweep.service']);
+});
+
+test('units another card owns are kept even when they run from the old setup', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    systemUnits: [
+      ...cleanSnapshot().systemUnits,
+      { name: 'julia-skills-update.timer', load: 'loaded', active: 'active', sub: 'waiting' },
+      { name: 'julia-skills-update.service', load: 'loaded', active: 'inactive', sub: 'dead' },
+    ],
+    unitFiles: {
+      'julia-skills-update.service': {
+        file: '/etc/systemd/system/julia-skills-update.service',
+        WorkingDirectory: '/home/ubuntu/julia-dashboard',
+        ExecStart: '/usr/bin/node scripts/julia-agents.mjs -- node scripts/update-skills.mjs',
+      },
+    },
+  }));
+
+  assert.equal(result.leftovers.filter(item => /julia-skills-update/.test(item.name)).length, 0);
+  const kept = result.kept.filter(item => /julia-skills-update/.test(item.name)).map(item => item.name);
+  assert.deepEqual(kept.sort(), ['julia-skills-update.service', 'julia-skills-update.timer']);
 });

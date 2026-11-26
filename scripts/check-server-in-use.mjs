@@ -2,7 +2,7 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
-import { evaluateServerState, formatReport } from './server-in-use.mjs';
+import { evaluateServerState, formatDryRun, formatReport, IN_USE_SPEC } from './server-in-use.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,6 +20,12 @@ def parse_units(cmd):
             out.append({'name': parts[0], 'load': parts[1], 'active': parts[2], 'sub': parts[3]})
     return out
 
+def unit_files_by_state(scope):
+    cmd = ['systemctl', 'list-unit-files', '--state=enabled', '--no-legend', '--plain']
+    if scope == 'user':
+        cmd.insert(1, '--user')
+    return [line.split()[0] for line in run(cmd).splitlines() if line.strip()]
+
 def du_entries(base):
     if not os.path.isdir(base):
         return []
@@ -34,7 +40,8 @@ def du_entries(base):
 active_cards = []
 studio_reachable = False
 studio_error = None
-studio_url = os.environ.get('FLOW_STUDIO_URL', 'http://127.0.0.1:4111').rstrip('/')
+studio_url = os.environ.get('FLOW_STUDIO_URL', 'http://127.0.0.1:4112').rstrip('/')
+studio_dir = os.environ.get('FLOW_STUDIO_DIR', '/home/ubuntu/card-machine/.artifacts/flow/studio')
 try:
     with urllib.request.urlopen(f'{studio_url}/api/workflows/card-path/runs', timeout=3) as resp:
         if resp.status != 200:
@@ -92,7 +99,7 @@ checkouts = []
 worktrees = []
 seen_wt = set()
 for name in sorted(os.listdir('/home/ubuntu')):
-    if not name.startswith('julia-'):
+    if not (name.startswith('julia-') or name.startswith('card-machine')):
         continue
     p = os.path.join('/home/ubuntu', name)
     if os.path.isdir(p):
@@ -116,8 +123,28 @@ for name in ('dist', '%ln'):
         mb = int(out.split()[0]) if out else 0
         home_extras.append({'name': name, 'path': p, 'diskMb': mb})
 
+unit_files = {}
+for unit_dir in ('/home/ubuntu/.config/systemd/user', '/etc/systemd/system', '/usr/lib/systemd/system', '/lib/systemd/system'):
+    for root, _dirs, files in os.walk(unit_dir):
+        for name in files:
+            if not name.endswith(('.service', '.timer')):
+                continue
+            entry = {'file': os.path.join(root, name)}
+            try:
+                for line in open(entry['file'], errors='replace'):
+                    line = line.strip()
+                    for key in ('ExecStart', 'WorkingDirectory'):
+                        if line.startswith(key + '='):
+                            entry[key] = line[len(key) + 1:]
+            except Exception:
+                continue
+            if len(entry) > 1:
+                unit_files.setdefault(name, entry)
+
 print(json.dumps({
     'studioReachable': studio_reachable,
+    'unitFiles': unit_files,
+    'enabledUnits': sorted(set(unit_files_by_state('user') + unit_files_by_state('system'))),
     'studioError': studio_error,
     'activeCards': active_cards,
     'userUnits': parse_units(['systemctl', '--user', 'list-units', '--type=service,timer', '--all', '--no-legend', '--plain']),
@@ -128,7 +155,8 @@ print(json.dumps({
     'scratchEntries': du_entries('/home/ubuntu/.local/state/julia-scratch'),
     'scratchCards': du_entries('/home/ubuntu/.local/state/julia-scratch/cards'),
     'builderArtifacts': du_entries('/home/ubuntu/julia-builder/.artifacts'),
-    'flowStudioEntries': du_entries('/home/ubuntu/julia-flow-repo/.artifacts/flow/studio'),
+    'flowStudioDir': studio_dir,
+    'flowStudioEntries': du_entries(studio_dir),
     'mastracodeEntries': du_entries('/home/ubuntu/.local/share/mastracode'),
     'homeExtras': home_extras,
 }))
@@ -184,7 +212,10 @@ export async function collectSnapshotAsync(options = {}) {
   return parseSnapshot(raw, options.extraActiveCards);
 }
 
-function buildCleanScript(evaluation, options = {}) {
+export function buildCleanScript(evaluation, options = {}) {
+  if (evaluation.studioReachable === false) {
+    return "echo 'Studio unreachable: keeping everything until Studio answers' >&2";
+  }
   if (evaluation.leftovers.length === 0) return '';
 
   const commands = [];
@@ -201,8 +232,21 @@ function buildCleanScript(evaluation, options = {}) {
         }
         break;
       case 'user-unit':
+        if (IN_USE_SPEC.userUnits.has(item.name)) {
+          commands.push(`echo 'refusing to delete protected unit ${item.name}' >&2`);
+          break;
+        }
         commands.push(`systemctl --user disable --now ${JSON.stringify(item.name)} 2>/dev/null || true`);
         commands.push(`rm -f /home/ubuntu/.config/systemd/user/${JSON.stringify(item.name)} 2>/dev/null || true`);
+        break;
+      case 'old-setup-unit':
+        if (item.scope === 'user') {
+          commands.push(`systemctl --user disable --now ${JSON.stringify(item.name)} 2>/dev/null || true`);
+          commands.push(`rm -f /home/ubuntu/.config/systemd/user/${JSON.stringify(item.name)} 2>/dev/null || true`);
+        } else if (item.scope === 'system') {
+          commands.push(`sudo -n systemctl disable --now ${JSON.stringify(item.name)} 2>/dev/null || true`);
+          commands.push(`sudo -n rm -f /etc/systemd/system/${JSON.stringify(item.name)} 2>/dev/null || true`);
+        }
         break;
       case 'trace-db':
         resetFlowStudio = true;
@@ -226,6 +270,9 @@ function buildCleanScript(evaluation, options = {}) {
     commands.push('systemctl --user daemon-reload');
     commands.push('systemctl --user reset-failed');
   }
+  if (commands.some(c => c.includes('sudo -n systemctl'))) {
+    commands.push('sudo -n systemctl daemon-reload');
+  }
   commands.push('git -C /home/ubuntu/julia-builder worktree prune 2>/dev/null || true');
   commands.push('git -C /home/ubuntu/julia-flow-repo worktree prune 2>/dev/null || true');
   commands.push('git -C /home/ubuntu/julia-mastra worktree prune 2>/dev/null || true');
@@ -234,11 +281,13 @@ function buildCleanScript(evaluation, options = {}) {
     commands.push(`for _i in $(seq 1 20); do alive=0; for p in ${killedPids.join(' ')}; do kill -0 "$p" 2>/dev/null && alive=1; done; [ "$alive" -eq 0 ] && break; sleep 0.1; done`);
   }
 
-  if (resetFlowStudio && options.allowStudioRestart !== false && evaluation.studioReachable !== false) {
-    commands.push('systemctl --user stop julia-studio.service');
-    commands.push('rm -f /home/ubuntu/julia-flow-repo/.artifacts/flow/studio/trace.duckdb /home/ubuntu/julia-flow-repo/.artifacts/flow/studio/trace.duckdb.wal');
-    commands.push('systemctl --user start julia-studio.service');
-    commands.push('for _i in $(seq 1 30); do curl -sf http://127.0.0.1:4111/api/workflows/card-path/runs >/dev/null 2>&1 && break; sleep 1; done');
+  if (resetFlowStudio && options.allowStudioRestart === true && evaluation.studioReachable !== false) {
+    const studioUrl = (options.studioUrl ?? process.env.FLOW_STUDIO_URL ?? 'http://127.0.0.1:4112').replace(/\/$/, '');
+    const studioDir = options.studioDir ?? process.env.FLOW_STUDIO_DIR ?? '/home/ubuntu/card-machine/.artifacts/flow/studio';
+    commands.push('systemctl --user stop card-machine-studio.service');
+    commands.push(`rm -f ${JSON.stringify(studioDir)}/trace.duckdb ${JSON.stringify(studioDir)}/trace.duckdb.wal`);
+    commands.push('systemctl --user start card-machine-studio.service');
+    commands.push(`for _i in $(seq 1 30); do curl -sf ${studioUrl}/api/workflows/card-path/runs >/dev/null 2>&1 && break; sleep 1; done`);
   }
 
   return commands.join('\n');
@@ -261,11 +310,12 @@ export async function cleanLeftoversAsync(evaluation, options = {}) {
 }
 
 function parseArgs(argv) {
-  const out = { clean: false, json: false, local: process.platform === 'linux', sshHost: 'ovh' };
+  const out = { clean: false, json: false, dryRun: false, local: process.platform === 'linux', sshHost: 'ovh' };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--clean') out.clean = true;
     else if (arg === '--json') out.json = true;
+    else if (arg === '--dry-run') out.dryRun = true;
     else if (arg === '--local') out.local = true;
     else if (arg === '--ssh' && argv[i + 1]) {
       out.local = false;
@@ -278,10 +328,18 @@ function parseArgs(argv) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = parseArgs(process.argv.slice(2));
   let evaluation = evaluateServerState(collectSnapshot(args));
-  if (args.clean && !evaluation.ok) {
-    cleanLeftovers(evaluation, args);
-    evaluation = evaluateServerState(collectSnapshot(args));
+  if (args.dryRun) {
+    const { planReclaim, readFreeBytes } = await import('./disk-reclaim.mjs');
+    const reclaim = planReclaim().map(step => ({ what: step.what, sizeMb: step.sizeMb }));
+    const report = formatDryRun(evaluation, { freeBytes: readFreeBytes(), reclaim });
+    console.log(args.json ? JSON.stringify({ evaluation, reclaim }, null, 2) : report);
+    process.exitCode = 0;
+  } else {
+    if (args.clean && !evaluation.ok) {
+      cleanLeftovers(evaluation, args);
+      evaluation = evaluateServerState(collectSnapshot(args));
+    }
+    console.log(args.json ? JSON.stringify(evaluation, null, 2) : formatReport(evaluation));
+    process.exitCode = evaluation.ok ? 0 : 1;
   }
-  console.log(args.json ? JSON.stringify(evaluation, null, 2) : formatReport(evaluation));
-  process.exitCode = evaluation.ok ? 0 : 1;
 }

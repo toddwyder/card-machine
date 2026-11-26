@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { DASHBOARD_CARD, TODD_PROFILE, sendCardAlert } from '../dashboard/lib/ping.js';
 import { DEFAULT_MIN_FREE_MEMORY_MB, readAvailableMemoryMb } from '../machine/flow/resources.mjs';
 import { cleanLeftovers, collectSnapshot } from './check-server-in-use.mjs';
+import { DEFAULT_TARGET_GB, reclaimDisk } from './disk-reclaim.mjs';
 import { evaluateServerState } from './server-in-use.mjs';
 
 function largestFolders() {
@@ -34,7 +35,8 @@ function largestFolders() {
 export async function runDailyResourceCheck({
   env = process.env,
   collect = () => collectSnapshot({ local: true }),
-  clean = evaluation => cleanLeftovers(evaluation, { local: true }),
+  clean = evaluation => cleanLeftovers(evaluation, { local: true, allowStudioRestart: true }),
+  reclaim = options => reclaimDisk(options),
   statfs = () => statfsSync('/'),
   readMemoryMb = () => readAvailableMemoryMb(),
   readLargestFolders = largestFolders,
@@ -44,6 +46,10 @@ export async function runDailyResourceCheck({
   if (!Number.isFinite(thresholdGb) || thresholdGb <= 0) {
     throw new Error('JULIA_DISK_THRESHOLD_GB must be a positive number');
   }
+  const targetGb = Number(env.JULIA_DISK_TARGET_GB ?? DEFAULT_TARGET_GB);
+  if (!Number.isFinite(targetGb) || targetGb <= 0) {
+    throw new Error('JULIA_DISK_TARGET_GB must be a positive number');
+  }
   const minMemoryMb = Number(env.JULIA_MEMORY_THRESHOLD_MB ?? DEFAULT_MIN_FREE_MEMORY_MB);
   if (!Number.isFinite(minMemoryMb) || minMemoryMb <= 0) {
     throw new Error('JULIA_MEMORY_THRESHOLD_MB must be a positive number');
@@ -52,6 +58,9 @@ export async function runDailyResourceCheck({
   const before = evaluateServerState(collect());
   if (before.leftovers.length > 0) clean(before);
   const after = before.leftovers.length > 0 ? evaluateServerState(collect()) : before;
+
+  const reclaimed = reclaim({ targetGb, statfs });
+  const reclaimedMb = Math.round((reclaimed.freeAfterBytes - reclaimed.freeBeforeBytes) / 1_000_000);
 
   const disk = statfs();
   const freeBytes = Number(disk.bavail) * Number(disk.bsize);
@@ -65,7 +74,8 @@ export async function runDailyResourceCheck({
     const usedPercent = Math.round(
       (100 * (Number(disk.blocks) - Number(disk.bfree))) / (Number(disk.blocks) - Number(disk.bfree) + Number(disk.bavail)),
     );
-    problems.push(`Disk: ${usedPercent}% used, ${gb(freeBytes)} GB available on / (threshold: ${thresholdGb} GB).`);
+    problems.push(`Disk: ${usedPercent}% used, ${gb(freeBytes)} GB available on / (threshold: ${thresholdGb} GB, target ${targetGb} GB).`);
+    problems.push(`Disk reclaim freed ${reclaimedMb} MB (target ${targetGb} GB): ${reclaimed.steps.filter(step => step.ran).map(step => `${step.id} ${step.freedMb} MB`).join(', ') || 'no steps ran'}.`);
   }
   if (memoryShort) {
     problems.push(`Memory: ${availableMemoryMb} MB available (threshold: ${minMemoryMb} MB).`);
@@ -78,7 +88,7 @@ export async function runDailyResourceCheck({
   }
 
   if (problems.length === 0) {
-    return { alert: false, freeBytes, thresholdGb, availableMemoryMb, minMemoryMb };
+    return { alert: false, freeBytes, thresholdGb, targetGb, reclaimedMb, availableMemoryMb, minMemoryMb };
   }
 
   const lines = [
@@ -96,6 +106,8 @@ export async function runDailyResourceCheck({
     alert: true,
     freeBytes,
     thresholdGb,
+    targetGb,
+    reclaimedMb,
     availableMemoryMb,
     minMemoryMb,
     problems,

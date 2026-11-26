@@ -1,5 +1,7 @@
 export const IN_USE_SPEC = {
   userUnits: new Map([
+    ['card-machine-studio.service', 'Card Machine Mastra Studio on :4112, which hosts the Run view'],
+    ['memory-watch.service', 'Server memory and cgroup recorder that the run start reads'],
     ['julia-studio.service', 'Live Mastra Studio on :4111'],
     ['datasette-viewer.service', 'Datasette read-only viewer on :8801 opened by Todd'],
     ['julia-disk-check.timer', 'Daily server resource check alerting Todd on JUL-276'],
@@ -30,6 +32,8 @@ export const IN_USE_SPEC = {
     ['tailscaled.service', 'Tailscale network daemon'],
   ]),
   checkouts: new Map([
+    ['/home/ubuntu/card-machine', 'card-machine-studio.service FLOW_REPO, julia-disk-check.service and the operator checkout'],
+    ['/home/ubuntu/card-machine-project', 'card-machine-studio.service FLOW_PROJECT_REPO, the target project checkout runs copy'],
     ['/home/ubuntu/julia-builder', 'julia-studio.service WorkingDirectory'],
     ['/home/ubuntu/julia-flow-repo', 'julia-studio.service FLOW_REPO and julia-disk-check.service'],
     ['/home/ubuntu/julia-dashboard', 'julia-dashboard.service checkout (main worktree)'],
@@ -94,6 +98,34 @@ function classifyProcess(proc, activeCards) {
   return { allowed: false, usedBy: null };
 }
 
+const OLD_SETUP_PATHS = ['/home/ubuntu/julia-dashboard', '/home/ubuntu/julia-flow-repo', '/home/ubuntu/julia-builder'];
+
+const UNITS_OWNED_ELSEWHERE = new Map([
+  ['julia-skills-update.service', 'Skill updates, owned by JUL-412'],
+  ['julia-skills-update.timer', 'Skill updates, owned by JUL-412'],
+  ['julia-update-report.service', 'Update report, owned by JUL-413'],
+  ['julia-update-report.timer', 'Update report, owned by JUL-413'],
+]);
+
+export function oldSetupUnits(snapshot) {
+  const active = new Set((snapshot.userUnits ?? [])
+    .concat(snapshot.systemUnits ?? [])
+    .filter(unit => unit.active === 'active' || unit.sub === 'running' || unit.sub === 'waiting')
+    .map(unit => unit.name));
+  for (const name of snapshot.enabledUnits ?? []) active.add(name);
+  const userNames = new Set((snapshot.userUnits ?? []).map(unit => unit.name));
+  const found = new Map();
+  for (const [name, definition] of Object.entries(snapshot.unitFiles ?? {})) {
+    const timer = name.replace(/\.service$/, '.timer');
+    if (!active.has(name) && !active.has(timer)) continue;
+    const text = `${definition.ExecStart ?? ''} ${definition.WorkingDirectory ?? ''}`;
+    const path = OLD_SETUP_PATHS.find(candidate => text.includes(candidate));
+    if (!path) continue;
+    found.set(name, { path, scope: userNames.has(name) ? 'user' : 'system' });
+  }
+  return found;
+}
+
 export function evaluateServerState(snapshot) {
   const studioReachable = snapshot.studioReachable !== false;
   const studioError = snapshot.studioError ?? null;
@@ -101,18 +133,42 @@ export function evaluateServerState(snapshot) {
   const activeSet = new Set(activeCards);
   const kept = [];
   const leftovers = [];
+  const fromOldSetup = oldSetupUnits(snapshot);
+
+  for (const [name, hit] of fromOldSetup) {
+    const ownedElsewhere = UNITS_OWNED_ELSEWHERE.get(name);
+    if (ownedElsewhere) {
+      kept.push({ kind: 'user-unit', name, rssMb: 0, diskMb: 0, usedBy: ownedElsewhere });
+    } else {
+      leftovers.push({ kind: 'old-setup-unit', name, scope: hit.scope, rssMb: 0, diskMb: 0, reason: `Runs from the old setup (${hit.path})` });
+    }
+  }
 
   for (const unit of snapshot.userUnits ?? []) {
-    const failed = unit.active === 'failed' || unit.sub === 'failed';
+    if (fromOldSetup.has(unit.name)) continue;
+    const ownedElsewhere = UNITS_OWNED_ELSEWHERE.get(unit.name);
+    if (ownedElsewhere) {
+      kept.push({ kind: 'user-unit', name: unit.name, rssMb: 0, diskMb: 0, usedBy: ownedElsewhere });
+      continue;
+    }
     const allowedReason = IN_USE_SPEC.userUnits.get(unit.name);
-    if (allowedReason && !failed) {
+    if (allowedReason) {
       kept.push({ kind: 'user-unit', name: unit.name, rssMb: 0, diskMb: 0, usedBy: allowedReason });
-    } else if (unit.active === 'active' || unit.sub === 'running' || unit.sub === 'waiting' || failed || unit.name.startsWith('julia-') || unit.name.startsWith('jul')) {
+      continue;
+    }
+    const failed = unit.active === 'failed' || unit.sub === 'failed';
+    if (unit.active === 'active' || unit.sub === 'running' || unit.sub === 'waiting' || failed || unit.name.startsWith('julia-') || unit.name.startsWith('jul')) {
       leftovers.push({ kind: 'user-unit', name: unit.name, rssMb: 0, diskMb: 0, reason: failed ? 'Failed transient/user unit' : 'Not in active user unit allowlist' });
     }
   }
 
   for (const unit of snapshot.systemUnits ?? []) {
+    if (fromOldSetup.has(unit.name)) continue;
+    const ownedElsewhere = UNITS_OWNED_ELSEWHERE.get(unit.name);
+    if (ownedElsewhere) {
+      kept.push({ kind: 'system-unit', name: unit.name, rssMb: 0, diskMb: 0, usedBy: ownedElsewhere });
+      continue;
+    }
     const allowedReason = IN_USE_SPEC.systemUnits.get(unit.name);
     if (allowedReason) {
       kept.push({ kind: 'system-unit', name: unit.name, rssMb: 0, diskMb: 0, usedBy: allowedReason });
@@ -225,6 +281,13 @@ export function evaluateServerState(snapshot) {
     }
   }
 
+  if (!studioReachable) {
+    for (const item of leftovers.splice(0)) {
+      const { reason, ...rest } = item;
+      kept.push({ ...rest, usedBy: `Studio unreachable; keeping this ${item.kind} until Studio answers` });
+    }
+  }
+
   const sum = (items, key) => Math.round(items.reduce((acc, item) => acc + (item[key] ?? 0), 0) * 10) / 10;
   return {
     ok: leftovers.length === 0 && studioReachable,
@@ -256,6 +319,33 @@ export function formatReport(evaluation) {
     for (const item of evaluation.leftovers) {
       lines.push(`- [${item.kind}] ${item.name} (${item.rssMb} MB RSS, ${item.diskMb} MB disk): ${item.reason}`);
     }
+  }
+  return lines.join('\n');
+}
+
+export function formatDryRun(evaluation, { freeBytes = null, projectedFreeBytes = null, reclaim = [] } = {}) {
+  const gb = bytes => (bytes / 1_000_000_000).toFixed(2);
+  const lines = [formatReport(evaluation), '', 'Kept:'];
+  for (const item of evaluation.kept) {
+    lines.push(`- [${item.kind}] ${item.name}: ${item.usedBy}`);
+  }
+  if (evaluation.leftovers.length > 0) {
+    lines.push('', 'Would delete:');
+    for (const item of evaluation.leftovers) {
+      lines.push(`- [${item.kind}] ${item.name}: ${item.diskMb} MB disk, ${item.rssMb} MB RSS`);
+    }
+  }
+  for (const entry of reclaim) {
+    lines.push(`- [reclaim] ${entry.what}: ${entry.sizeMb} MB`);
+  }
+  if (freeBytes !== null) {
+    const reclaimMb = reclaim.reduce((acc, entry) => acc + (entry.sizeMb ?? 0), 0);
+    const projected = projectedFreeBytes ?? freeBytes + reclaimMb * 1_000_000;
+    lines.push(
+      '',
+      `Free now: ${gb(freeBytes)} GB`,
+      `Projected free after this cleanup: ${gb(projected)} GB`,
+    );
   }
   return lines.join('\n');
 }

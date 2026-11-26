@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Julia server disk space and reclaim it
+Documentation=https://github.com/toddwyder/card-machine/blob/main/docs/agents/server-runbook.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/card-machine
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=FLOW_STUDIO_URL=http://127.0.0.1:4112
+Environment=FLOW_STUDIO_DIR=/home/ubuntu/card-machine/.artifacts/flow/studio
+ExecStart=/usr/local/bin/node /home/ubuntu/card-machine/scripts/julia-agents.mjs -- /usr/local/bin/node /home/ubuntu/card-machine/scripts/disk-check.mjs
