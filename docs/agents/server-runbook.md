@@ -118,6 +118,15 @@ User lingering is enabled, so user timers continue without a login. Inspect them
 The disk check alerts Todd on JUL-276 only when the machine fails to recover alone (below 10 GB free disk, below 1024 MB available memory, or leftovers remain after cleanup) through the Julia controller account.
 Inspect its result with `journalctl --user -u julia-disk-check.service`.
 
+The check wakes Studio before it judges anything: if the Studio address refuses, it starts `card-machine-studio.service` and waits up to 30 seconds for an answer. Studio runs under `mastra dev`, which restarts on every change under the repository, so a check that ran while a card was being written would otherwise see a silent server. While Studio stays silent the check deletes nothing at all: every item is kept with the reason `Studio unreachable`, and the run reports FAIL so the silence is visible. Cleanup decisions need Studio's answer because that answer is what says which cards are running, waiting or resumable.
+
+Each state file under `.artifacts/flow/studio` is kept, as are the checkouts and services the machine is built from. Files a live process holds open are kept too. A fixed list would go stale, so `scripts/server-in-use.mjs` asks: a user or system unit is in use when it is named in `IN_USE_SPEC`, a process is in use when it belongs to one of those units, to a terminal a person is using, or to a running card, and a folder is in use when a named current use points at it. An enabled unit whose `ExecStart` or `WorkingDirectory` points into the old setup is a leftover whatever its name.
+
+### The Run view service
+
+`card-machine-run-view.service` serves the Run view Todd opens at `https://ovh.tail91f394.ts.net/control`, from `dashboard/` on port 4314 with `FLOW_DIR` set to the Studio folder. It is a user unit, enabled, and restarts itself every five seconds if it stops. `scripts/server/card-machine-run-view.service` holds the copy to install, and `tailscale serve` maps the path to `http://127.0.0.1:4314/control` (the address needs the `/control` suffix, because the app serves its own base path).
+
+
 ### `/tmp/mc` belongs to Mastra Code and is never deleted
 
 Mastra Code keeps its cross-process signal sockets under `/tmp/mc`, one of them the lease socket
@@ -148,6 +157,8 @@ from it reads unknown. Run one traced session at a time; a session started while
 the one that loses its rows. `MASTRA_APP_DATA_DIR` moves the store with the rest of the data.
 
 Trace size is held by Mastra's storage retention (`retention.observability`), which `machine/flow/mastra.mjs` prunes at the end of every card.
+
+That retention does not hold Mastra Code's own store. Its stock install prunes rows on every session open (14 days, at most 50 000 rows a table), and DuckDB keeps the pages those rows used, so the file only grows: on 26 November it held 13.2 GB after eleven days, about 1.2 GB a day, and it was the measurement behind JUL-417's disk growth. Two facts follow. `scripts/disk-reclaim.mjs` deletes the store only when no process holds it open and it is over `MASTRACODE_TRACE_MAX_MB`, because deleting a file a session holds frees nothing until that session exits. And `observability.localTracing` in `~/.local/share/mastracode/settings.json` switches the store off entirely; it is `false` on this server, so a session started from now on records no local traces. The card-path trace in `.artifacts/flow/studio/trace.duckdb` is a different file and is untouched by either.
 
 Reading a trace file by hand needs a DuckDB client from somewhere that has one installed, because the
 repo root does not. The dashboard's dependencies carry one, and so does the installed program:

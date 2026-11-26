@@ -1,6 +1,9 @@
+import { fileIsHeld } from './disk-reclaim.mjs';
+
 export const IN_USE_SPEC = {
   userUnits: new Map([
     ['card-machine-studio.service', 'Card Machine Mastra Studio on :4112, which hosts the Run view'],
+    ['card-machine-run-view.service', 'The Run view Todd opens at /control over Tailscale, on :4314'],
     ['memory-watch.service', 'Server memory and cgroup recorder that the run start reads'],
     ['julia-studio.service', 'Live Mastra Studio on :4111'],
     ['datasette-viewer.service', 'Datasette read-only viewer on :8801 opened by Todd'],
@@ -271,8 +274,16 @@ export function evaluateServerState(snapshot) {
 
   for (const entry of snapshot.mastracodeEntries ?? []) {
     const allowedReason = IN_USE_SPEC.mastracodeFixed.get(entry.name);
-    if (allowedReason) {
-      kept.push({ kind: 'mastracode', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, usedBy: allowedReason });
+    // A session that has the file open is using it, whatever the file is called.
+    const held = !allowedReason && fileIsHeld(entry.path);
+    if (allowedReason || held) {
+      kept.push({
+        kind: 'mastracode',
+        name: entry.path,
+        rssMb: 0,
+        diskMb: entry.diskMb ?? 0,
+        usedBy: allowedReason ?? 'A live Mastra Code session holds this file open',
+      });
     } else {
       leftovers.push({ kind: 'mastracode', name: entry.path, rssMb: 0, diskMb: entry.diskMb ?? 0, reason: 'Unused Mastra Code trace, backup, or vector database' });
     }

@@ -337,3 +337,33 @@ test('units another card owns are kept even when they run from the old setup', (
   const kept = result.kept.filter(item => /julia-skills-update/.test(item.name)).map(item => item.name);
   assert.deepEqual(kept.sort(), ['julia-skills-update.service', 'julia-skills-update.timer']);
 });
+
+test('a Mastra Code file a live session holds open is kept, and a stray one is not', async () => {
+  const { openSync, closeSync, mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { homedir } = await import('node:os');
+  const dir = mkdtempSync(join(homedir(), '.local', 'state', 'julia-scratch', 'held-'));
+  const heldPath = join(dir, 'mastra-vectors.db');
+  writeFileSync(heldPath, 'open in this session');
+  const strayPath = join(dir, 'leftover.duckdb');
+  writeFileSync(strayPath, 'nobody holds this');
+  const fd = openSync(heldPath, 'r');
+
+  try {
+    const evaluation = evaluateServerState({
+      ...cleanSnapshot(),
+      mastracodeEntries: [
+        { name: 'mastra-vectors.db', path: heldPath, diskMb: 11 },
+        { name: 'leftover.duckdb', path: strayPath, diskMb: 5 },
+      ],
+    });
+    const held = evaluation.kept.find(item => item.name === heldPath);
+    assert.ok(held, 'the file a session holds open is kept');
+    assert.match(held.usedBy, /holds this file open/);
+    assert.equal(evaluation.leftovers.length, 1, 'the file nobody holds is the only leftover');
+    assert.equal(evaluation.leftovers[0].name, strayPath);
+  } finally {
+    closeSync(fd);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
