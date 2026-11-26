@@ -450,6 +450,21 @@ test('while a card runs, scratch folders and build output that carry no card nam
   assert.ok(result.kept.some(item => item.name === '/home/ubuntu/dist'));
 });
 
+test('a folder named like pr-42 is work, not an ended card run, so a running card keeps it', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    activeCards: ['JUL-417'],
+    scratchEntries: [
+      ...cleanSnapshot().scratchEntries,
+      { name: 'pr-42', path: '/home/ubuntu/.local/state/julia-scratch/pr-42', diskMb: 120 },
+      { name: 'build-2', path: '/home/ubuntu/.local/state/julia-scratch/build-2', diskMb: 40 },
+      { name: 'JUL-387', path: '/home/ubuntu/.local/state/julia-scratch/cards/JUL-387', diskMb: 90 },
+    ],
+  }));
+
+  assert.equal(result.leftovers.length, 1, JSON.stringify(result.leftovers));
+  assert.equal(result.leftovers[0].name, '/home/ubuntu/.local/state/julia-scratch/cards/JUL-387');
+});
+
 test('the same folders are leftovers again once no card runs', () => {
   const result = evaluateServerState(cleanSnapshot({
     scratchEntries: [
@@ -461,6 +476,25 @@ test('the same folders are leftovers again once no card runs', () => {
 
   assert.ok(result.leftovers.some(item => item.name.endsWith('dashboard-model-catalog-3f2a')));
   assert.ok(result.leftovers.some(item => item.name === '/home/ubuntu/dist'));
+});
+
+test('a leftover unit found outside the home config folder is removed where it actually lives', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name: 'jul-old-job.service', load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      'jul-old-job.service': {
+        file: '/etc/systemd/user/jul-old-job.service',
+        ExecStart: '/usr/bin/node /home/ubuntu/card-machine/scripts/x.mjs',
+      },
+    },
+  }));
+
+  const leftover = result.leftovers.find(item => item.name === 'jul-old-job.service');
+  assert.equal(leftover?.file, '/etc/systemd/user/jul-old-job.service');
+  assert.match(buildCleanScript(result), /rm -f '\/etc\/systemd\/user\/jul-old-job\.service'/);
 });
 
 test('a Studio database a live session writes is named in use, not left to a lucky file scan', () => {

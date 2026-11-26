@@ -212,7 +212,7 @@ function removeQuietly(path) {
     rmSync(path, { recursive: true, force: true });
     return 'removed';
   } catch (error) {
-    return `skipped ${path}: ${error.code ?? error.message}`;
+    return `skipped ${error.code ?? error.message}`;
   }
 }
 
@@ -293,7 +293,7 @@ export function planReclaim({
     sizeMb: playwrightStale.reduce((acc, path) => acc + duMb(path, run), 0),
     always: false,
     action: () => {
-      for (const path of playwrightStale) removeQuietly(path, true);
+      for (const path of playwrightStale) removeQuietly(path);
       return 'removed';
     },
   });
@@ -317,7 +317,7 @@ export function planReclaim({
     sizeMb: tmpStale.reduce((acc, path) => acc + duMb(path, run), 0),
     always: false,
     action: () => {
-      for (const path of tmpStale) removeQuietly(path, true);
+      for (const path of tmpStale) removeQuietly(path);
       return 'removed';
     },
   });

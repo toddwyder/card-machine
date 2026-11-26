@@ -202,8 +202,14 @@ for unit_dir in UNIT_DIRS:
                     for line in open(os.path.join(root, drop_in_dir, conf), errors='replace'):
                         line = line.strip()
                         for key in ('ExecStart', 'WorkingDirectory'):
-                            if line.startswith(key + '='):
-                                entry['dropins'] = (entry.get('dropins', '') + ' ' + line[len(key) + 1:]).strip()
+                            if not line.startswith(key + '='):
+                                continue
+                            value = line[len(key) + 1:].strip()
+                            # A drop-in replaces what it sets, and an empty assignment clears it, as systemd does.
+                            if value:
+                                entry['dropins'] = (entry.get('dropins', '') + ' ' + value).strip()
+                            else:
+                                entry.pop(key, None)
                 except Exception:
                     continue
 
@@ -305,7 +311,7 @@ export function buildCleanScript(evaluation, options = {}) {
           break;
         }
         commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
-        commands.push(`rm -f /home/ubuntu/.config/systemd/user/${shellQuote(item.name)} 2>/dev/null || true`);
+        commands.push(`rm -f ${shellQuote(item.file ?? `/home/ubuntu/.config/systemd/user/${item.name}`)} 2>/dev/null || true`);
         break;
       case 'system-unit':
         commands.push(`sudo -n systemctl disable --now ${shellQuote(item.name)} 2>/dev/null || true`);

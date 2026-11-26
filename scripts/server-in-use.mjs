@@ -136,7 +136,7 @@ export function oldSetupUnits(snapshot) {
 const cardFolderNames = card => [String(card), String(card).replace(/[^\w.-]+/g, '-')];
 
 // A run folder or scratch copy is named after its card; anything else with a name like that is an ended run.
-const looksLikeCardName = name => /^[A-Za-z][\w.]*-\d+$/.test(name);
+const looksLikeCardName = name => /^[A-Z][A-Z0-9]*-\d+$/.test(name);
 
 const pathMentionsCard = (path, cards) => {
   const segments = path.split('/');
@@ -183,7 +183,14 @@ export function evaluateServerState(snapshot) {
     }
     const failed = unit.active === 'failed' || unit.sub === 'failed';
     if (unit.active === 'active' || unit.sub === 'running' || unit.sub === 'waiting' || failed || unit.name.startsWith('julia-') || unit.name.startsWith('jul')) {
-      leftovers.push({ kind: 'user-unit', name: unit.name, rssMb: 0, diskMb: 0, reason: failed ? 'Failed transient/user unit' : 'Not in active user unit allowlist' });
+      leftovers.push({
+        kind: 'user-unit',
+        name: unit.name,
+        file: snapshot.unitFiles?.[unit.name]?.file,
+        rssMb: 0,
+        diskMb: 0,
+        reason: failed ? 'Failed transient/user unit' : 'Not in active user unit allowlist',
+      });
     }
   }
 

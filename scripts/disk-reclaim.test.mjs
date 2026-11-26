@@ -173,6 +173,23 @@ test('reclaimDisk falls through to caches and /tmp while free space is under the
   fixture.cleanup();
 });
 
+test('the /tmp sweep leaves systemd private folders alone', () => {
+  const root = mkdtempSync(join(tmpdir(), 'reclaim-tmp-'));
+  const privateDir = join(root, 'systemd-private-abc-systemd-logind.service-xyz');
+  mkdirSync(privateDir, { recursive: true });
+  writeFileSync(join(privateDir, 'bus'), 'x');
+  const stale = join(root, 'old-file');
+  writeFileSync(stale, 'x');
+  const run = (command, args) => (command === 'du' ? '1\t' + args.at(-1) + '\n' : '');
+
+  const steps = planReclaim({ run, docker: false, cacheDirs: [], tmpDir: root, now: Date.now() + 48 * 60 * 60 * 1000 });
+  steps.find(step => step.id === 'tmp-old-entries').action();
+
+  assert.equal(existsSync(privateDir), true, 'a private mount namespace folder stays');
+  assert.equal(existsSync(stale), false, 'an ordinary old entry goes');
+  rmSync(root, { recursive: true, force: true });
+});
+
 test('the /tmp sweep never touches the Mastra Code socket folder', () => {
   const root = mkdtempSync(join(tmpdir(), 'reclaim-tmp-'));
   const keep = join(root, 'mc');
