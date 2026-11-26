@@ -314,6 +314,14 @@ export function buildCleanScript(evaluation) {
   }
   if (evaluation.leftovers.length === 0) return '';
 
+// A unit file outside this account's own folder belongs to root, so the file needs sudo
+  // while the user session is still the one that has to let go of the unit.
+  const removeUserUnitFile = (item) => {
+    const file = item.file ?? `/home/ubuntu/.config/systemd/user/${item.name}`;
+    const sudo = item.file && !item.file.startsWith('/home/ubuntu/.config/systemd/user/') ? 'sudo -n ' : '';
+    return `${sudo}rm -f ${shellQuote(file)} 2>/dev/null || true`;
+  };
+
   const commands = [];
 
   const killedPids = [];
@@ -332,11 +340,13 @@ export function buildCleanScript(evaluation) {
           break;
         }
         commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
-        // A unit file outside this account's own folder belongs to root, so the file needs sudo
-        // while the user session is still the one that has to let go of the unit.
-        commands.push(`${item.file && !item.file.startsWith('/home/ubuntu/.config/systemd/user/') ? 'sudo -n ' : ''}rm -f ${shellQuote(item.file ?? `/home/ubuntu/.config/systemd/user/${item.name}`)} 2>/dev/null || true`);
+        commands.push(removeUserUnitFile(item));
         break;
       case 'system-unit':
+        if (IN_USE_SPEC.systemUnits.has(item.name)) {
+          commands.push(`echo ${shellQuote(`refusing to delete protected unit ${item.name}`)} >&2`);
+          break;
+        }
         commands.push(`sudo -n systemctl disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
         commands.push(`sudo -n rm -f ${shellQuote(item.file ?? `/etc/systemd/system/${item.name}`)} 2>/dev/null || true`);
         break;
@@ -347,7 +357,7 @@ export function buildCleanScript(evaluation) {
         }
         if (item.scope === 'user') {
           commands.push(`systemctl --user disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
-          commands.push(`rm -f ${shellQuote(item.file ?? `/home/ubuntu/.config/systemd/user/${item.name}`)} 2>/dev/null || true`);
+          commands.push(removeUserUnitFile(item));
         } else if (item.scope === 'system') {
           commands.push(`sudo -n systemctl disable --now ${shellQuote(item.name)} 2>/dev/null || true`);
           commands.push(`sudo -n rm -f ${shellQuote(item.file ?? `/etc/systemd/system/${item.name}`)} 2>/dev/null || true`);

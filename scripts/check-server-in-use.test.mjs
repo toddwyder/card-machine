@@ -700,3 +700,86 @@ test('the Studio trace temp folder is named as in use, so a running Studio keeps
 
   assert.equal(result.leftovers.length, 0, JSON.stringify(result.leftovers));
 });
+
+test('a service the machine itself needs is never listed for removal, whatever its state', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    systemUnits: [
+      { name: 'apparmor.service', load: 'loaded', active: 'active', sub: 'running' },
+      { name: 'blk-availability.service', load: 'loaded', active: 'inactive', sub: 'dead' },
+      { name: 'apport.service', load: 'loaded', active: 'failed', sub: 'failed' },
+    ],
+  }));
+
+  const machineUnits = result.leftovers.filter(item => !item.name.startsWith('julia-') && !item.name.includes('mastra'));
+  assert.deepEqual(machineUnits, [], JSON.stringify(machineUnits));
+  assert.doesNotMatch(buildCleanScript(result), /apparmor|blk-availability|apport/);
+});
+
+test('a system unit a running card started is kept, and stopped once no card runs', () => {
+  const name = 'julia-card-system.service';
+  const snapshot = {
+    systemUnits: [
+      ...cleanSnapshot().systemUnits,
+      { name, load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: { [name]: { file: `/etc/systemd/system/${name}`, scope: 'system', ExecStart: '/usr/bin/node scripts/x.mjs' } },
+  };
+
+  const running = evaluateServerState(cleanSnapshot({
+    ...snapshot,
+    activeCards: ['JUL-417'],
+    runs: [{ card: 'JUL-417', status: 'running', ended: false }],
+  }));
+  assert.equal(running.leftovers.length, 0, JSON.stringify(running.leftovers));
+  assert.ok(running.kept.some(item => item.name === name));
+
+  const idle = evaluateServerState(cleanSnapshot(snapshot));
+  const leftover = idle.leftovers.find(item => item.name === name);
+  assert.ok(leftover, JSON.stringify(idle.leftovers));
+  assert.equal(leftover.kind, 'system-unit');
+});
+
+test('an old setup unit whose file sits in the system user folder asks root to remove it', () => {
+  const name = 'julia-old-address.service';
+  const result = evaluateServerState(cleanSnapshot({
+    userUnits: [
+      ...cleanSnapshot().userUnits,
+      { name, load: 'loaded', active: 'active', sub: 'running' },
+    ],
+    unitFiles: {
+      [name]: {
+        file: `/etc/systemd/user/${name}`,
+        scope: 'user',
+        WorkingDirectory: '/home/ubuntu/julia-dashboard',
+      },
+    },
+  }));
+
+  const leftover = result.leftovers.find(item => item.name === name);
+  assert.ok(leftover, JSON.stringify(result.leftovers));
+  assert.equal(leftover.scope, 'user');
+  const script = buildCleanScript(result);
+  assert.match(script, /systemctl --user disable --now 'julia-old-address\.service'/);
+  assert.match(script, /sudo -n rm -f '\/etc\/systemd\/user\/julia-old-address\.service'/);
+});
+
+test('a unit in the in-use list is not removable even if the scan calls it a system leftover', () => {
+  const script = buildCleanScript({
+    studioReachable: true,
+    activeCards: [],
+    leftovers: [{ kind: 'system-unit', name: 'tailscaled.service', reason: 'Not in active system unit allowlist' }],
+  });
+
+  assert.doesNotMatch(script, /disable --now 'tailscaled\.service'/);
+  assert.match(script, /refusing to delete protected unit tailscaled\.service/);
+});
+
+test('a unit file in this account folder is removed without sudo', () => {
+  const result = evaluateServerState(cleanSnapshot({
+    ...withOldSetupUnit(),
+  }));
+
+  const script = buildCleanScript(result);
+  assert.match(script, /(?<!sudo -n )rm -f '\/home\/ubuntu\/\.config\/systemd\/user\/julia-old-address\.service'/);
+  assert.doesNotMatch(script, /sudo -n rm -f '\/home\/ubuntu\/\.config/);
+});
