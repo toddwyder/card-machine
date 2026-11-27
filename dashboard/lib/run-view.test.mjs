@@ -37,7 +37,34 @@ test('the stage changes when the session moves to another playbook', () => {
   const feature = [step('feature', 1, 'completed'), step('feature', 2, 'completed')];
   assert.equal(fold({ tasks: feature }).run.stage, 'Feature');
   const shipping = [...feature, step('shipping', 1, 'in_progress'), step('shipping', 2, 'pending')];
-  assert.equal(fold({ tasks: shipping }).run.stage, 'Shipping');
+  const steps = fold({ tasks: shipping }).run.steps;
+  assert.deepEqual(steps.list.map(x => x.id), ['shipping-1', 'shipping-2']);
+  assert.equal(steps.total, 2);
+  assert.equal(steps.index, 1);
+  assert.equal(steps.stage, 'Shipping');
+});
+
+test('a fresh playbook follows a fully completed playbook', () => {
+  const tasks = [
+    step('feature', 1, 'completed'),
+    step('feature', 2, 'completed'),
+    step('opening-a-pr', 1, 'pending'),
+    step('opening-a-pr', 2, 'pending'),
+  ];
+  const steps = runSteps(tasks);
+  assert.equal(steps.stage, 'Opening a PR');
+  assert.equal(steps.index, 1);
+  assert.equal(steps.total, 2);
+  assert.deepEqual(steps.list.map(x => x.id), ['opening-a-pr-1', 'opening-a-pr-2']);
+});
+
+test('an in-progress step in an earlier playbook wins', () => {
+  const tasks = [step('feature', 1, 'completed'), step('feature', 2, 'in_progress'), step('shipping', 1, 'pending')];
+  const steps = runSteps(tasks);
+  assert.equal(steps.stage, 'Feature');
+  assert.equal(steps.total, 2);
+  assert.equal(steps.index, 2);
+  assert.deepEqual(steps.list.map(x => x.id), ['feature-1', 'feature-2']);
 });
 
 test('steps read in playbook order, and Opening a PR is the last step of Feature', () => {

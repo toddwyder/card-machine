@@ -74,34 +74,38 @@ function pillText(text) {
 }
 
 /**
- * The run's steps: the session's own to-do list in playbook order, with the step the run is on
- * and the playbook that step belongs to. This is the only place a step becomes a number, a word
- * or a pill, so the stage's name, the step's name and "step N of M" can never disagree.
+ * The run's steps: the current playbook's steps from the session's own to-do list, in playbook
+ * order, with the step the run is on. This is the only place a step becomes a number, a word or
+ * a pill, so the stage's name, the step's name and "step N of M" can never disagree.
  */
 export function runSteps(tasks) {
-  const ordered = (tasks ?? [])
+  const parsed = (tasks ?? [])
     .map((task, position) => ({ task, position, match: STEP_ID.exec(String(task?.id ?? '')) }))
     .filter(row => row.match)
-    .sort((a, b) => Number(a.match[2]) - Number(b.match[2]) || a.position - b.position);
-  const list = ordered.map(({ task, match }) => {
-    const title = String(task.content ?? '').trim();
-    return {
-      id: String(task.id ?? ''),
-      title,
-      short: pillText(title),
-      status: STEP_STATUS[task.status] ?? 'pending',
-      playbook: match[1],
-      order: Number(match[2]),
-    };
-  });
-  const running = list.findIndex(step => step.status === 'in_progress');
+    .map(({ task, position, match }) => {
+      const title = String(task.content ?? '').trim();
+      return {
+        position,
+        step: {
+          id: String(task.id ?? ''),
+          title,
+          short: pillText(title),
+          status: STEP_STATUS[task.status] ?? 'pending',
+          playbook: match[1],
+          order: Number(match[2]),
+        },
+      };
+    });
+  const ordered = parsed.toSorted((a, b) => a.step.order - b.step.order || a.position - b.position);
+  const running = ordered.find(row => row.step.status === 'in_progress');
+  const playbook = running?.step.playbook ?? parsed.at(-1)?.step.playbook;
+  const list = ordered.filter(row => row.step.playbook === playbook).map(row => row.step);
+  const runningIndex = list.findIndex(step => step.status === 'in_progress');
   const passed = list.filter(step => step.status === 'completed').length;
   // With nothing in hand, the run is on the next step it has not passed, so a fresh run reads
   // "step 1 of 8" and a finished one reads its last step rather than none.
-  const index = list.length === 0 ? null : running >= 0 ? running + 1 : Math.min(list.length, passed + 1);
-  const current = running >= 0 ? list[running] : list[index - 1] ?? null;
-  // The stage is the playbook of the step the run is on, so it changes when the session moves on
-  // to another playbook's steps.
+  const index = list.length === 0 ? null : runningIndex >= 0 ? runningIndex + 1 : Math.min(list.length, passed + 1);
+  const current = list[index - 1] ?? null;
   const stage = current ? playbookName(current.playbook) : '';
   return { list, index, total: list.length, current, stage };
 }
