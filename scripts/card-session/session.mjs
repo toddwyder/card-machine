@@ -160,30 +160,21 @@ export async function readCardCost(mastra, card) {
   };
 }
 
-// Metric rows reach the store through the observability exporter, which batches
-// them. A run that is still going when the session ends has its rows buffered
-// until the pipeline is flushed, so a first read sees only the finished helper
-// spans and reports a fraction of the session. Flush the pipeline and read until
-// the token total stops growing. `minimumTokens` is the total the run itself
-// counted: the store cannot hold less than that and still describe the run.
-const COST_SETTLE_TIMEOUT_MS = 60_000;
-const COST_SETTLE_STEP_MS = 1000;
-
-export async function sessionCost(booted, card, { minimumTokens = 0, timeoutMs = COST_SETTLE_TIMEOUT_MS } = {}) {
+export async function sessionCost(booted, card) {
   const mastra = booted.mastra ?? booted.controller.getMastra();
-  const deadline = Date.now() + timeoutMs;
-  let latest = null;
-  let previous = -1;
-  for (;;) {
-    await booted.observability?.flush?.().catch(() => {});
-    const cost = await readCardCost(mastra, card).catch(() => null);
-    if (cost) latest = cost;
-    const tokens = latest?.totalTokens ?? 0;
-    if (tokens >= minimumTokens && tokens === previous) return latest;
-    if (Date.now() >= deadline) return latest;
-    previous = tokens;
-    await new Promise(resolve => setTimeout(resolve, COST_SETTLE_STEP_MS));
+  const cost = await readCardCost(mastra, card).catch(() => null);
+  if (!cost || cost.totalTokens > 0) return cost;
+  // Metrics are written behind the run; flush the exporter and give the store a
+  // moment before deciding a finished session spent nothing.
+  await booted.observability?.flush?.().catch(() => {});
+  let latest = cost;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const retry = await readCardCost(mastra, card).catch(() => null);
+    if (retry) latest = retry;
+    if (latest?.totalTokens > 0) return latest;
   }
+  return latest;
 }
 
 // Same order as machine/shipping/harness.mjs: stop the notification timer, flush

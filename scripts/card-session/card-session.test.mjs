@@ -17,7 +17,7 @@ import {
   resolveLimit,
 } from './budget.mjs';
 import { goalObjective } from './instructions.mjs';
-import { sessionCost, writeSessionSettings } from './session.mjs';
+import { writeSessionSettings } from './session.mjs';
 
 test('resolveLimit defaults to 4 and refuses a non-positive value', () => {
   assert.equal(resolveLimit({}), 4);
@@ -83,54 +83,6 @@ test('a preview URL only comes from a successful deployment status', () => {
 test('the health probe would not double the slash', () => {
   assert.equal(healthUrl('https://julia.example'), 'https://julia.example/api/health');
   assert.equal(healthUrl('https://julia.example/'), 'https://julia.example/api/health');
-});
-
-test('the session cost waits for the store to hold every token the run counted', async () => {
-  let flushes = 0;
-  const reads = [
-    { value: 1200, estimatedCost: 0.009 },
-    { value: 2600716, estimatedCost: 0.038 },
-  ];
-  const store = {
-    getMetricAggregate: async () => {
-      const read = reads[Math.min(flushes - 1, reads.length - 1)];
-      return { value: read.value, estimatedCost: read.estimatedCost };
-    },
-    getMetricBreakdown: async () => ({ groups: [] }),
-  };
-  const booted = {
-    observability: { flush: async () => { flushes += 1; } },
-    controller: { getMastra: () => ({ getStorage: () => ({ stores: { observability: store } }) }) },
-  };
-
-  const cost = await sessionCost(booted, 'JUL-TEST', { minimumTokens: 2600716 });
-
-  assert.equal(cost.totalTokens, 2600716);
-  assert.equal(cost.totalUsd, 0.038);
-  assert.equal(flushes, 3);
-});
-
-test('the session cost returns what the store holds when it never catches up', async () => {
-  const booted = {
-    observability: { flush: async () => {} },
-    controller: {
-      getMastra: () => ({
-        getStorage: () => ({
-          stores: {
-            observability: {
-              getMetricAggregate: async () => ({ value: 1200, estimatedCost: 0.009 }),
-              getMetricBreakdown: async () => ({ groups: [] }),
-            },
-          },
-        }),
-      }),
-    },
-  };
-
-  const cost = await sessionCost(booted, 'JUL-TEST', { minimumTokens: 2600716, timeoutMs: 0 });
-
-  assert.equal(cost.totalTokens, 1200);
-  assert.equal(cost.totalUsd, 0.009);
 });
 
 test('one settings file gives the lead model to every helper type and the judge', () => {

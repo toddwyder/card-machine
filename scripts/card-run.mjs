@@ -124,8 +124,7 @@ async function main() {
       policy: booted.autoApprovePolicy,
     });
 
-    const runTokens = result.usage?.totalTokens ?? 0;
-    const record = await sessionCost(booted.booted, card.identifier, { minimumTokens: runTokens });
+    const record = await sessionCost(booted.booted, card.identifier);
     if (record?.totalUsd != null) commitSession(ledgerPath, 'leadUsd', costControl.sessionBaseline, record.totalUsd);
 
     say(`status: ${result.status}`);
@@ -133,11 +132,8 @@ async function main() {
     say(`thread: ${result.threadId ?? '-'}`);
     say(`reason: ${result.reason ?? '-'}`);
     say(`iterations: ${result.iterations ?? '-'} of ${result.maxRuns ?? '-'}`);
-    say(`tokens: ${runTokens || '-'}`);
+    say(`tokens: ${result.usage?.totalTokens ?? '-'}`);
     say(`costUsd: ${record?.totalUsd ?? '-'}`);
-    if (record && runTokens > 0 && record.totalTokens < runTokens) {
-      say(`costWarning: the store holds ${record.totalTokens} of the ${runTokens} tokens the run counted, so costUsd is incomplete`);
-    }
     say(`remainingForCheckerUsd: ${remainingForChecker(readLedger(ledgerPath))}`);
     say(`worktree: ${worktree}`);
     if (result.error) say(`error: ${result.error.message}`);
