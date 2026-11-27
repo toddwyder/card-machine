@@ -6,14 +6,19 @@ After=card-machine-studio.service
 [Service]
 Type=simple
 WorkingDirectory=/home/ubuntu/card-machine/dashboard
+Environment=HOME=/home/ubuntu
 Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=NODE_ENV=production
 Environment=DASHBOARD_HOST=127.0.0.1
 Environment=DASHBOARD_PORT=4314
 Environment=FLOW_DIR=/home/ubuntu/card-machine/.artifacts/flow/studio
-ExecStart=/usr/local/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 4314
+Environment=FLOW_REPO=/home/ubuntu/card-machine
+Environment=FLOW_PROJECT_REPO=/home/ubuntu/julia-flow-repo
+Environment=FLOW_PROJECT_GITHUB_REPO=toddwyder/julia-next
+ExecStart=/usr/local/bin/node /home/ubuntu/card-machine/scripts/julia-agents.mjs -- /usr/local/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 4314
 Restart=always
 RestartSec=5
+TimeoutStopSec=30
 
 [Install]
 WantedBy=default.target
