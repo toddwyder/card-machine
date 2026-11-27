@@ -1,365 +1,152 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { foldRunView, helperName, readLiveEvents } from './run-view.mjs';
-import { LIVE_TYPES, liveType } from '../../machine/flow/live-schema.mjs';
-import { SCENES, writeScene } from '../scripts/live-scenes.mjs';
-import { createLiveFeed, liveFileIn, stageEvents } from '../../machine/flow/live.mjs';
+import { foldRunView, playbookName, runSteps } from './run-view.mjs';
 
-const SETTINGS = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokens: 100000 };
-const NOW = 1795315660000;
+const settings = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokens: 100000 };
+const now = Date.parse('2026-11-27T12:00:00Z');
 
-// Every log a test reads comes out of the machine's own writer, never from a hand-written file.
-const sceneDir = scene => mkdtempSync(join(tmpdir(), `run-view-${scene}-`));
-const sceneLog = (scene, over = {}) => readFileSync(writeScene(sceneDir(scene), scene, { now: NOW, ...over }), 'utf8');
-const eventsOf = (scene, over) => readLiveEvents(sceneLog(scene, over));
+const step = (playbook, order, status, content = `Step ${order}`) => ({ id: `${playbook}-${order}`, content, status });
 
-const freshSubscription = (id, name, windows) => ({ id, name, status: 'fresh', readAt: NOW, windows });
-const fold = (over = {}) => foldRunView({ settings: SETTINGS, now: NOW, events: [], subscriptions: [], ...over });
-
-test('a running card shows where it is, what it has used, and who is working', () => {
-  const snapshot = fold({ events: eventsOf('running') });
-  assert.equal(snapshot.run.status, 'running');
-  assert.equal(snapshot.run.title, "Mission control's Run view");
-  assert.equal(snapshot.run.stage.id, 'flow-build');
-  assert.equal(snapshot.run.stage.label, 'Build the slices');
-  assert.equal(snapshot.run.step, 'Architect the shape');
-  assert.deepEqual(snapshot.run.stages.map(stage => stage.id), ['start', 'start-build', 'flow-build']);
-  assert.deepEqual(snapshot.run.stages.map(stage => stage.status), ['done', 'done', 'started']);
-  assert.equal(snapshot.run.usage.tokens, 82400);
-  assert.equal(snapshot.run.runningMs, NOW - snapshot.run.startedAt);
-  assert.equal(snapshot.run.runningMs > 0, true);
-  assert.deepEqual(snapshot.warnings, []);
+const session = (overrides = {}) => ({
+  card: 'JUL-419',
+  title: 'Todd presses Start on a card',
+  startedAt: now - 60000,
+  endedAt: null,
+  status: 'running',
+  threadId: 'thread-1',
+  tasks: null,
+  tokens: 0,
+  largestStepTokens: 0,
+  lastActivityAt: now - 1000,
+  ...overrides,
 });
 
-test('every event the writer emits is a type the shared schema and the fold know', () => {
-  const lines = [...readLiveEvents(sceneLog('running')), ...readLiveEvents(sceneLog('finished'))];
-  assert.equal(lines.length > 0, true);
-  const written = new Set(lines.map(event => liveType(event)));
-  assert.deepEqual([...written].sort(), [...LIVE_TYPES].sort());
+const fold = overrides => foldRunView({ session: session(overrides), subscriptions: [], settings, now });
+
+test('the stage is the playbook of the step the run is on', () => {
+  const tasks = [step('feature', 1, 'completed'), step('feature', 2, 'in_progress'), step('feature', 3, 'pending')];
+  assert.deepEqual(runSteps(tasks).list.map(x => x.id), ['feature-1', 'feature-2', 'feature-3']);
+  const steps = runSteps(tasks);
+  assert.equal(steps.stage, 'Feature');
+  assert.equal(steps.index, 2);
+  assert.equal(steps.total, 3);
+  assert.equal(steps.current.title, 'Step 2');
 });
 
-test('each helper is its own card and its actions run newest first, one per call', () => {
-  const [lead, helper] = fold({ events: eventsOf('running') }).run.helpers;
-  assert.equal(lead.name, 'Lead');
-  assert.equal(helper.name, 'Feature Refactoring 1');
-  assert.deepEqual(helper.actions.map(action => action.name), ['Read a skill', 'Run a command', 'Read a file']);
-  assert.deepEqual(helper.actions.map(action => action.status), ['done', 'done', 'done']);
-  assert.equal(lead.actions.length, 0);
-  assert.equal(lead.status, 'working');
+test('the stage changes when the session moves to another playbook', () => {
+  const feature = [step('feature', 1, 'completed'), step('feature', 2, 'completed')];
+  assert.equal(fold({ tasks: feature }).run.stage, 'Feature');
+  const shipping = [...feature, step('shipping', 1, 'in_progress'), step('shipping', 2, 'pending')];
+  const steps = fold({ tasks: shipping }).run.steps;
+  assert.deepEqual(steps.list.map(x => x.id), ['shipping-1', 'shipping-2']);
+  assert.equal(steps.total, 2);
+  assert.equal(steps.index, 1);
+  assert.equal(steps.stage, 'Shipping');
 });
 
-test('a half-written last line is skipped, not fatal, and a repeated id counts once', () => {
-  const log = sceneLog('torn');
-  const lines = log.split('\n').filter(Boolean);
-  assert.match(lines.at(-1), /^\{"id":"torn-1"/);
-  const events = readLiveEvents(log);
-  assert.equal(events.length, lines.length - 1);
-  const [first, second] = lines;
-  assert.equal(readLiveEvents(`${first}\n${second}\n${second}\n${second}`).length, 2);
-  assert.equal(readLiveEvents('').length, 0);
-  assert.equal(readLiveEvents('not json\n').length, 0);
+test('a fresh playbook follows a fully completed playbook', () => {
+  const tasks = [
+    step('feature', 1, 'completed'),
+    step('feature', 2, 'completed'),
+    step('opening-a-pr', 1, 'pending'),
+    step('opening-a-pr', 2, 'pending'),
+  ];
+  const steps = runSteps(tasks);
+  assert.equal(steps.stage, 'Opening a PR');
+  assert.equal(steps.index, 1);
+  assert.equal(steps.total, 2);
+  assert.deepEqual(steps.list.map(x => x.id), ['opening-a-pr-1', 'opening-a-pr-2']);
 });
 
-test('seven quiet minutes become a stuck run with a stuck warning', () => {
-  const events = eventsOf('running');
-  const lastAt = events.reduce((last, event) => Math.max(last, event.at), 0);
-  const stuck = fold({ events, now: lastAt + 8 * 60000 });
-  assert.equal(stuck.run.status, 'stuck');
-  assert.equal(stuck.run.helpers.at(-1).status, 'stuck');
-  assert.deepEqual(stuck.warnings.map(warning => warning.title), ['Stuck']);
-  assert.match(stuck.warnings[0].text, /8 minutes/);
-  assert.equal(fold({ events, now: lastAt + 5 * 60000 }).run.status, 'running');
+test('an in-progress step in an earlier playbook wins', () => {
+  const tasks = [step('feature', 1, 'completed'), step('feature', 2, 'in_progress'), step('shipping', 1, 'pending')];
+  const steps = runSteps(tasks);
+  assert.equal(steps.stage, 'Feature');
+  assert.equal(steps.total, 2);
+  assert.equal(steps.index, 2);
+  assert.deepEqual(steps.list.map(x => x.id), ['feature-1', 'feature-2']);
 });
 
-test('a stopped run says so, whether the row or only the log says it', () => {
-  const withRow = fold({ events: eventsOf('stopped'), runStatus: { status: 'failed', createdAt: NOW - 360000, updatedAt: NOW - 60000 } });
-  assert.equal(withRow.run.status, 'stopped');
-  // The stop path walks on through the stop report and cleanup, and the failed stage stays in
-  // the rail so Todd can see where it went wrong.
-  assert.equal(withRow.run.stages.find(stage => stage.id === 'build-check').status, 'failed');
-  assert.deepEqual(withRow.warnings.map(warning => warning.kind), ['stopped']);
-  assert.match(withRow.warnings[0].text, /Check the build/);
-  const logOnly = fold({ events: eventsOf('stopped') });
-  assert.equal(logOnly.run.status, 'stopped');
-  assert.deepEqual(logOnly.warnings.map(warning => warning.kind), ['stopped']);
+test('steps read in playbook order, and Opening a PR is the last step of Feature', () => {
+  const tasks = [step('feature', 8, 'pending', 'Run Opening a PR'), step('feature', 2, 'completed')];
+  const steps = runSteps(tasks);
+  assert.deepEqual(steps.list.map(x => x.id), ['feature-2', 'feature-8']);
+  assert.equal(steps.list.at(-1).title, 'Run Opening a PR');
+  // Nothing in hand: the run is on the next step it has not passed.
+  assert.equal(steps.index, 2);
 });
 
-test('a finished run reads as finished and keeps no warnings', () => {
-  const withRow = fold({ events: eventsOf('finished'), runStatus: { status: 'success', createdAt: NOW - 360000, updatedAt: NOW - 20000 } });
-  assert.equal(withRow.run.status, 'finished');
-  assert.equal(withRow.run.runningMs > 0, true);
-  assert.equal(withRow.lastResult, null);
-  assert.deepEqual(withRow.warnings, []);
-  assert.equal(fold({ events: eventsOf('finished') }).run.status, 'finished');
+test('a finished list reads its last step, and no playbook steps reads nothing', () => {
+  const done = [step('babysit', 1, 'completed'), step('babysit', 2, 'completed')];
+  const steps = runSteps(done);
+  assert.equal(steps.index, 2);
+  assert.equal(steps.stage, 'Babysit');
+  assert.equal(runSteps([]).stage, '');
+  assert.equal(runSteps(null).total, 0);
+  assert.deepEqual(runSteps([{ id: 'card-branch', content: 'Branch', status: 'pending' }]).list, []);
 });
 
-test('the run waits for Todd while the UAT stage is open', () => {
-  const snapshot = fold({ events: eventsOf('uat') });
-  assert.equal(snapshot.run.status, 'waiting_for_you');
-  assert.equal(snapshot.run.stage.id, 'acceptance');
-  assert.equal(snapshot.run.stage.status, 'waiting');
-  assert.deepEqual(snapshot.warnings, []);
+test('only a live session is drawn as a run', () => {
+  const run = fold({ tasks: [step('feature', 1, 'in_progress')] }).run;
+  assert.equal(run.status, 'running');
+  assert.equal(run.card, 'JUL-419');
+  assert.equal(run.runningMs, 60000);
+  assert.equal(run.stage, 'Feature');
+  assert.equal(run.step, 'Step 1');
+  assert.equal(run.steps.total, 1);
+  assert.equal(run.usage.dollarsEstimate, null);
 });
 
-test('a stage that waits is waiting, and goes back to running when the machine resumes it', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'run-view-resume-'));
-  const feed = createLiveFeed({ file: liveFileIn(dir, 'JUL-361'), logger: { warn() {} } });
-  feed.run({ card: 'JUL-361', title: 'A card', at: NOW });
-  const read = () => readLiveEvents(readFileSync(liveFileIn(dir, 'JUL-361'), 'utf8'), { now: NOW });
-  feed.stage({ stage: 'acceptance', status: 'started' });
-  feed.stage({ stage: 'acceptance', status: 'waiting' });
-  assert.equal(fold({ events: read() }).run.status, 'waiting_for_you');
-  feed.stage({ stage: 'acceptance', status: 'started' });
-  assert.equal(fold({ events: read() }).run.status, 'running');
-  feed.stage({ stage: 'acceptance', status: 'done' });
-  feed.stage({ stage: 'land', status: 'started' });
-  assert.equal(fold({ events: read() }).run.status, 'running');
-});
-
-test('a run with no stored row still shows from its own log', () => {
-  const snapshot = fold({ events: eventsOf('running'), runStatus: null });
-  assert.equal(snapshot.run.card, 'JUL-361');
-  assert.equal(snapshot.run.title, "Mission control's Run view");
-  assert.equal(snapshot.run.stage.id, 'flow-build');
-  assert.equal(snapshot.run.step, 'Architect the shape');
-  assert.equal(snapshot.run.usage.tokens > 0, true);
-  assert.equal(snapshot.run.startedAt > 0, true);
-  assert.equal(snapshot.lastResult, null);
-});
-
-test('a subscription at or under the low mark raises one quota warning per window', () => {
-  const snapshot = fold({
-    subscriptions: [
-      freshSubscription('claude', 'Claude', [{ window: 'five_hour', percentLeft: 11, resetsAt: 1763710000000 }, { window: 'weekly', percentLeft: 98, resetsAt: 1764300000000 }]),
-      freshSubscription('chatgpt', 'ChatGPT', [{ window: 'five_hour', percentLeft: 20, resetsAt: 1763710000000 }]),
-    ],
-  });
-  assert.deepEqual(snapshot.warnings.map(warning => warning.kind), ['quota_low', 'quota_low']);
-  assert.match(snapshot.warnings[0].text, /Claude: 11% of this 5-hour window left/);
-  assert.deepEqual(snapshot.subscriptions[0].windows.map(window => window.low), [true, false]);
-  assert.deepEqual(snapshot.subscriptions[1].windows.map(window => window.low), [true]);
-});
-
-test('one reading keeps every window it read, each with its own number and reset', () => {
-  const snapshot = fold({
-    subscriptions: [
-      freshSubscription('claude', 'Claude', [
-        { window: 'five_hour', percentLeft: 11, resetsAt: 1763710000000 },
-        { window: 'weekly', percentLeft: 98, resetsAt: 1764300000000 },
-      ]),
-    ],
-  });
-  const [subscription] = snapshot.subscriptions;
-  assert.deepEqual(subscription.windows.map(window => window.window), ['five_hour', 'weekly']);
-  assert.deepEqual(subscription.windows.map(window => window.percentLeft), [11, 98]);
-  assert.deepEqual(subscription.windows.map(window => window.resetsAt), [1763710000000, 1764300000000]);
-  assert.equal(subscription.windows[1].resetsAt === subscription.windows[0].resetsAt, false);
-});
-
-test('a failed reading is unknown, with no number and no warning, and says why', () => {
-  const snapshot = fold({ subscriptions: [{ id: 'claude', name: 'Claude', status: 'unknown', readAt: NOW, reason: 'sign-in expired' }] });
-  assert.equal(snapshot.subscriptions[0].status, 'unknown');
-  assert.equal(snapshot.subscriptions[0].reason, 'sign-in expired');
-  assert.equal(snapshot.subscriptions[0].windows, undefined);
-  assert.deepEqual(snapshot.warnings, []);
-});
-
-// The reason is a closed set, so an error message or a status code from a caller cannot ride
-// along into the browser.
-test('a reason outside the four short ones becomes "reading failed"', () => {
-  for (const offered of ['401', 'socket hang up', undefined, null, 42]) {
-    const snapshot = fold({ subscriptions: [{ id: 'claude', name: 'Claude', status: 'unknown', readAt: NOW, reason: offered }] });
-    assert.equal(snapshot.subscriptions[0].reason, 'reading failed');
+test('an ended session leaves the quiet screen with its result', () => {
+  for (const [status, expected] of [['finished', 'finished'], ['stopped', 'stopped'], ['unknown', 'ended_unknown']]) {
+    const snapshot = fold({ status, endedAt: now - 1000, tasks: [step('feature', 1, 'completed')] });
+    assert.equal(snapshot.run, null);
+    assert.equal(snapshot.lastResult.status, expected);
+    assert.equal(snapshot.lastResult.at, now - 1000);
   }
+  assert.equal(foldRunView({ session: null, subscriptions: [], settings, now }).lastResult, null);
 });
 
-test('one model call over the burning limit names the agent that made it', () => {
-  const snapshot = fold({ events: eventsOf('burning') });
-  assert.deepEqual(snapshot.warnings.map(warning => warning.kind), ['burning_fast']);
-  assert.match(snapshot.warnings[0].text, /^Feature Refactoring 1 used 242,400 tokens in one model call\.$/);
+test('a session that has gone quiet is stuck, and a stopped one says where it stopped', () => {
+  const quiet = fold({ lastActivityAt: now - 8 * 60000, tasks: [step('feature', 2, 'in_progress', 'Build the slices')] });
+  assert.equal(quiet.run.status, 'stuck');
+  assert.equal(quiet.warnings.find(x => x.kind === 'stuck').text, 'Nothing has happened in the run for 8 minutes.');
+
+  const stopped = fold({ status: 'stopped', endedAt: now - 1000, tasks: [step('feature', 2, 'in_progress', 'Build the slices')] });
+  assert.equal(stopped.warnings.find(x => x.kind === 'stopped').text, 'The run stopped at “Build the slices”.');
+  assert.deepEqual(fold({ status: 'unknown', endedAt: now }).warnings.map(x => x.kind), ['ended_unknown']);
 });
 
-test('nothing running shows no run at all, and the subscriptions still answer', () => {
-  const snapshot = fold({ subscriptions: [freshSubscription('chatgpt', 'ChatGPT', [{ window: 'weekly', percentLeft: 96, resetsAt: 1764300000000 }])] });
-  assert.equal(snapshot.run, null);
-  assert.deepEqual(snapshot.warnings, []);
-  assert.equal(snapshot.subscriptions.length, 1);
-  assert.equal(snapshot.observedAt, NOW);
+test('a single model call over the limit is a burning warning, naming the tokens', () => {
+  const warnings = fold({ largestStepTokens: 120000 }).warnings;
+  assert.equal(warnings.find(x => x.kind === 'burning_fast').text, 'One model call used 120,000 tokens.');
+  assert.equal(fold({ largestStepTokens: 100000 }).warnings.length, 0);
 });
 
-test('nothing running but a stored row says what the last run did', () => {
-  const snapshot = fold({ runStatus: { status: 'success', createdAt: NOW - 3600000, updatedAt: NOW - 3500000 } });
-  assert.equal(snapshot.run, null);
-  assert.deepEqual(snapshot.lastResult, { status: 'finished', at: NOW - 3500000 });
+test('a subscription under the limit names itself and its window', () => {
+  const subscriptions = [{
+    id: 'claude', name: 'Claude', status: 'fresh', readAt: now,
+    windows: [{ window: 'weekly', percentLeft: 12, resetsAt: now + 86400000 }],
+  }];
+  const snapshot = foldRunView({ session: null, subscriptions, settings, now });
+  assert.deepEqual(snapshot.warnings.map(x => x.kind), ['quota_low']);
+  assert.equal(snapshot.warnings[0].text, 'Claude: 12% of this week left.');
+  assert.equal(snapshot.subscriptions[0].windows[0].low, true);
 });
 
-test('cached prompt tokens are counted once, in the run total, the helper and the burning check', () => {
-  const log = (calls) => {
-    const dir = mkdtempSync(join(tmpdir(), 'run-view-tokens-'));
-    const file = liveFileIn(dir, 'JUL-361');
-    const feed = createLiveFeed({ file, card: 'JUL-361', now: () => NOW });
-    feed.run({ card: 'JUL-361', title: 'A card whose prompt was mostly cache' });
-    for (const [index, call] of calls.entries()) {
-      feed.model({ agent: 'flow-build', model: 'commandcode/moonshotai/Kimi-K3.1-Pro', spanId: `s${index}`, ...call });
-    }
-    return fold({ events: readLiveEvents(readFileSync(file, 'utf8')), estimateUsd: () => 0.084 });
-  };
-  // Mastra's inputTokens is the call's whole input and already holds the cache reads.
-  const cached = log([{ inputTokens: 130000, outputTokens: 1000, cachedInputTokens: 120000 }]);
-  assert.equal(cached.run.usage.tokens, 131000);
-  assert.equal(cached.run.helpers[0].tokens, 131000);
-  assert.deepEqual(cached.warnings.map(warning => warning.kind), ['burning_fast']);
-
-  const underTheLimit = log([{ inputTokens: 60000, outputTokens: 1000, cachedInputTokens: 50000 }]);
-  assert.equal(underTheLimit.run.usage.tokens, 61000);
-  assert.equal(underTheLimit.run.helpers[0].tokens, 61000);
-  assert.deepEqual(underTheLimit.warnings, []);
-
-  const uncached = log([{ inputTokens: 60000, outputTokens: 1000, cachedInputTokens: 0 }]);
-  assert.equal(uncached.run.usage.tokens, 61000);
+test('a reading that failed says so in one of the four short reasons', () => {
+  const subscriptions = [{ id: 'chatgpt', name: 'ChatGPT', status: 'unknown', reason: 'sign-in expired' }];
+  const [reading] = foldRunView({ session: null, subscriptions, settings, now }).subscriptions;
+  assert.equal(reading.status, 'unknown');
+  assert.equal(reading.reason, 'sign-in expired');
+  const hostile = [{ id: 'chatgpt', name: 'ChatGPT', status: 'unknown', reason: '<script>alert(1)</script>' }];
+  assert.equal(foldRunView({ session: null, subscriptions: hostile, settings, now }).subscriptions[0].reason, 'reading failed');
 });
 
-test('a dollar figure is passed through as an estimate, never invented', () => {
-  const estimateUsd = () => 0.0125;
-  assert.equal(fold({ events: eventsOf('running') }).run.usage.dollarsEstimate, null);
-  assert.equal(fold({ events: eventsOf('running'), estimateUsd }).run.usage.dollarsEstimate, 0.0125);
-});
-
-test('an agent id becomes a name Todd can read', () => {
-  assert.equal(helperName('flow-build'), 'Lead');
-  assert.equal(helperName('pstack-feature-refactoring-2'), 'Feature Refactoring 2');
-  assert.equal(helperName('pstack-bug-fix-1'), 'Bug Fix 1');
-});
-
-test('a run whose calls have no published price reports no dollar figure', () => {
-  const snapshot = fold({ events: eventsOf('running'), estimateUsd: () => null });
-  assert.equal(snapshot.run.usage.dollarsEstimate, null);
-  assert.equal(snapshot.run.usage.tokens > 0, true);
-});
-
-test('every scene writes a log the fold can read', () => {
-  for (const scene of SCENES) {
-    if (scene === 'quiet') continue;
-    const events = eventsOf(scene);
-    for (const event of events) assert.equal(LIVE_TYPES.includes(liveType(event)), true, `${scene}: ${JSON.stringify(event)}`);
-    assert.doesNotThrow(() => fold({ events }));
-  }
-});
-
-// The count on screen is the machine's own task list, so it cannot show a step the run never had.
-test('the step row is the machine task list, counted and named', () => {
-  const { run } = fold({ events: eventsOf('running') });
-  assert.equal(run.steps.total, 8);
-  assert.equal(run.steps.index, 2);
-  assert.equal(run.steps.list.length, 8);
-  assert.equal(run.steps.list[1].title, 'Architect the shape');
-  assert.equal(run.steps.list[1].status, 'in_progress');
-  assert.equal(run.steps.list[0].status, 'completed');
-  assert.equal(run.steps.list[2].status, 'pending');
-  // One lookup decides both, so the step's name and its number cannot disagree.
-  assert.equal(run.step, run.steps.list[run.steps.index - 1].title);
-});
-
-// A step the machine was told to skip keeps its own shape, and the reason stays out of the pill.
-test('a skipped step reads as skipped, without its reason in the row', () => {
-  const skipped = fold({ events: eventsOf('running') }).run.steps.list.find(step => step.id === 'playbook_7');
-  assert.equal(skipped.status, 'skipped');
-  assert.equal(skipped.title, 'Interrogate the design');
-  assert.equal(skipped.short.includes('skip:'), false);
-});
-
-test('a long step keeps a pill-sized name', () => {
-  const long = fold({ events: eventsOf('running') }).run.steps.list.find(step => step.id === 'playbook_4');
-  assert.equal(long.short.length <= 43, true);
-  assert.equal(long.short.endsWith('…'), true);
-  assert.equal(long.title.startsWith(long.short.slice(0, 12)), true);
-});
-
-test('the step row follows the machine numbering, not the order it arrived in', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'run-view-order-'));
-  const file = liveFileIn(dir, 'JUL-361');
-  const feed = createLiveFeed({ file, now: () => NOW });
-  feed.run({ card: 'JUL-361', title: 'A card out of order' });
-  feed.tasks({
-    agent: 'flow-build',
-    tasks: [
-      { id: 'playbook_10', title: 'Tenth step', status: 'pending' },
-      { id: 'playbook_2', title: 'Second step', status: 'completed' },
-      { id: 'playbook_1', title: 'First step', status: 'completed' },
-    ],
-  });
-  const { run } = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
-  assert.deepEqual(run.steps.list.map(step => step.id), ['playbook_1', 'playbook_2', 'playbook_10']);
-  assert.equal(run.steps.index, 3);
-  assert.equal(run.steps.total, 3);
-  assert.equal(run.step, 'Tenth step');
-});
-
-test('a finished run counts its last step, never step zero', () => {
-  const { run } = fold({ events: eventsOf('finished') });
-  assert.equal(run.steps.total, 8);
-  assert.equal(run.steps.index, 8);
-  assert.equal(run.steps.list.every(step => step.status === 'completed'), true);
-  assert.equal(run.step, run.steps.list[7].title);
-});
-
-test('no stage shape makes a run finished, and the machine outcome does', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'run-view-outcome-'));
-  const file = liveFileIn(dir, 'JUL-361');
-  const feed = createLiveFeed({ file, card: 'JUL-361', now: () => NOW });
-  feed.run({ card: 'JUL-361', title: 'A card that ran to its last stage' });
-  for (const stage of ['flow-build', 'retro', 'hold']) feed.stage({ stage, status: 'done' });
-  // A run still walking its last stage is live, whatever else the log holds.
-  const walking = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
-  assert.equal(walking.run.status, 'running');
-  assert.equal(walking.run.ended, null);
-
-  feed.stage({ stage: 'cleanup', status: 'started' });
-  const cleaning = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
-  assert.equal(cleaning.run.status, 'running');
-  assert.equal(cleaning.run.ended, null);
-
-  // Cleanup is where every path ends the run, so a log that finished it is a run that is over.
-  // Which end it was stays unknown, and the clock stops with the log instead of climbing.
-  feed.stage({ stage: 'cleanup', status: 'done' });
-  const unknown = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
-  assert.equal(unknown.run.status, 'ended_unknown');
-  assert.equal(unknown.run.ended, 'unknown', 'an unknown end is not finished');
-  assert.equal(unknown.run.runningMs, NOW - unknown.run.startedAt);
-  assert.deepEqual(unknown.warnings.map(warning => warning.kind), ['ended_unknown']);
-  assert.equal(unknown.warnings[0].title, 'Ended without a result');
-
-  feed.outcome({ ended: 'finished' });
-  const ended = fold({ events: readLiveEvents(readFileSync(file, 'utf8')) });
-  assert.equal(ended.run.status, 'finished');
-  assert.equal(ended.run.ended, 'finished');
-  assert.equal(ended.run.stage.label, 'Clean up after the card');
-  assert.deepEqual(ended.warnings, []);
-});
-
-test('a stopped run reads stopped when the machine announces it, whatever its row says', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'run-view-stop-path-'));
-  const file = liveFileIn(dir, 'JUL-361');
-  const feed = createLiveFeed({ file, card: 'JUL-361', now: () => NOW });
-  feed.run({ card: 'JUL-361', title: 'A card the machine stopped' });
-  const staged = (id, output) => stageEvents(id, async () => output, () => feed);
-  await staged('build-check', { ok: false })({});
-  await staged('halt', { stopped: true, detail: 'smoke test failed twice' })({});
-  await staged('stop-report', { stopped: true, finished: true, detail: 'stop report at reports/JUL-361-stop.md' })({});
-  await staged('cleanup', { stopped: true, finished: true })({});
-  const events = readLiveEvents(readFileSync(file, 'utf8'));
-  // The row the machine keeps for a stopped run says the workflow itself succeeded.
-  const snapshot = fold({ events, runStatus: { status: 'success', createdAt: NOW - 600000, updatedAt: NOW - 1000 } });
-  assert.equal(snapshot.run.status, 'stopped');
-  assert.equal(snapshot.run.ended, 'stopped');
-  assert.deepEqual(snapshot.warnings.map(warning => warning.kind), ['stopped']);
-  assert.equal(snapshot.run.stage.label, 'Clean up after the card');
-  // A log from a writer that could not announce it still holds a stop report, so it still stops.
-  const withoutAnnouncement = events.filter(event => liveType(event) !== 'outcome');
-  const stoppedFromReport = fold({ events: withoutAnnouncement });
-  assert.equal(stoppedFromReport.run.status, 'stopped');
-  assert.equal(stoppedFromReport.run.ended, 'stopped');
+test('a playbook name reads as a person writes it', () => {
+  assert.equal(playbookName('feature'), 'Feature');
+  assert.equal(playbookName('bug-fix'), 'Bug fix');
+  assert.equal(playbookName('opening-a-pr'), 'Opening a PR');
+  assert.equal(playbookName('babysit'), 'Babysit');
+  assert.equal(playbookName(''), '');
 });

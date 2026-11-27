@@ -1,12 +1,14 @@
-// Drives the Run view through every state a run can be in, on the built app, against logs the
-// machine's own writer produced. Every state is asserted by shape as well as colour, and each one
-// leaves a picture in dashboard/docs/run-view-proof for the pull request. The fixture writes its
-// times and `tests/start-server.mjs` pins the app's clock to the same instant, so the pictures
-// repeat byte for byte instead of carrying the minute the suite happened to run in. The browser's
-// zone is pinned to UTC as well, because a subscription's reset date is a calendar day.
+// Drives the Run view through every state a session can be in, on the built app, against the
+// files a real run leaves behind: the record Start writes, the session's own to-do list in a real
+// `state.db`, and the saved subscriptions and Ready cards. Every state is asserted by shape as
+// well as colour, and each one leaves a picture in dashboard/docs/run-view-proof for the pull
+// request. The fixture writes its times and `tests/start-server.mjs` pins the app's clock to the
+// same instant, so the pictures repeat instead of carrying the minute the suite happened to run
+// in. The browser's zone is pinned to UTC as well, because a subscription's reset date is a
+// calendar day.
 
 import { expect, test } from '@playwright/test';
-import { appendModelCall, NOW, prepare } from './flow-fixture.mjs';
+import { NOW, prepare } from './flow-fixture.mjs';
 
 const SHOTS = 'docs/run-view-proof';
 const API = '/control/api/run-view';
@@ -15,9 +17,9 @@ test.use({ timezoneId: 'UTC' });
 
 // The pin that keeps the committed pictures stable is one environment line in
 // `tests/start-server.mjs`. Without it the screen still looks right and only the files change, so
-// this asks the server what instant it folded at and fails when that line is gone. It runs once,
-// before the scenes, because the answer is the same for every one of them.
+// this asks the server what instant it folded at and fails when that line is gone.
 test('folds the screen at the instant the proof pictures are pinned to', async ({ page }) => {
+  await prepare({ scene: 'running' });
   const read = await snapshot(page);
   expect(read.observedAt, 'the screen was not folded at the pinned instant: RUN_VIEW_NOW is missing from tests/start-server.mjs, so every committed picture in docs/run-view-proof would drift on each run').toBe(NOW);
 });
@@ -45,6 +47,7 @@ function warning(page, kind) {
 
 const borderTopStyle = locator => locator.evaluate(node => getComputedStyle(node).borderTopStyle);
 const borderTopColour = locator => locator.evaluate(node => getComputedStyle(node).borderTopColor);
+const backgroundColour = locator => locator.evaluate(node => getComputedStyle(node).backgroundColor);
 
 // The words the Run view puts under a failed reading, by reason. The reason itself is one of
 // four short values the server picks; anything else reads as "reading failed".
@@ -56,162 +59,157 @@ const REASON_WORDS = {
 };
 
 test.describe('the Run view on a laptop', () => {
-  test('shows where a running card is, what it used, and each helper', async ({ page }) => {
+  test('shows where a live card is, what it used, and the steps it wrote', async ({ page }) => {
     await prepare({ scene: 'running' });
     await openRunView(page);
 
     const panel = page.getByRole('region', { name: 'The running card' });
     await expect(panel).toBeVisible();
-    await expect(panel.getByRole('heading', { name: /Mission control's Run view/ })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: "Todd presses Start on a card" })).toBeVisible();
     await expect(panel.getByText(/Running · /)).toBeVisible();
 
-    // The stage the machine is in is the largest thing on the page.
-    const stage = page.getByText('Build the slices', { exact: true });
+    // The stage the session follows is the largest thing on the page.
+    const stage = panel.getByRole('heading', { name: 'Feature', exact: true });
     await expect(stage).toBeVisible();
     const stageSize = await stage.evaluate(node => parseFloat(getComputedStyle(node).fontSize));
     const titleSize = await panel.getByRole('heading').first().evaluate(node => parseFloat(getComputedStyle(node).fontSize));
     expect(stageSize).toBeGreaterThan(24);
     expect(stageSize).toBeGreaterThan(titleSize);
 
-    // Tokens and a labelled dollar estimate.
-    await expect(panel.getByText(/\d+ k tokens/)).toBeVisible();
-    await expect(panel.getByText(/about \$|not priced yet/)).toBeVisible();
+    // Tokens and a labelled dollar estimate: no price is invented for a run.
+    await expect(panel.getByText('84 k tokens')).toBeVisible();
+    await expect(panel.getByText('not priced yet')).toBeVisible();
+    await expect(panel).not.toContainText('about $');
 
-    // The step inside the stage, from the task list the machine wrote.
-    await expect(panel.getByRole('paragraph').filter({ hasText: 'Architect the shape' })).toBeVisible();
-
-    // One card per helper, each with the actions it has taken.
+    // The session's own to-do list, in playbook order, with the step in hand filled in.
     const read = await snapshot(page);
-    const helpers = page.locator('article[data-state]');
-    await expect(helpers).toHaveCount(read.run.helpers.length);
-    for (const helper of read.run.helpers) {
-      const card = page.locator('article', { hasText: helper.name });
-      await expect(card).toBeVisible();
-      for (const action of helper.actions) {
-        await expect(card.getByText(action.name, { exact: true })).toBeVisible();
-      }
-    }
-
-    // The run's steps in one row, counted from the same list the step's name comes from.
     const { steps } = read.run;
+    expect(steps.total).toBe(8);
+    expect(steps.index).toBe(2);
     const row = panel.locator(`ol[aria-label="The run's ${steps.total} steps"]`);
     await expect(row.getByRole('listitem')).toHaveCount(steps.total);
+    expect(await row.getByRole('listitem').allInnerTexts()).toEqual(steps.list.map(step => step.short));
     await expect(panel.getByText(`step ${steps.index} of ${steps.total}`, { exact: true })).toBeVisible();
-    const pills = row.getByRole('listitem');
-    expect(await pills.allInnerTexts()).toEqual(steps.list.map(step => step.short));
 
-    // The step in hand is filled in; the one the run skipped keeps a dotted edge and a struck name.
     const current = row.locator('[aria-current="step"]');
     await expect(current).toHaveAttribute('data-state', 'in_progress');
-    expect(await current.evaluate(node => getComputedStyle(node).backgroundColor)).toBe('rgb(220, 235, 203)');
-    await expect(current).toContainText(steps.list[steps.index - 1].short);
-    const skipped = row.locator('li[data-state="skipped"]');
-    await expect(skipped).toHaveCount(steps.list.filter(step => step.status === 'skipped').length);
-    if (await skipped.count()) {
-      expect(await skipped.first().evaluate(node => getComputedStyle(node).borderTopStyle)).toBe('dotted');
-      expect(await skipped.first().locator('span').evaluate(node => getComputedStyle(node).textDecorationLine)).toBe('line-through');
-    }
+    await expect(current).toHaveAttribute('data-number', '2');
+    expect(await backgroundColour(current)).toBe('rgb(220, 235, 203)');
+    await expect(current).toContainText('Architect the shape');
+
+    // Feature's last step is the playbook's final act.
+    await expect(row.getByRole('listitem').last()).toContainText('Opening a PR');
+
+    // Start cannot appear on a screen that is already running a card.
+    await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(0);
+    expect(read.readyCards.cards).toEqual([]);
 
     await shot(page, 'laptop');
   });
 
-  test('lists each helper card newest action first', async ({ page }) => {
+  test('says a session has not named its playbook yet, and still draws the run', async ({ page }) => {
+    await prepare({ scene: 'no-todo' });
+    await openRunView(page);
+
+    const panel = page.getByRole('region', { name: 'The running card' });
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText(/Running · /)).toBeVisible();
+    await expect(panel.getByText('The session has not named its playbook yet.')).toBeVisible();
+    await expect(panel.locator('h2')).toHaveCount(0);
+    // Nothing is guessed at: with no to-do list there are no steps to count.
+    await expect(panel.locator('ol[aria-label^="The run\'s"]')).toHaveCount(0);
+
+    await shot(page, 'no-todo');
+  });
+
+  test('moves the marker and the stage when the session changes playbook', async ({ page }) => {
     await prepare({ scene: 'running' });
     await openRunView(page);
+    const featurePanel = page.getByRole('region', { name: 'The running card' });
+    await expect(featurePanel.getByRole('heading', { name: 'Feature', exact: true })).toBeVisible();
+    const featureNumber = Number(await featurePanel.locator('[aria-current="step"]').getAttribute('data-number'));
+
+    await prepare({ scene: 'shipping' });
+    await page.reload();
+    const panel = page.getByRole('region', { name: 'The running card' });
+    await expect(panel.getByRole('heading', { name: 'Shipping', exact: true })).toBeVisible();
+    const current = panel.locator('[aria-current="step"]');
+    await expect(current).toHaveCount(1);
+    await expect(current).toContainText('Open the pull request');
+    const shippingNumber = Number(await current.getAttribute('data-number'));
+    expect(shippingNumber).toBeGreaterThan(featureNumber);
+
     const read = await snapshot(page);
-    for (const helper of read.run.helpers.filter(item => item.actions.length > 1)) {
-      const card = page.locator('article', { hasText: helper.name });
-      const shown = await card.locator('ul li[data-state] > span:first-of-type').allInnerTexts();
-      expect(shown).toEqual(helper.actions.map(action => action.name));
+    expect(read.run.stage).toBe('Shipping');
+    expect(read.run.steps.index).toBe(shippingNumber);
+
+    await shot(page, 'shipping');
+  });
+
+  test('shows every ended run as quiet, with its last result and no Start', async ({ page }) => {
+    const scenes = [
+      { scene: 'finished', sentence: 'The last run finished.' },
+      { scene: 'stopped', sentence: 'The last run stopped.' },
+      { scene: 'ended-unknown', sentence: 'The last run ended_unknown.' },
+    ];
+    for (const { scene, sentence } of scenes) {
+      await prepare({ scene });
+      await openRunView(page);
+
+      await expect(page.getByRole('region', { name: 'Nothing running' })).toBeVisible();
+      await expect(page.getByText('Nothing is running right now')).toBeVisible();
+      await expect(page.getByText(sentence)).toBeVisible();
+      await expect(page.getByRole('region', { name: 'The running card' })).toHaveCount(0);
+      // A saved empty queue means there is no card to offer, so no Start can appear either.
+      await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(0);
+
+      if (scene === 'stopped') {
+        const stopped = warning(page, 'stopped');
+        await expect(stopped).toBeVisible();
+        expect(await borderTopStyle(stopped)).toBe('solid');
+        expect(await borderTopColour(stopped)).toBe('rgb(163, 33, 45)');
+        await expect(stopped).toContainText('The run stopped at “Build the slices”.');
+        const struck = stopped.locator('p span').first();
+        expect(await struck.evaluate(node => getComputedStyle(node).textDecorationLine)).toBe('line-through');
+      }
+      if (scene === 'ended-unknown') {
+        const ended = warning(page, 'ended_unknown');
+        await expect(ended).toBeVisible();
+        expect(await borderTopStyle(ended)).toBe('dashed');
+        await expect(ended).toContainText('The run ended without saying whether it finished or stopped.');
+      }
+
+      await shot(page, scene);
     }
   });
 
-  test('says it is waiting for Todd while the acceptance gate holds the run', async ({ page }) => {
-    await prepare({ scene: 'uat' });
-    await openRunView(page);
-
-    const read = await snapshot(page);
-    expect(read.run.status).toBe('waiting_for_you');
-    expect(read.run.stage.status).toBe('waiting');
-    await expect(page.locator('main')).toContainText('Waiting for you');
-    await expect(warning(page, 'stuck')).toHaveCount(0);
-    await shot(page, 'waiting-for-you');
-  });
-
-  test('draws stuck as a dashed box and says how long it has been quiet', async ({ page }) => {
+  test('draws stuck as a dashed box and says how long the session has been quiet', async ({ page }) => {
     await prepare({ scene: 'stuck' });
     await openRunView(page);
 
     const stuck = warning(page, 'stuck');
     await expect(stuck).toBeVisible();
     expect(await borderTopStyle(stuck)).toBe('dashed');
-    await expect(stuck).toContainText(/Nothing has happened .* minutes/);
+    await expect(stuck).toContainText('Nothing has happened in the run for 8 minutes.');
     await expect(page.locator('svg[data-state="stuck"]').first()).toBeVisible();
-
-    // The helpers the machine stopped hearing from read as stuck by border as well as colour.
-    const stuckHelper = page.locator('article[data-state="stuck"]').first();
-    if (await stuckHelper.count()) expect(await borderTopStyle(stuckHelper)).toBe('dashed');
 
     const panel = page.getByRole('region', { name: 'The running card' });
     await expect(panel.getByText(/Stuck · /)).toBeVisible();
+    await expect(panel.getByRole('heading', { name: 'Feature', exact: true })).toBeVisible();
 
     await shot(page, 'stuck');
   });
 
-  test('draws a burning model call as a dotted warning that names the agent', async ({ page }) => {
+  test('draws one model call over the limit as a dotted warning that names the tokens', async ({ page }) => {
     await prepare({ scene: 'burning' });
     await openRunView(page);
 
     const burning = warning(page, 'burning_fast');
     await expect(burning).toBeVisible();
     expect(await borderTopStyle(burning)).toBe('dotted');
-    await expect(burning).toContainText(/Feature Refactoring 1 used .* tokens in one model call\./);
+    await expect(burning).toContainText('One model call used 240,000 tokens.');
 
     await shot(page, 'burning-fast');
-  });
-
-  test('draws a stopped run as a solid red warning with the title struck through', async ({ page }) => {
-    await prepare({ scene: 'stopped' });
-    await openRunView(page);
-
-    const stopped = warning(page, 'stopped');
-    await expect(stopped).toBeVisible();
-    expect(await borderTopStyle(stopped)).toBe('solid');
-    expect(await borderTopColour(stopped)).toBe('rgb(163, 33, 45)');
-    await expect(stopped).toContainText(/The run stopped at .Check the build./);
-
-    const struck = page.locator('[data-kind="stopped"] p span').first();
-    expect(await struck.evaluate(node => getComputedStyle(node).textDecorationLine)).toBe('line-through');
-    await expect(page.locator('svg[data-state="failed"]').first()).toBeVisible();
-
-    const panel = page.getByRole('region', { name: 'The running card' });
-    await expect(panel.getByText(/Stopped · /)).toBeVisible();
-
-    await shot(page, 'stopped');
-  });
-
-  test('says a run that reached its last stage ended, without inventing a result', async ({ page }) => {
-    await prepare({ scene: 'ended-unknown' });
-    await openRunView(page);
-
-    const ended = warning(page, 'ended_unknown');
-    await expect(ended).toBeVisible();
-    expect(await borderTopStyle(ended)).toBe('dashed');
-    await expect(ended).toContainText('The machine reached its last stage without saying whether the run finished or stopped.');
-
-    const panel = page.getByRole('region', { name: 'The running card' });
-    await expect(panel.getByText(/Ended, result unknown · /)).toBeVisible();
-    // A dashed mark on the run line, not the working ring: the run is over.
-    const runMark = panel.locator('p[data-run-state="ended_unknown"] svg');
-    await expect(runMark).toHaveAttribute('data-state', 'stuck');
-
-    // Once the run is known to be over the clock stops climbing.
-    const runLine = panel.locator('p[data-run-state="ended_unknown"]');
-    const before = await runLine.textContent();
-    await page.waitForTimeout(2500);
-    expect(await runLine.textContent()).toBe(before);
-
-    await shot(page, 'ended-unknown');
   });
 
   test("draws a low window as a ringed bar, matched to that window's own reading", async ({ page }) => {
@@ -221,7 +219,7 @@ test.describe('the Run view on a laptop', () => {
     const quotaLow = warning(page, 'quota_low');
     await expect(quotaLow).toBeVisible();
     expect(await borderTopStyle(quotaLow)).toBe('solid');
-    await expect(quotaLow).toContainText(/Claude: 11% of this 5-hour window left\./);
+    await expect(quotaLow).toContainText('Claude: 11% of this 5-hour window left.');
 
     const read = await snapshot(page);
     for (const subscription of read.subscriptions) {
@@ -257,72 +255,80 @@ test.describe('the Run view on a laptop', () => {
     await expect(page.locator('li[data-subscription="commandcode"]')).toContainText('No sign-in is stored for this subscription.');
   });
 
-  test('says nothing is running and how the last run ended', async ({ page }) => {
-    await prepare({ scene: 'quiet' });
+  test('offers a Start on each Ready card while nothing runs', async ({ page }) => {
+    await prepare({ scene: 'idle' });
+    await openRunView(page);
+
+    const quiet = page.getByRole('region', { name: 'Nothing running' });
+    await expect(quiet).toBeVisible();
+    await expect(quiet.getByText('Nothing is running right now')).toBeVisible();
+    await expect(quiet.getByText('The machine is idle. Start a Ready card and its run appears here by itself.')).toBeVisible();
+
+    const cards = quiet.locator('ul > li');
+    await expect(cards).toHaveCount(2);
+    for (const [identifier, title] of [['JUL-407', 'Mission control shows the Run view'], ['JUL-361', 'A card can be started from Mission control']]) {
+      const card = cards.filter({ hasText: identifier });
+      await expect(card).toContainText(title);
+      const start = card.getByRole('button', { name: 'Start' });
+      await expect(start).toBeVisible();
+      // Start's shape is asserted, never its action: clicking it would boot a paid session.
+      await expect(start).toHaveAttribute('type', 'button');
+      expect(await start.evaluate(node => getComputedStyle(node).borderRadius)).toBe('999px');
+      expect(await backgroundColour(start)).toBe('rgb(29, 59, 39)');
+    }
+
+    await shot(page, 'ready-cards');
+  });
+
+  test('says the queue is empty instead of offering a Start it cannot back', async ({ page }) => {
+    await prepare({ scene: 'empty' });
     await openRunView(page);
 
     await expect(page.getByRole('region', { name: 'Nothing running' })).toBeVisible();
-    await expect(page.getByText('Nothing is running right now')).toBeVisible();
-    await expect(page.getByText('The last run finished.')).toBeVisible();
-    await expect(page.getByRole('region', { name: 'The running card' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Subscriptions' })).toBeVisible();
+    await expect(page.getByText('No card is Ready right now.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(0);
 
-    await shot(page, 'nothing-running');
+    await shot(page, 'empty-queue');
   });
 
-  test('shows a finished run as finished with no warnings', async ({ page }) => {
-    await prepare({ scene: 'finished' });
+  test('says it could not read the Ready cards rather than looking empty', async ({ page }) => {
+    await prepare({ scene: 'unreadable' });
     await openRunView(page);
 
-    const panel = page.getByRole('region', { name: 'The running card' });
-    await expect(panel.getByText(/Finished · /)).toBeVisible();
-    await expect(page.locator('[data-kind]')).toHaveCount(0);
-    await expect(panel.getByText('Hold at the end of the run')).toBeVisible();
-    // A stage the run was sent back through keeps the dotted edge, not just a colour.
-    const sentBack = panel.locator('li', { hasText: 'Send it back to the builder' });
-    expect(await borderTopStyle(sentBack)).toBe('dotted');
-    // Every task ticked, drawn as a filled mark.
-    await expect(page.locator('svg[data-state="done"]').first()).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Nothing running' })).toBeVisible();
+    await expect(page.getByText('Could not read the Ready cards.')).toBeVisible();
+    await expect(page.getByText('No card is Ready right now.')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(0);
 
-    await shot(page, 'finished');
-  });
-
-  test('keeps up without a refresh when the machine spends more tokens', async ({ page }) => {
-    await prepare({ scene: 'running' });
-    await openRunView(page);
-    const panel = page.getByRole('region', { name: 'The running card' });
-    const before = await panel.getByText(/\d+ k tokens/).innerText();
-
-    appendModelCall({ inputTokens: 240000 });
-    await expect(panel.getByText(/\d+ k tokens/)).not.toHaveText(before, { timeout: 15000 });
+    await shot(page, 'ready-unreadable');
   });
 });
 
 test.describe('the Run view on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('stacks the stage and the helper cards and puts the warnings first', async ({ page }) => {
+  test('puts the warnings first, stacks the panel, and keeps the step row on a narrow screen', async ({ page }) => {
     await prepare({ scene: 'stuck' });
     await openRunView(page);
 
-    const stage = page.getByText('Build the slices', { exact: true });
+    const stage = page.getByRole('heading', { name: 'Feature', exact: true });
     await expect(stage).toBeVisible();
     const stageSize = await stage.evaluate(node => parseFloat(getComputedStyle(node).fontSize));
-    const titleSize = await page.getByRole('heading', { name: /Mission control's Run view/ }).evaluate(node => parseFloat(getComputedStyle(node).fontSize));
+    const titleSize = await page.getByRole('heading', { name: "Todd presses Start on a card" }).evaluate(node => parseFloat(getComputedStyle(node).fontSize));
     expect(stageSize).toBeGreaterThan(titleSize);
 
-    // The warning sits above the run panel, and the panel above the helpers.
+    // The warning sits above the run panel, and the panel above the subscriptions.
     const boxes = await page.evaluate(() => {
       const box = selector => document.querySelector(selector)?.getBoundingClientRect().top ?? -1;
       return {
         warning: box('[data-kind="stuck"]'),
         panel: box('[aria-label="The running card"]'),
-        helpers: box('article[data-state]'),
+        quota: box('[aria-labelledby="quota-heading"]'),
       };
     });
     expect(boxes.warning).toBeGreaterThan(-1);
     expect(boxes.warning).toBeLessThan(boxes.panel);
-    expect(boxes.panel).toBeLessThan(boxes.helpers);
+    expect(boxes.panel).toBeLessThan(boxes.quota);
 
     // Nothing runs off the side of the screen.
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -333,7 +339,7 @@ test.describe('the Run view on a phone', () => {
     const panel = page.getByRole('region', { name: 'The running card' });
     await expect(panel).toBeVisible();
 
-    // The step row and its count survive the narrow screen, and still count the machine's list.
+    // The step row and its count survive the narrow screen, and still count the session's list.
     const { steps } = await snapshot(page).then(read => read.run);
     await expect(panel.locator(`ol[aria-label="The run's ${steps.total} steps"]`).getByRole('listitem')).toHaveCount(steps.total);
     await expect(panel.getByText(`step ${steps.index} of ${steps.total}`, { exact: true })).toBeVisible();
@@ -350,6 +356,7 @@ test.describe('the Run view on a phone', () => {
     const ended = warning(page, 'ended_unknown');
     await expect(ended).toBeVisible();
     expect(await borderTopStyle(ended)).toBe('dashed');
+    await expect(page.getByText('The last run ended_unknown.')).toBeVisible();
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);

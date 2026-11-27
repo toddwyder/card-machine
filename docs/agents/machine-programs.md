@@ -42,3 +42,4 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/interrupted.mjs` | At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them. | `518b3442a8ae7ed09d2322942608119bdf64f8d45cb3dbb744f52b31d79c55cb` |
 | `scripts/proof-run.mjs` | Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins. | `da96d2f9dad89f89ff78a772489bed64ae53dc40f2dff3f3c3f7fc65650ba167` |
 | `scripts/julia-agents.mjs` | Runs a machine command with the Julia keys it needs. | `b0e522f94f3c02926ddc6542e60b16f8e117dcac5509a84148b141c39dc985f6` |
+| `dashboard/lib/card-session.mjs` | The Start action: begins one card in one Mastra Code session following pstack, and reads that session's to-do list back for the Run view. | `fea41cab4f665dda49d30307d4f4c0b60d7530210895604266e7b8c40c1e08ba` |

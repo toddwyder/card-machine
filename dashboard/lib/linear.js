@@ -76,3 +76,54 @@ export async function listReady({ apiKey = process.env.LINEAR_API_KEY, fetchImpl
 export async function getReadyCard(identifier, options) {
   return (await listReady(options)).find(card => card.identifier === identifier) ?? null;
 }
+
+const cardQuery = `query DashboardCard($id: String!) {
+  issue(id: $id) {
+    id identifier title description url createdAt
+    state { name }
+    team { name }
+  }
+}`;
+
+// The whole card Start hands the session, read fresh so the session works from what Linear holds
+// now. A card that is not Ready and in Julia-next is refused rather than started.
+export async function getCard(identifier, { apiKey = process.env.LINEAR_API_KEY, fetchImpl = fetch } = {}) {
+  if (!apiKey) throw new Error('Linear configuration failure. LINEAR_API_KEY is missing.');
+  let response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(10000),
+      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: cardQuery, variables: { id: identifier } }),
+    });
+  } catch (error) {
+    throw isTimeout(error) ? unreachableSlow() : unreachable();
+  }
+  const text = await readReply(response);
+  let body;
+  try { body = JSON.parse(text); }
+  catch { body = undefined; }
+  if (!response.ok) throw new Error(`Linear request failed. HTTP ${response.status}.${providerReason(body, apiKey)}`);
+  if (body === undefined) throw new Error('Linear returned a malformed response. Expected JSON.');
+  if (Array.isArray(body?.errors) && body.errors.length) {
+    throw new Error(`Linear request failed.${providerReason(body, apiKey)}`);
+  }
+  const card = body?.data?.issue;
+  if (!card || typeof card.id !== 'string' || !card.id ||
+      !/^JUL-\d+$/.test(card.identifier ?? '') || card.identifier !== identifier ||
+      typeof card.title !== 'string' || !card.title.trim() ||
+      typeof card.url !== 'string' || !card.url.startsWith('https://linear.app/') ||
+      (card.description !== null && card.description !== undefined && typeof card.description !== 'string')) {
+    throw new Error('Linear returned an unexpected card.');
+  }
+  if (card.state?.name !== 'Ready' || card.team?.name !== 'Julia-next') {
+    throw new Error(`Card ${identifier} is not Ready in Julia-next.`);
+  }
+  return {
+    id: card.id,
+    identifier: card.identifier,
+    title: card.title,
+    description: card.description ?? '',
+    url: card.url,
+  };
+}

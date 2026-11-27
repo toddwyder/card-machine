@@ -3,7 +3,7 @@
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildFixture, FLOW_DIR, NOW, SUBSCRIPTIONS_FILE } from './flow-fixture.mjs';
+import { buildFixture, FLOW_DIR, NOW, READY_FILE, SUBSCRIPTIONS_FILE } from './flow-fixture.mjs';
 
 const PORT = Number(process.env.PORT ?? 4314);
 const URL_UNDER_TEST = `http://127.0.0.1:${PORT}/control`;
@@ -14,10 +14,18 @@ const app = spawn('npx', ['next', 'start', '--hostname', '127.0.0.1', '--port', 
   cwd: fileURLToPath(new URL('..', import.meta.url)),
   shell: process.platform === 'win32',
   // The app reads the clock at the same instant the scene wrote its times from, so the words on
-  // the screen (a run's minutes, an action's age) do not move between two runs of the same spec.
-  // The zone is pinned for the same reason: a subscription's reset date is a calendar day, so the
-  // machine's own zone would otherwise decide whether it reads 23 Nov or 24 Nov in the pictures.
-  env: { ...process.env, TZ: 'UTC', FLOW_DIR, RUN_VIEW_SUBSCRIPTIONS_FILE: SUBSCRIPTIONS_FILE, RUN_VIEW_NOW: String(NOW), NODE_ENV: 'production' },
+  // the screen (a run's minutes) do not move between two runs of the same spec. The zone is
+  // pinned for the same reason: a subscription's reset date is a calendar day, so the machine's
+  // own zone would otherwise decide whether it reads 23 Nov or 24 Nov in the pictures.
+  env: {
+    ...process.env,
+    TZ: 'UTC',
+    RUN_VIEW_SESSION_DIR: FLOW_DIR,
+    RUN_VIEW_READY_FILE: READY_FILE,
+    RUN_VIEW_SUBSCRIPTIONS_FILE: SUBSCRIPTIONS_FILE,
+    RUN_VIEW_NOW: String(NOW),
+    NODE_ENV: 'production',
+  },
   stdio: 'inherit',
 });
 

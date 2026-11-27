@@ -12,6 +12,7 @@ docs/agents/upgrades-2026-11-18/
 spikes/
 graph/fixtures/
 .impeccable/
+.e2e/
 
 # Other skill catalogs duplicate the pstack skills already indexed from .agents.
 .claude/
