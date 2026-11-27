@@ -85,7 +85,6 @@ export async function readCardSession({ dir = SESSION_DIR } = {}) {
     threadId: shown.threadId ?? null,
     tasks: await readThreadTasks(shown.threadId, dir),
     tokens: Number.isFinite(shown.tokens) ? shown.tokens : 0,
-    largestStepTokens: Number.isFinite(shown.largestStepTokens) ? shown.largestStepTokens : 0,
     lastActivityAt: Number.isFinite(shown.lastActivityAt) ? shown.lastActivityAt : null,
   };
 }
@@ -159,7 +158,7 @@ export async function startCard(card, { model, now = Date.now(), dir = SESSION_D
   const startedAt = now;
   const record = {
     card: card.identifier, title: card.title, startedAt, endedAt: null, status: 'running',
-    threadId: null, tokens: 0, largestStepTokens: 0, lastActivityAt: startedAt, heartbeatAt: startedAt,
+    threadId: null, tokens: 0, lastActivityAt: startedAt, heartbeatAt: startedAt,
   };
   // The record is written before the launch, so a second press is refused while the session boots.
   await writeRecord(dir, record);

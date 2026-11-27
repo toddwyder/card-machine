@@ -330,7 +330,15 @@ function foldSubscriptions(subscriptions, settings) {
   });
 }
 
-function deriveWarnings({ state, steps, largestStepTokens, idleMs, subscriptions, settings }) {
+// The warning measures what the whole run spends, not one call: a run's cost is the sum of many
+// calls, and one large call on a long run is not the thing to catch.
+function tokensPerMinute(tokens, runMs) {
+  if (!Number.isFinite(tokens) || tokens <= 0) return 0;
+  const minutes = Math.max(1, (Number.isFinite(runMs) ? runMs : 0) / 60000);
+  return Math.round(tokens / minutes);
+}
+
+function deriveWarnings({ state, steps, tokens = 0, runMs = 0, idleMs, subscriptions, settings }) {
   const warnings = [];
   if (state === 'stopped') {
     warnings.push({
@@ -362,11 +370,12 @@ function deriveWarnings({ state, steps, largestStepTokens, idleMs, subscriptions
       });
     }
   }
-  if (largestStepTokens > settings.burningFastTokens) {
+  const burning = tokensPerMinute(tokens, runMs);
+  if (burning > settings.burningFastTokensPerMinute) {
     warnings.push({
       kind: 'burning_fast',
       title: WARNING_TITLES.burning_fast,
-      text: `One model call used ${largestStepTokens.toLocaleString('en-GB')} tokens.`,
+      text: `The run is using ${burning.toLocaleString('en-GB')} tokens a minute.`,
     });
   }
   return warnings;
@@ -388,7 +397,7 @@ export function runState({ status = 'running', idleMs = null, settings }) {
 export function foldRunView({ session = null, subscriptions = [], settings, now = Date.now() }) {
   const foldedSubscriptions = foldSubscriptions(subscriptions, settings);
   if (!session) {
-    return { observedAt: now, run: null, lastResult: null, subscriptions: foldedSubscriptions, warnings: deriveWarnings({ state: null, steps: { current: null }, largestStepTokens: 0, idleMs: null, subscriptions: foldedSubscriptions, settings }) };
+    return { observedAt: now, run: null, lastResult: null, subscriptions: foldedSubscriptions, warnings: deriveWarnings({ state: null, steps: { current: null }, tokens: 0, runMs: 0, idleMs: null, subscriptions: foldedSubscriptions, settings }) };
   }
 
   const startedAt = number(session.startedAt) || null;
@@ -401,8 +410,10 @@ export function foldRunView({ session = null, subscriptions = [], settings, now 
   const steps = runSteps(session.tasks);
   const live = !session.endedAt && session.status === 'running';
   const state = runState({ status: live ? 'running' : session.status, idleMs, settings });
-  const largestStepTokens = number(session.largestStepTokens);
-  const warnings = deriveWarnings({ state, steps, largestStepTokens, idleMs, subscriptions: foldedSubscriptions, settings });
+  // The rate covers the run's whole life so far, which is what the screen's token count shows.
+  const tokens = number(session.tokens);
+  const runMs = startedAt === null ? 0 : Math.max(0, now - startedAt);
+  const warnings = deriveWarnings({ state, steps, tokens, runMs, idleMs, subscriptions: foldedSubscriptions, settings });
   const endedAt = number(session.endedAt) || null;
 
   if (!live) {

@@ -229,7 +229,7 @@ Borders do the talking. Every card and banner has a 3px border whose style is a 
 - **Do** give every state a border shape: solid alive, dashed stuck or ended without a result, or unknown or low, dotted sent back, struck through given up.
 - **Do** write numbers in tabular figures with their unit ("12 minutes", "824 k tokens", "about $0.18, estimate").
 - **Do** let the stage rail grow as stages are reached, so it shows where the run has been.
-- **Do** put warnings above everything, in the order stopped, stuck, quota low, burning fast, and read them out of `dashboard/settings/run-view.json`, and read them out of `dashboard/settings/run-view.json`.
+- **Do** put warnings above everything, in the order stopped, stuck, quota low, burning fast, and read their limits out of `dashboard/settings/run-view.json`.
 - **Do** say "unknown" with its reason when a reading fails, and drop the number entirely.
 
 ### Don't:

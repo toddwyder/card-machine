@@ -9,7 +9,7 @@ const live = {
   card: 'JUL-420', title: 'A run', startedAt: now - 1000, endedAt: null, status: 'running',
   // The step's words are what names the stage, so the fixture carries a playbook's own step.
   threadId: 't', tasks: [{ id: 'a-1', content: 'Trace the affected subsystem.', status: 'in_progress' }],
-  tokens: 1200, largestStepTokens: 900, lastActivityAt: now - 500,
+  tokens: 1200, lastActivityAt: now - 500,
 };
 
 test('an idle screen offers the Ready cards and draws no run', async () => {

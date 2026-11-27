@@ -102,7 +102,7 @@ const SCENES = {
   // A live session whose last activity is older than the quiet limit.
   stuck: now => ({ tasks: FEATURE, record: liveRecord(now, { startedAt: now - 12 * minutes, lastActivityAt: now - 8 * minutes }) }),
   // One model call over the burning limit.
-  burning: now => ({ tasks: FEATURE, record: liveRecord(now, { startedAt: now - 7 * minutes, tokens: 264000, largestStepTokens: 240000 }) }),
+  burning: now => ({ tasks: FEATURE, record: liveRecord(now, { startedAt: now - 7 * minutes, tokens: 264000 }) }),
   // Ended runs: the record carries the end and the session's own result.
   finished: now => ({ tasks: FINISHED_FEATURE, record: endedRecord(now, 'finished') }),
   stopped: now => ({ tasks: STOPPED_FEATURE, record: endedRecord(now, 'stopped') }),
@@ -124,7 +124,7 @@ const SCENES = {
   unreadable: () => ({ tasks: null, record: null }),
 };
 
-function baseRecord(now, { startedAt = now - 6 * minutes, tokens = 84000, largestStepTokens = 12000, lastActivityAt = now - 30 * 1000 } = {}) {
+function baseRecord(now, { startedAt = now - 6 * minutes, tokens = 84000, lastActivityAt = now - 30 * 1000 } = {}) {
   return {
     card: CARD,
     title: TITLE,
@@ -133,7 +133,6 @@ function baseRecord(now, { startedAt = now - 6 * minutes, tokens = 84000, larges
     status: 'running',
     threadId: THREAD,
     tokens,
-    largestStepTokens,
     lastActivityAt,
     heartbeatAt: Date.now(),
   };

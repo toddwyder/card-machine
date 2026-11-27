@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { foldRunView, playbookName, readPlaybooks, runSteps } from './run-view.mjs';
 
-const settings = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokens: 100000 };
+const settings = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokensPerMinute: 25000 };
 const now = Date.parse('2026-11-27T12:00:00Z');
 
 // The steps are read from the skill itself, because that is what the screen compares a session's
@@ -31,7 +31,6 @@ const session = (overrides = {}) => ({
   threadId: 'thread-1',
   tasks: null,
   tokens: 0,
-  largestStepTokens: 0,
   lastActivityAt: now - 1000,
   ...overrides,
 });
@@ -144,10 +143,17 @@ test('a session that has gone quiet is stuck, and a stopped one says where it st
   assert.deepEqual(fold({ status: 'unknown', endedAt: now }).warnings.map(x => x.kind), ['ended_unknown']);
 });
 
-test('a single model call over the limit is a burning warning, naming the tokens', () => {
-  const warnings = fold({ largestStepTokens: 120000 }).warnings;
-  assert.equal(warnings.find(x => x.kind === 'burning_fast').text, 'One model call used 120,000 tokens.');
-  assert.equal(fold({ largestStepTokens: 100000 }).warnings.length, 0);
+test('a run that spends faster than the limit is a burning warning, naming the rate', () => {
+  // 300,000 tokens in ten minutes is 30,000 a minute.
+  const burning = fold({ startedAt: now - 10 * 60000, tokens: 300000 }).warnings;
+  assert.equal(burning.find(x => x.kind === 'burning_fast').text, 'The run is using 30,000 tokens a minute.');
+  assert.equal(fold({ startedAt: now - 10 * 60000, tokens: 200000 }).warnings.length, 0);
+});
+
+test('a run a minute old is measured against the minute it has had', () => {
+  // 10,000 tokens in twenty seconds would read as 30,000 a minute without the floor.
+  const warnings = fold({ startedAt: now - 20000, tokens: 10000 }).warnings;
+  assert.equal(warnings.length, 0);
 });
 
 test('a subscription under the limit names itself and its window', () => {

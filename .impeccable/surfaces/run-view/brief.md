@@ -17,7 +17,7 @@ Todd, alone, during a run; mostly laptop, sometimes phone. Not a programmer. Ope
 ## 2. Outcome and proof
 
 * At a glance: the stage (largest thing on the page), the step inside it, whether the run is running at all, tokens so far, each subscription against its quota, any active warning.
-* Warnings say what is wrong and nothing more. Starting rules, all Todd's: stopped (status stopped or failed); stuck (7 minutes with no activity, 28 Oct); quota low (20% or less left, 7 Nov); burning tokens fast (any one agent's model call over 100,000 tokens, naming the agent; starting value, to be reset from measured data).
+* Warnings say what is wrong and nothing more. Starting rules, all Todd's: stopped (status stopped or failed); stuck (7 minutes with no activity, 28 Oct); quota low (20% or less left, 7 Nov); burning tokens fast (the whole run's spend rate over 25,000 tokens a minute, measured against the run's own elapsed time; the JUL-419 run spent 492,000 tokens in 32 minutes, so the line sits well above a real run and is a starting value).
 * The machine stops for Todd at only two points: his UAT and anything irreversible (19 Nov). The Run view shows the UAT stop as "waiting for you".
 
 ## 3. Selected direction (unchanged): A2

@@ -1,5 +1,5 @@
 {
   "stuckAfterMs": 420000,
   "quotaLowPercent": 20,
-  "burningFastTokens": 100000
+  "burningFastTokensPerMinute": 25000
 }
