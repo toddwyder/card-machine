@@ -56,6 +56,9 @@ export const PROGRAMS = [
   ['machine/flow/crash-stop.mjs', 'Stops a run whose Studio died, and posts the cause on the card.'],
   ['machine/flow/interrupted.mjs', 'At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them.'],
   ['scripts/proof-run.mjs', 'Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins.'],
+  ['scripts/card-run.mjs', 'Starts one Linear card as a single headless Mastra Code session in a fresh worktree of julia-next main, with goal mode and the card dollar ledger.'],
+  ['scripts/card-check.mjs', 'Starts a separate headless session as the independent verifier of one julia-next pull request and posts its PASS or FAIL comment.'],
+  ['scripts/card-live.mjs', 'Waits until the live site serves a merge commit, then runs e2e against it.'],
   ['scripts/julia-agents.mjs', 'Runs a machine command with the Julia keys it needs.'],
 ].map(([path, what]) => ({ path, what }));
 
