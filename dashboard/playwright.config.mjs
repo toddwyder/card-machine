@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 4314;
+// The suite runs beside the deployed mission control rather than on top of it: the service that
+// serves Todd holds 4314, so the browser tests take the next port.
+const PORT = Number(process.env.PORT ?? 4315);
 
 export default defineConfig({
   testDir: './tests',
