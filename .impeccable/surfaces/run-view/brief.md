@@ -27,14 +27,16 @@ Bottle-green header and run panel on a sage ground, ivory cards, slab headings, 
 
 ## 4. Stages and steps (the new part)
 
-Stage and step names follow pstack's playbooks as written (read 20 Nov: `.agents/skills/poteto-mode/playbooks/babysit.md` and `shipping.md`), in plain English. The machine's own additions sit on top, as Todd said on 19 Nov. Working names for Todd to correct.
+The stage is the name of the playbook the session follows, and it changes as the session moves to another playbook. The steps under it are that playbook's steps, taken from the session's own to-do list, so the screen reads the run rather than a copy of it. Stage names read as a person writes them: Feature, Bug fix, Babysit, Shipping, Opening a PR.
 
-* **Build** (outside the Shipping plan): Read the card; Plan the slices; Build the slices; Open the pull request.
-* **Babysit** (stock, in its own order: conflicts, threads, CI): Check for merge conflicts; Answer review comments; Get the checks green.
+Stock pstack steps decide the step names. Working names for Todd to correct:
+
+* **Feature** (stock, in its order): Read the card; Plan the slices; Build the slices; Open the pull request. Opening a PR is the last step.
+* **Bug fix** (stock, in its order): Reproduce; Find the cause; Plan the fix; Verify; Stage the commits; Open the pull request.
+* **Babysit** (stock, in its order: conflicts, threads, CI): Check for merge conflicts; Answer review comments; Get the checks green.
 * **Shipping** (stock steps 1 to 6): Verify the change independently; Pick the verified pull request to land; Re-check the verdict still fits the code; Merge and read the result back; Leave it alone while it lands; Stop at the top of the verified set.
-* **After merge** (the machine's additions, Todd's decisions 6, 14 and 5): Wait for main's checks; Smoke test the live site; Your UAT on the live site.
 
-A machine card is one pull request, so stock steps 2, 5 and 6 (which handle a stack of pull requests) will usually pass at once. They are shown as written, not removed.
+A machine card is one pull request, so stock Shipping steps 2, 5 and 6 (which handle a stack of pull requests) will usually pass at once. They are shown as written, not removed.
 
 ## 5. The six states of a step
 
@@ -53,7 +55,7 @@ Also shown: "waiting for you" (the UAT stop) and "finished". Nothing running: th
 
 ## 6. Ranges and layout (unchanged)
 
-Helpers at once 1 to 5 or more; tokens into the millions per card; quota 0 to 100% left. Top to bottom: warnings, run panel with stage and steps, helpers, quota. Updates on its own. Laptop first; on a phone stages and helper cards stack.
+Helpers at once 1 to 5 or more; tokens into the millions per card; quota 0 to 100% left. Top to bottom: warnings, run panel with stage and steps, helpers, quota. Updates on its own. Laptop first; on a phone the stage block and the helper cards stack.
 
 ## 7. Open decisions and facts a builder must not invent
 
@@ -67,13 +69,13 @@ Impeccable new-work step 5, for the Run view's surface brief in card-machine (`.
 
 ## Direction contract
 
-THESIS: The run is a trip through four named stages (Build, Babysit, Shipping, After merge), shown the way a station board shows a train. It refuses the category default: a dark console of rows and numbers.
+THESIS: The run is a trip through the playbooks the session follows (Feature, Bug fix, Babysit, Shipping), the current one named on the page like a station board's next stop. It refuses the category default: a dark console of rows and numbers.
 
 OWN-WORLD: The larder. Bottle-green header and run panel (#1D3B27, #3D6B2C) on a sage ground (#DCEBCB), ivory cards (#F6F1E4), madder red (#A3212D) only for problems. Zilla Slab for headings and the stage name, Source Sans 3 for everything else. State reads from edges as well as colour: solid running, dashed stuck, dotted sent back, struck through given up.
 
 STORY: Without clicking, Todd knows which stage and step the run is in, whether it is moving, what it has used against each subscription, and anything wrong, in plain words at the top.
 
-FIRST VIEWPORT: Warnings across the top when there are any. Under them the green run panel: card title, running time, tokens, dollars marked "estimate"; the current stage name is the largest text on the page, with its steps in a row and "step N of M". Then helper cards, then the three quota bars. No primary action; the UAT stop reads "waiting for you". Signature motion: the marker moves along the stage's row as each step passes, and each new helper action slides in at the top of its card; nothing else moves. On a phone everything stacks.
+FIRST VIEWPORT: Warnings across the top when there are any. Under them the green run panel: card title, running time, tokens, dollars marked "estimate"; the current stage name is the largest text on the page, with its steps in a row and "step N of M". Then helper cards, then the three quota bars. Start shows when nothing is running, on the Ready cards listed there, and goes away once a card is running; the UAT stop reads "waiting for you". Signature motion: the marker moves along the stage's row as each step passes, and each new helper action slides in at the top of its card; nothing else moves. On a phone everything stacks.
 
 FORM: Operate surface, code-led. Composition: the A2 board, chosen 7 Nov over A, A3 and B. seed: none (unavailable)
 

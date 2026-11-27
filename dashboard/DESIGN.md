@@ -115,7 +115,7 @@ Problems are the only place madder red appears, and every problem has a shape as
 - One oversized slab heading per screen, the stage, at every width.
 - State carried by border shape first, colour second.
 - Numbers in tabular figures with their unit attached; dollars labelled "estimate".
-- No primary action on the screen; the machine's turn or Todd's turn is stated, never offered as a button.
+- Start is the one action on the screen, and it shows only while nothing is running.
 
 ## Colors
 
@@ -245,9 +245,9 @@ Borders do the talking. Every card and banner has a 3px border whose style is a 
 
 ### Don't:
 
-- **Don't** add a primary action, button, form, or link on the Run view; it reports and nothing else.
+- **Don't** add another action, button, form, or link to the Run view; Start begins a card and nothing else is offered.
 - **Don't** use madder red for anything healthy, and don't rely on colour without a shape.
 - **Don't** show a dollar figure without "estimate" beside it, or a percentage without its window and reset date ("Claude: 11% of this 5-hour window left").
 - **Don't** reach for a dark console look, a monospace body face, or purple; the look is bottle green on sage with ivory paper.
 - **Don't** draw a data table, a chart, or a wall of text where a card, a bar, or one sentence will do.
-- **Don't** show card numbers, IDs, or agent slugs where a plain-English name exists; the stage table in `dashboard/lib/stage-labels.mjs` supplies those names.
+- **Don't** show card numbers, IDs, or agent slugs where a plain-English name exists; the stage is the playbook name from the session, supplied by `playbookName` in `dashboard/lib/run-view.mjs`.
