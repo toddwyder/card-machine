@@ -181,7 +181,10 @@ export async function startCard(card, { model, now = Date.now() } = {}) {
   }
 
   const { booted, runMC, autoApprovePolicy } = session;
-  threadId = booted.session?.thread?.getId?.() ?? null;
+  // The boot opens a first, empty thread; the run then works in a thread of its own. The record
+  // follows the session's current thread so the to-do list is read from the thread doing the work.
+  const currentThreadId = () => booted.session?.thread?.getId?.() ?? threadId;
+  threadId = currentThreadId();
   await writeState();
 
   const run = runMC({
@@ -201,11 +204,12 @@ export async function startCard(card, { model, now = Date.now() } = {}) {
   let lastWrite = 0;
   const keepCurrent = async () => {
     lastActivityAt = Date.now();
+    threadId = currentThreadId();
     if (lastActivityAt - lastWrite < 2000) return;
     lastWrite = lastActivityAt;
     await writeState();
   };
-  const beat = setInterval(() => { void writeState(); }, BEAT_MS);
+  const beat = setInterval(() => { threadId = currentThreadId(); void writeState(); }, BEAT_MS);
 
   void (async () => {
     let status = 'stopped';
@@ -231,5 +235,5 @@ export async function startCard(card, { model, now = Date.now() } = {}) {
     }
   })();
 
-  return { card: card.identifier, title: card.title, startedAt, threadId };
+  return { card: card.identifier, title: card.title, startedAt, threadId: currentThreadId() };
 }
