@@ -153,27 +153,43 @@ function StepRow({ steps }) {
   );
 }
 
-function StageRail({ stages, current, step, steps }) {
-  const passed = stages.filter(stage => stage !== current);
+// The stage is the name of the playbook the session follows; the steps under it are that
+// playbook's steps from the session's own to-do list.
+function Stage({ stage, step, steps }) {
+  if (!stage) return <p className={styles.stageWaiting}>The session has not named its playbook yet.</p>;
   return (
-    <ol className={styles.rail}>
-      {passed.map(stage => (
-        <li key={stage.id} className={styles.past} data-state={stage.id === 'remediation' ? 'sent_back' : stage.status}>
-          <Mark state={stage.status === 'failed' ? 'failed' : 'done'} />
-          <span>{stage.label}</span>
+    <div className={styles.stageBlock}>
+      <h2 className={styles.stageName}>{stage}</h2>
+      {step ? <p className={styles.nowStep}>{step}</p> : null}
+      <StepRow steps={steps} />
+    </div>
+  );
+}
+
+// The cards Start can begin. Start shows only while nothing is running, and it goes away as soon
+// as the run it began appears.
+function ReadyCards({ ready, onStart, starting }) {
+  if (ready.error) return <p className={styles.readyNote}>{ready.error}</p>;
+  if (!ready.cards.length) return <p className={styles.readyNote}>No card is Ready right now.</p>;
+  return (
+    <ul className={styles.readyList}>
+      {ready.cards.map(card => (
+        <li key={card.id} className={styles.readyCard}>
+          <div className={styles.readyHead}>
+            <span className={styles.readyIdentifier}>{card.identifier}</span>
+            <h3 className={styles.readyTitle}>{card.title}</h3>
+          </div>
+          <button
+            type="button"
+            className={styles.start}
+            onClick={() => onStart(card.identifier)}
+            disabled={starting !== null}
+          >
+            {starting === card.identifier ? 'Starting…' : 'Start'}
+          </button>
         </li>
       ))}
-      {current ? (
-        <li className={styles.now}>
-          <div className={styles.nowHead}>
-            <Mark state={current.status === 'failed' ? 'failed' : 'working'} />
-            <h2 className={styles.nowName}>{current.label}</h2>
-          </div>
-          {step ? <p className={styles.nowStep}>{step}</p> : null}
-          <StepRow steps={steps} />
-        </li>
-      ) : null}
-    </ol>
+    </ul>
   );
 }
 
@@ -270,6 +286,8 @@ function QuotaBar({ subscription }) {
 export function RunView({ initialSnapshot }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [offline, setOffline] = useState(false);
+  const [starting, setStarting] = useState(null);
+  const [startError, setStartError] = useState(null);
   const busy = useRef(false);
 
   useEffect(() => {
@@ -298,7 +316,31 @@ export function RunView({ initialSnapshot }) {
     };
   }, []);
 
-  const { run, subscriptions, warnings } = snapshot;
+  async function start(identifier) {
+    setStarting(identifier);
+    setStartError(null);
+    try {
+      const response = await fetch(`${BASE_PATH}/api/start`, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ identifier }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setStartError(body.error ?? 'The card did not start.');
+      }
+      // Read the screen again straight away, so the run appears without waiting for the next tick.
+      const next = await fetch(`${BASE_PATH}/api/run-view`, { cache: 'no-store' });
+      if (next.ok) setSnapshot(await next.json());
+    } catch {
+      setStartError('The card did not start.');
+    } finally {
+      setStarting(null);
+    }
+  }
+
+  const { run, subscriptions, warnings, readyCards } = snapshot;
 
   return (
     <div className={styles.page}>
@@ -328,7 +370,7 @@ export function RunView({ initialSnapshot }) {
                 {money(run.usage.dollarsEstimate)}
               </p>
             </div>
-            <StageRail stages={run.stages} current={run.stage} step={run.step} steps={run.steps} />
+            <Stage stage={run.stage} step={run.step} steps={run.steps} />
           </section>
         ) : (
           <section className={styles.quiet} aria-label="Nothing running">
@@ -336,12 +378,18 @@ export function RunView({ initialSnapshot }) {
             <p className={styles.quietText}>
               {snapshot.lastResult
                 ? `The last run ${snapshot.lastResult.status === 'finished' ? 'finished' : snapshot.lastResult.status}.`
-                : 'The machine is idle. The next card that starts will appear here by itself.'}
+                : 'The machine is idle. Start a Ready card and its run appears here by itself.'}
             </p>
+            <ReadyCards ready={readyCards ?? { cards: [], error: null }} onStart={start} starting={starting} />
+            {startError ? (
+              <p className={styles.readyNote} role="alert">
+                {startError}
+              </p>
+            ) : null}
           </section>
         )}
 
-        {run ? (
+        {run && run.helpers?.length ? (
           <section aria-labelledby="helpers-heading">
             <h2 id="helpers-heading" className={styles.sectionTitle}>
               Helpers

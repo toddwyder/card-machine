@@ -129,35 +129,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.rail {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px 18px;
+/* The stage is the playbook the session follows, its name the largest text on the panel. */
+.stageBlock {
   margin: 22px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.past {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 2px solid var(--sapling);
-  font-size: 0.9rem;
-  color: rgb(246 241 228 / 92%);
-}
-
-/* A stage the run was sent back through: dotted, the edge that says so. */
-.past[data-state='sent_back'] {
-  border-style: dotted;
-  border-color: var(--amber);
-}
-
-.now {
-  flex: 1 1 320px;
   background: var(--ivory);
   color: var(--bottle);
   border-radius: 16px;
@@ -165,20 +139,19 @@
   border: 3px solid var(--lime);
 }
 
-/* The stage happening now: its mark sits beside the name, not above it. */
-.nowHead {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-}
-
-.nowName {
+.stageName {
   margin: 0;
   font-family: var(--font-slab), 'Zilla Slab', Georgia, serif;
   font-size: clamp(1.9rem, 4.2vw, 2.9rem);
   line-height: 1.05;
   letter-spacing: -0.02em;
+}
+
+/* A session that has not written its to-do list yet: said plainly, not guessed at. */
+.stageWaiting {
+  margin: 22px 0 0;
+  font-size: 1rem;
+  color: rgb(246 241 228 / 85%);
 }
 
 .nowStep {
@@ -481,6 +454,79 @@
   max-width: 70ch;
 }
 
+/* The Ready cards Start can begin: one row each, Start at the end of the row. */
+.readyList {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.readyCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 2px solid var(--sage);
+  background: #fffdf7;
+}
+
+.readyHead {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.readyIdentifier {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.readyTitle {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.25;
+  color: var(--bottle);
+}
+
+.start {
+  flex: none;
+  font: inherit;
+  font-weight: 600;
+  padding: 9px 20px;
+  border-radius: 999px;
+  border: 2px solid var(--bottle);
+  background: var(--bottle);
+  color: var(--ivory);
+  cursor: pointer;
+}
+
+.start:hover:enabled {
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.start:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.start:focus-visible {
+  outline: 3px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.readyNote {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
 .legend {
   margin: 0;
   font-size: 0.82rem;
@@ -557,18 +603,6 @@
 
 .panel .markRing {
   stroke: var(--lime);
-}
-
-.now .markFill {
-  fill: var(--green);
-}
-
-.now .markStroke {
-  stroke: var(--ivory);
-}
-
-.now .markRing {
-  stroke: var(--green);
 }
 
 /* The one deliberate motion: a new helper action settles at the top of its card. */

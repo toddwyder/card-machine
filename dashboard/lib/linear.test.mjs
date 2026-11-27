@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { listReady, getReadyCard } from './linear.js';
+import { listReady, getReadyCard, getCard } from './linear.js';
 
 const card = (identifier, createdAt = '2026-10-28T00:00:00Z', state = 'Ready') => ({
   id: identifier, identifier, title: `Title ${identifier}`, createdAt,
@@ -81,4 +81,36 @@ test('rejects broken pagination and duplicate cards instead of dropping cards', 
 test('Start lookup is a fresh read and rejects non-Ready or missing cards', async () => {
   assert.equal((await getReadyCard('JUL-1', opts(async () => response([card('JUL-1')])))).title, 'Title JUL-1');
   assert.equal(await getReadyCard('JUL-2', opts(async () => response([card('JUL-1')]))), null);
+});
+
+const full = (overrides = {}) => ({
+  id: 'uuid', identifier: 'JUL-419', title: 'Start on the Run view', description: 'The card body',
+  url: 'https://linear.app/julia-next/issue/JUL-419/start', createdAt: '2026-11-27T00:00:00Z',
+  state: { name: 'Ready' }, team: { name: 'Julia-next' }, ...overrides,
+});
+const issue = node => opts(async () => Response.json({ data: { issue: node } }));
+
+test('the card Start hands the session carries its title, body and address', async () => {
+  let asked;
+  const fetchImpl = async (_url, init) => {
+    asked = JSON.parse(init.body);
+    return Response.json({ data: { issue: full() } });
+  };
+  const read = await getCard('JUL-419', opts(fetchImpl));
+  assert.equal(asked.variables.id, 'JUL-419');
+  assert.match(asked.query, /description/);
+  assert.deepEqual(read, {
+    id: 'uuid', identifier: 'JUL-419', title: 'Start on the Run view',
+    description: 'The card body', url: 'https://linear.app/julia-next/issue/JUL-419/start',
+  });
+  assert.equal((await getCard('JUL-419', issue(full({ description: null })))).description, '');
+});
+
+test('a card that is not Ready or not Julia-next is refused rather than started', async () => {
+  await assert.rejects(getCard('JUL-419', issue(full({ state: { name: 'In Progress' } }))), /not Ready/);
+  await assert.rejects(getCard('JUL-419', issue(full({ team: { name: 'Other' } }))), /not Ready/);
+  await assert.rejects(getCard('JUL-419', issue(null)), /unexpected card/);
+  await assert.rejects(getCard('JUL-419', issue(full({ identifier: 'JUL-1' }))), /unexpected card/);
+  await assert.rejects(getCard('JUL-419', issue(full({ url: 'http://elsewhere' }))), /unexpected card/);
+  await assert.rejects(getCard('JUL-419', { apiKey: '' }), /LINEAR_API_KEY/);
 });
