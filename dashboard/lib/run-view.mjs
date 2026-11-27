@@ -9,7 +9,7 @@
 // session's list reads when it appends the next playbook instead of rewriting.
 
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readingReason } from './reading-reasons.mjs';
 
@@ -69,7 +69,9 @@ const STEP_STATUS = Object.freeze({ pending: 'pending', in_progress: 'in_progres
 
 // Playbooks live in the skill, one file each, and are read once when this module loads. A stage
 // word and a step's words must be compared the same way every time, so the reading is a constant.
-export const PLAYBOOKS_DIR = fileURLToPath(new URL('../../.agents/skills/poteto-mode/playbooks/', import.meta.url));
+// The folder is joined by hand rather than written as `new URL(..., import.meta.url)`: the build
+// reads that form as an asset to bundle, and a folder of markdown is not one.
+export const PLAYBOOKS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '.agents', 'skills', 'poteto-mode', 'playbooks');
 
 // Words that carry no meaning on their own. Dropping them lets an item written as "Plan the
 // slices" meet a playbook step that says "Plan the slices before building".
