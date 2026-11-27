@@ -1,41 +1,39 @@
-// Start one card, and read back the session it runs in.
+// Start one card, and read back the run it began.
 //
 // Start does what stock pstack does: it opens one Mastra Code session and tells it to follow
-// pstack on the card. Nothing in this module decides what the card needs or checks on the work.
-// Its only job is to hold the session, to read the session's own to-do list back for the Run
-// view, and to hand back a small record of when the run began and how it ended.
+// pstack on the card. The session runs in a process of its own (see card-run.mjs), so a restart of
+// mission control does not end the card with it. This module's job is to decide when Start may
+// begin a card, to launch that process, and to read the record it writes back for the Run view.
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, '..', '..');
-
-// The skill reaches the session as standing instructions rather than as a file it is told to go
-// and read, so it holds from the first call to the last and cannot fall out of a compacted history.
-const POTETO_SKILL = join(REPO_ROOT, '.agents', 'skills', 'poteto-mode', 'SKILL.md');
+export const REPO_ROOT = resolve(HERE, '..', '..');
 
 export const SESSION_DIR = process.env.RUN_VIEW_SESSION_DIR ?? join(REPO_ROOT, '.artifacts', 'run-view');
 
 const RECORD = 'run.json';
-const SETTINGS = 'settings.json';
+const PAYLOAD = 'run-payload.json';
 const STATE = 'state.db';
 
 // A record still counts as a live run only while the process running it keeps saying so. The
 // session writes a beat into the record every couple of seconds; a beat that has stopped means
 // the process that held the session is gone, so the run ended without leaving a result.
-const BEAT_MS = 2_000;
+export const BEAT_MS = 2_000;
 const LIVE_WITHIN_MS = 30_000;
 
-const isLive = record => !record.endedAt && Date.now() - Number(record.heartbeatAt ?? 0) < LIVE_WITHIN_MS;
+export const isLive = (record, now = Date.now()) => !record.endedAt && now - Number(record.heartbeatAt ?? 0) < LIVE_WITHIN_MS;
 
-const recordPath = () => join(SESSION_DIR, RECORD);
-const settingsPath = () => join(SESSION_DIR, SETTINGS);
+export const recordPath = (dir = SESSION_DIR) => join(dir, RECORD);
+const payloadPath = (dir = SESSION_DIR) => join(dir, PAYLOAD);
+const statePath = (dir = SESSION_DIR) => join(dir, STATE);
 
-async function readJson(file) {
+export async function readJson(file) {
   try {
     return JSON.parse(await readFile(file, 'utf8'));
   } catch {
@@ -43,16 +41,16 @@ async function readJson(file) {
   }
 }
 
-async function writeRecord(record) {
-  await mkdir(SESSION_DIR, { recursive: true });
-  await writeFile(recordPath(), `${JSON.stringify(record, null, 2)}\n`);
+export async function writeRecord(dir, record) {
+  await mkdir(dir, { recursive: true });
+  await writeFile(recordPath(dir), `${JSON.stringify(record, null, 2)}\n`);
 }
 
 // The to-do list is stock Mastra thread state. Reading it beside the running session is a read of
 // the same file the session writes, so it is opened read-only and any row it cannot parse is
 // treated as no list at all rather than a broken screen.
-function readThreadTasks(threadId) {
-  const file = join(SESSION_DIR, STATE);
+function readThreadTasks(threadId, dir) {
+  const file = statePath(dir);
   if (!threadId || !existsSync(file)) return null;
   let db;
   try {
@@ -73,8 +71,8 @@ function readThreadTasks(threadId) {
  * @returns {Promise<{card: string, title: string, startedAt: number, endedAt: number|null, status: string,
  *   threadId: string|null, tasks: object[]|null, tokens: number, lastActivityAt: number|null} | null>}
  */
-export async function readCardSession() {
-  const record = await readJson(recordPath());
+export async function readCardSession({ dir = SESSION_DIR } = {}) {
+  const record = await readJson(recordPath(dir));
   if (!record || typeof record.card !== 'string') return null;
   const running = isLive(record);
   // A record left behind by a process that is gone is a run that ended without a result.
@@ -87,167 +85,94 @@ export async function readCardSession() {
     endedAt: shown.endedAt ?? null,
     status: shown.status,
     threadId: shown.threadId ?? null,
-    tasks: readThreadTasks(shown.threadId),
+    tasks: readThreadTasks(shown.threadId, dir),
     tokens: Number.isFinite(shown.tokens) ? shown.tokens : 0,
     largestStepTokens: Number.isFinite(shown.largestStepTokens) ? shown.largestStepTokens : 0,
     lastActivityAt: Number.isFinite(shown.lastActivityAt) ? shown.lastActivityAt : null,
   };
 }
 
-export async function isRunning() {
-  const record = await readJson(recordPath());
+export async function isRunning({ dir = SESSION_DIR } = {}) {
+  const record = await readJson(recordPath(dir));
   return Boolean(record && isLive(record));
 }
 
-// A partial settings file is merged over the stock defaults. The session gets the built-in
-// helpers, a trace for each model call, and the same model everywhere, which is what the
-// machine's own sessions already do.
-async function writeSessionSettings() {
-  await mkdir(SESSION_DIR, { recursive: true });
-  await writeFile(settingsPath(), `${JSON.stringify({
-    preferences: { subagentsEnabled: true },
-    observability: { localTracing: true, resources: {} },
-  }, null, 2)}\n`);
-  return settingsPath();
-}
-
-function order(card) {
-  return [
-    `Follow pstack on ${card.identifier}: ${card.title}`,
-    card.url ? card.url : '',
-    '',
-    card.description ?? '',
-    '',
-    'Name every to-do id `<playbook>-<number>`, using the kebab-case name of the playbook this card is routed to and the step number, and copy that playbook\'s steps into the to-do list in order. Keep the list current as the work moves.',
-    'You are running alone. Do not end your turn to wait for anything, and do not ask a question.',
-  ].filter(line => line !== '').join('\n');
-}
-
 /**
- * What the session is booted with. The skill is passed in whole, so the session follows pstack
- * from its first call to its last without being told to go and read anything.
+ * The command that runs one card outside mission control. A session started as a child of the
+ * mission control service dies with that service, because a service restart kills its whole
+ * cgroup. A transient unit of its own does not, and `systemd-run` returns as soon as the unit is
+ * up, so Start answers before the session has finished booting. The keys the session needs are
+ * supplied by the launcher the machine already uses, because `systemd-run --user` does not pass
+ * the caller's environment on.
  */
-export function sessionConfig({ settingsPath, subagents }) {
+export function detachedCommand({ unit, payload, repo = REPO_ROOT }) {
   return {
-    cwd: REPO_ROOT,
-    settingsPath,
-    createInitialThread: true,
-    storage: { backend: 'libsql', url: `file:${join(SESSION_DIR, STATE)}`, isRemote: false },
-    subagents,
-    disableBuiltinTools: ['ask_user', 'submit_plan'],
-    plansDir: join(SESSION_DIR, 'plans'),
-    planApprovalStartsGoal: false,
-    hostInstructions: readFileSync(POTETO_SKILL, 'utf8'),
-    coAuthor: {
-      name: 'mastracode',
-      email: '284800079+mastra-platform[bot]@users.noreply.github.com',
-    },
+    command: 'systemd-run',
+    cwd: repo,
+    args: [
+      '--user',
+      `--unit=${unit}`,
+      '--collect',
+      '--slice=card.slice',
+      `--property=WorkingDirectory=${repo}`,
+      process.execPath,
+      join(repo, 'scripts', 'julia-agents.mjs'),
+      '--',
+      process.execPath,
+      join(repo, 'dashboard', 'lib', 'card-run.mjs'),
+      '--payload',
+      payload,
+    ],
   };
 }
 
-async function bootSession() {
-  const settings = await writeSessionSettings();
-  process.env.MASTRA_DB_PATH = join(SESSION_DIR, STATE);
-  process.env.MASTRA_OBSERVABILITY_DB_PATH = join(SESSION_DIR, 'observability.duckdb');
-  const { bootLocalAgentController, builtinSubagents, runMC, autoApprovePolicy } = await import('@mastra/code-sdk');
-  const booted = await bootLocalAgentController(sessionConfig({
-    settingsPath: settings,
-    subagents: builtinSubagents.map(definition => ({ ...definition, maxSteps: definition.maxSteps ?? 1000 })),
-  }));
-  return { booted, runMC, autoApprovePolicy };
+// `systemd-run --user` finds the user's manager through the runtime directory, and the mission
+// control service is started with no XDG_RUNTIME_DIR of its own, so the launcher passes one on.
+// Without it the launch fails with "Failed to connect to bus: No medium found".
+export function launcherEnv(environment = process.env) {
+  return {
+    ...environment,
+    XDG_RUNTIME_DIR: environment.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid()}`,
+  };
 }
 
-async function closeSession(booted) {
-  const { controller, storageMaintenance, observability } = booted;
-  try { await controller.stopNotificationDispatch?.(); } catch {}
-  try { await observability?.flush?.(); } catch {}
-  await new Promise(done => setTimeout(done, 2000));
-  try { await observability?.shutdown?.(); } catch {}
-  try { await storageMaintenance?.closeStorage?.(); } catch {}
-  await new Promise(done => setTimeout(done, 1000));
+// A child left in the caller's process group is killed with the caller. Detaching puts it in a
+// process group of its own, and unref lets the caller exit without waiting for it.
+export function launchDetached({ command, args, cwd }) {
+  return new Promise((started, failed) => {
+    const child = spawn(command, args, { cwd, detached: true, stdio: ['ignore', 'ignore', 'pipe'], env: launcherEnv() });
+    let detail = '';
+    child.stderr?.on('data', chunk => { detail = `${detail}${chunk}`.slice(0, 500); });
+    child.once('error', failed);
+    child.once('exit', code => (code === 0
+      ? started()
+      : failed(new Error(`Could not start a card session: ${detail.trim() || `exit ${code}`}`))));
+    child.unref();
+  });
 }
 
 /**
  * Begin one card. Rejects while a run is live, because the Run view shows one run at a time.
  * @param {{identifier: string, title: string, description?: string, url?: string}} card
- * @param {{model: string, now?: number}} options
+ * @param {{model: string, now?: number, dir?: string, launch?: Function}} options
  */
-export async function startCard(card, { model, now = Date.now() } = {}) {
-  if (await isRunning()) throw Object.assign(new Error('A card is already running.'), { status: 409 });
+export async function startCard(card, { model, now = Date.now(), dir = SESSION_DIR, launch = launchDetached } = {}) {
+  if (await isRunning({ dir })) throw Object.assign(new Error('A card is already running.'), { status: 409 });
   const startedAt = now;
-  let threadId = null;
-  let tokens = 0;
-  let largestStepTokens = 0;
-  let lastActivityAt = startedAt;
-  const writeState = extra => writeRecord({
+  const record = {
     card: card.identifier, title: card.title, startedAt, endedAt: null, status: 'running',
-    threadId, tokens, largestStepTokens, lastActivityAt, heartbeatAt: Date.now(), ...extra,
-  }).catch(() => {});
+    threadId: null, tokens: 0, largestStepTokens: 0, lastActivityAt: startedAt, heartbeatAt: startedAt,
+  };
+  // The record is written before the launch, so a second press is refused while the session boots.
+  await writeRecord(dir, record);
+  const payload = payloadPath(dir);
+  await writeFile(payload, `${JSON.stringify({ card, model, sessionDir: dir, startedAt }, null, 2)}\n`);
 
-  await writeState();
-
-  let session = null;
   try {
-    session = await bootSession();
+    await launch(detachedCommand({ unit: `card-run-${card.identifier.toLowerCase()}-${startedAt}`, payload }));
   } catch (error) {
-    await writeState({ endedAt: Date.now(), status: 'stopped' });
+    await writeRecord(dir, { ...record, status: 'stopped', endedAt: Date.now() });
     throw error;
   }
-
-  const { booted, runMC, autoApprovePolicy } = session;
-  // The boot opens a first, empty thread; the run then works in a thread of its own. The record
-  // follows the session's current thread so the to-do list is read from the thread doing the work.
-  const currentThreadId = () => booted.session?.thread?.getId?.() ?? threadId;
-  threadId = currentThreadId();
-  await writeState();
-
-  const run = runMC({
-    controller: booted.controller,
-    session: booted.session,
-    model,
-    mode: 'build',
-    thinkingLevel: 'off',
-    policy: autoApprovePolicy,
-    title: `${card.identifier} ${card.title}`,
-    prompt: order(card),
-  });
-
-  // What the run has spent, and when the session last did anything. Both come from the run's own
-  // events, so the screen never counts tokens it did not see the session report. The beat under it
-  // is what tells the next read that this process still holds the session.
-  let lastWrite = 0;
-  const keepCurrent = async () => {
-    lastActivityAt = Date.now();
-    threadId = currentThreadId();
-    if (lastActivityAt - lastWrite < 2000) return;
-    lastWrite = lastActivityAt;
-    await writeState();
-  };
-  const beat = setInterval(() => { threadId = currentThreadId(); void writeState(); }, BEAT_MS);
-
-  void (async () => {
-    let status = 'stopped';
-    try {
-      for await (const event of run) {
-        if (event?.type === 'usage_update' && Number.isFinite(event.usage?.totalTokens)) {
-          tokens += event.usage.totalTokens;
-          largestStepTokens = Math.max(largestStepTokens, event.usage.totalTokens);
-        }
-        if (event?.type === 'error') console.error('[card]', event.error?.message ?? 'session error');
-        await keepCurrent();
-      }
-      const result = await run.result;
-      status = result?.status === 'completed' || result?.status === 'done' ? 'finished' : 'stopped';
-    } catch (error) {
-      console.error('[card]', error?.message ?? error);
-    } finally {
-      clearInterval(beat);
-      await closeSession(booted);
-      const current = await readJson(recordPath());
-      const endedAt = Date.now();
-      await writeRecord({ ...(current ?? {}), card: card.identifier, title: card.title, startedAt, endedAt, status, threadId, tokens, largestStepTokens, lastActivityAt: endedAt, heartbeatAt: endedAt });
-    }
-  })();
-
-  return { card: card.identifier, title: card.title, startedAt, threadId: currentThreadId() };
+  return { card: card.identifier, title: card.title, startedAt };
 }

@@ -58,6 +58,7 @@ export const PROGRAMS = [
   ['scripts/proof-run.mjs', 'Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins.'],
   ['scripts/julia-agents.mjs', 'Runs a machine command with the Julia keys it needs.'],
   ['dashboard/lib/card-session.mjs', 'The Start action: begins one card in one Mastra Code session following pstack, and reads that session\'s to-do list back for the Run view.'],
+  ['dashboard/lib/card-run.mjs', 'The session that runs one card, in a process of its own so a mission control restart does not end the card with it.'],
 ].map(([path, what]) => ({ path, what }));
 
 // Every plain program in the workflow folder belongs on the list, so a piece
