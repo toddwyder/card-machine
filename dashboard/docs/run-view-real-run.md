@@ -38,6 +38,11 @@ Pictures, taken from the browser during the run:
 `real-run-laptop.png` (Feature, step 4 of 8), `real-run-opening-a-pr.png` (Opening a PR, 1 of 3),
 `real-run-phone.png` (the same stage at 390 px wide).
 
+The Start state has its own two pictures, taken from the same page in the same browser:
+`real-run-start-idle.png` (nothing running, a Start on each real Ready card) and
+`real-run-start-feature.png` (the same page during the run: `Running · 13m 3s`, stage **Feature**,
+step 3 of 8, and no Start button in sight).
+
 ## What it cost
 
 Three sessions, 1.71 M tokens on the last one, all on `commandcode/deepseek/deepseek-v4.1-flash`.
