@@ -1,11 +1,16 @@
 // The Run view's model: the session Start opened in, one RunViewSnapshot out.
-// Everything here is pure. No file reads, no clock, no network, so a test can pin every state
-// and every warning without a browser or a run.
+// Everything here is pure except reading the playbooks once at import. No clock, no network, so a
+// test can pin every state and every warning without a browser or a run.
 //
-// The stage is the name of the playbook the session follows, and the steps are that playbook's
-// steps from the session's own to-do list. pstack names every to-do id `<playbook>-<number>`,
-// which is the one signal both are read from.
+// The stage is the playbook the session is following, and the steps are the session's own to-do
+// list. The stage is read from the words of the items: pstack writes the steps in its own words,
+// so the id it gives them says nothing reliable. Each item votes for the playbook whose step it
+// matches best; the step in hand decides, and failing that the last step written, which is how a
+// session's list reads when it appends the next playbook instead of rewriting.
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readingReason } from './reading-reasons.mjs';
 
 // A run is in one of these at a time. The table is the only place a state becomes a word or a
@@ -62,8 +67,166 @@ const STEP_PILL_CHARS = 42;
 
 const STEP_STATUS = Object.freeze({ pending: 'pending', in_progress: 'in_progress', completed: 'completed' });
 
-// pstack's to-do ids carry the playbook name and the step number (`feature-3`).
-const STEP_ID = /^(.+)-(\d+)$/;
+// Playbooks live in the skill, one file each, and are read once when this module loads. A stage
+// word and a step's words must be compared the same way every time, so the reading is a constant.
+export const PLAYBOOKS_DIR = fileURLToPath(new URL('../../.agents/skills/poteto-mode/playbooks/', import.meta.url));
+
+// Words that carry no meaning on their own. Dropping them lets an item written as "Plan the
+// slices" meet a playbook step that says "Plan the slices before building".
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'of', 'to', 'in', 'on', 'at', 'by', 'for', 'with', 'from', 'into',
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'it', 'its', 'this', 'that', 'these', 'those',
+  'as', 'if', 'then', 'than', 'so', 'but', 'not', 'no', 'do', 'does', 'did', 'can', 'will', 'must',
+  'you', 'your', 'we', 'our', 'they', 'their', 'he', 'she', 'his', 'her', 'them', 'us', 'me', 'my',
+  'each', 'every', 'any', 'all', 'own', 'use', 'uses', 'via', 'per',
+]);
+
+const words = text => new Set(
+  String(text ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length > 1 && !STOP_WORDS.has(word)),
+);
+
+const HEADING = /^#{1,6}\s/;
+const NUMBERED = /^\d+[.)]\s+(.*)$/;
+const BULLET = /^[-*]\s+(.*)$/;
+const NOT_A_STEP = /^\*\*Reply:\*\*/;
+
+// A markdown line with its emphasis and code marks taken out, so matching compares words.
+const plain = line => line.replace(/[`*_]/g, '').trim();
+
+const firstSentence = text => String(text ?? '').split(/(?<=[.!?])\s/)[0];
+
+/**
+ * The steps of one playbook file, as a person reads them: its numbered list if it has one, else
+ * its top-level bullets, else the sentences of its prose. Continuation lines belong to the step
+ * above them, because a step's detail follows its first line.
+ */
+export function playbookSteps(text) {
+  const raw = String(text ?? '').split('\n');
+  const numbered = [];
+  const bullets = [];
+  const paragraphs = [];
+  let paragraph = [];
+
+  for (const line of raw) {
+    if (HEADING.test(line) || NOT_A_STEP.test(line.trim())) continue;
+    if (!line.trim()) {
+      if (paragraph.length) paragraphs.push(paragraph);
+      paragraph = [];
+      continue;
+    }
+    const numberedMatch = NUMBERED.exec(line);
+    if (numberedMatch) {
+      numbered.push([plain(numberedMatch[1])]);
+      continue;
+    }
+    const bulletMatch = BULLET.exec(line);
+    if (bulletMatch) {
+      bullets.push([plain(bulletMatch[1])]);
+      continue;
+    }
+    // An indented line is detail for the step above it; a flush-left line is prose.
+    if ((numbered.length || bullets.length) && /^\s+\S/.test(line)) {
+      const holder = numbered.length ? numbered : bullets;
+      holder.at(-1)?.push(plain(line));
+      continue;
+    }
+    paragraph.push(line);
+  }
+  if (paragraph.length) paragraphs.push(paragraph);
+
+  const joinSteps = list => list.map(parts => parts.join(' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (numbered.length) return joinSteps(numbered);
+  if (bullets.length) return joinSteps(bullets);
+  return paragraphs
+    .flatMap(block => block.join(' ').split(/(?<=[.!?])\s+/))
+    .map(plain)
+    .filter(sentence => sentence.split(/\s+/).filter(Boolean).length >= 2);
+}
+
+export function readPlaybooks(dir = PLAYBOOKS_DIR) {
+  return readdirSync(dir)
+    .filter(name => name.endsWith('.md'))
+    .map(name => name.slice(0, -3))
+    .sort()
+    .map(id => ({
+      id,
+      steps: playbookSteps(readFileSync(join(dir, `${id}.md`), 'utf8')).map((text, index) => ({
+        text,
+        index,
+        // A step's name is its first sentence. The detail after it is advice about the step, and
+        // a to-do item that names the step must still match it.
+        nameWords: words(firstSentence(text)),
+        words: words(text),
+      })),
+    }));
+}
+
+const PLAYBOOKS = readPlaybooks();
+
+// A match scores on both readings at once: how much of the step's name the item carries, plus how
+// much of the item the step carries. An item that is a step's whole name scores 2; an item with a
+// session's own detail after it scores around 1. Half of one reading alone does not make a match.
+const MATCH_SCORE = 1;
+const MATCH_WORDS = 2;
+const EPSILON = 1e-9;
+
+const sharedWords = (a, b) => {
+  let shared = 0;
+  for (const word of a) if (b.has(word)) shared += 1;
+  return shared;
+};
+
+// A word in a to-do item that only one playbook writes says which playbook the item is about.
+function wordOwners(playbooks) {
+  const owners = new Map();
+  for (const playbook of playbooks) {
+    for (const step of playbook.steps) {
+      for (const word of step.words) {
+        const set = owners.get(word) ?? new Set();
+        set.add(playbook.id);
+        owners.set(word, set);
+      }
+    }
+  }
+  return owners;
+}
+
+/**
+ * The playbooks whose step this item is about, best first. Two readings of the same pair of texts
+ * are both allowed to win, because a to-do item is written either as the step's name or as that
+ * name plus the session's own detail:
+ *  - the item as a whole sitting inside one step ("Delegate the slice to a subagent" in a step
+ *    that says the same and then keeps going), and
+ *  - a step's name, its first sentence, sitting whole inside the item ("Verify on the matching
+ *    surface: a real run showing…").
+ * A step that several playbooks carry ("Run Opening a PR") gives its vote to each of them, so it
+ * can never take a vote away from the playbook the rest of the list points at.
+ */
+function bestSteps(itemWords, playbooks) {
+  const matches = [];
+  let bestScore = 0;
+  for (const playbook of playbooks) {
+    let best = null;
+    for (const step of playbook.steps) {
+      const inName = sharedWords(itemWords, step.nameWords);
+      const inWhole = sharedWords(itemWords, step.words);
+      if (inWhole < MATCH_WORDS) continue;
+      const score = inName / step.nameWords.size + inWhole / itemWords.size;
+      if (!best || score > best.score) best = { step, score };
+    }
+    if (!best) continue;
+    matches.push({ playbook: playbook.id, score: best.score });
+    bestScore = Math.max(bestScore, best.score);
+  }
+  return matches.filter(match => match.score >= MATCH_SCORE && match.score >= bestScore - EPSILON);
+}
+
+// A one-word item ("Do it less.") is matched only by a word no other playbook writes.
+function thinMatches(itemWords, playbooks, owners) {
+  const word = [...itemWords][0];
+  if (!word || owners.get(word)?.size !== 1) return [];
+  return [{ playbook: [...owners.get(word)][0], score: 1 }];
+}
 
 // A pill holds the first sentence of the step, cut at a word boundary when that is still long.
 function pillText(text) {
@@ -77,29 +240,65 @@ function pillText(text) {
  * The run's steps: the current playbook's steps from the session's own to-do list, in playbook
  * order, with the step the run is on. This is the only place a step becomes a number, a word or
  * a pill, so the stage's name, the step's name and "step N of M" can never disagree.
+ *
+ * Each to-do item votes for the playbook whose step it matches best; the winner is the stage. The
+ * list is the winning playbook's items in the winning playbook's order, so an item the session
+ * appended (rather than replaced) cannot drag its old playbook's steps back onto the screen.
  */
-export function runSteps(tasks) {
-  const parsed = (tasks ?? [])
-    .map((task, position) => ({ task, position, match: STEP_ID.exec(String(task?.id ?? '')) }))
-    .filter(row => row.match)
-    .map(({ task, position, match }) => {
-      const title = String(task.content ?? '').trim();
-      return {
-        position,
-        step: {
-          id: String(task.id ?? ''),
-          title,
-          short: pillText(title),
-          status: STEP_STATUS[task.status] ?? 'pending',
-          playbook: match[1],
-          order: Number(match[2]),
-        },
-      };
-    });
-  const ordered = parsed.toSorted((a, b) => a.step.order - b.step.order || a.position - b.position);
-  const running = ordered.find(row => row.step.status === 'in_progress');
-  const playbook = running?.step.playbook ?? parsed.at(-1)?.step.playbook;
-  const list = ordered.filter(row => row.step.playbook === playbook).map(row => row.step);
+export function runSteps(tasks, playbooks = PLAYBOOKS) {
+  const owners = wordOwners(playbooks);
+  const items = (tasks ?? []).map((task, position) => {
+    const title = String(task.content ?? '').trim();
+    return {
+      position,
+      title,
+      status: STEP_STATUS[task.status] ?? 'pending',
+      itemWords: words(title),
+    };
+  }).filter(item => item.title && item.itemWords.size > 0);
+
+  const votes = new Map();
+  for (const item of items) {
+    const matches = item.itemWords.size < MATCH_WORDS
+      ? thinMatches(item.itemWords, playbooks, owners)
+      : bestSteps(item.itemWords, playbooks);
+    if (matches.length === 0) continue;
+    item.playbooks = new Set(matches.map(match => match.playbook));
+    for (const match of matches) {
+      const vote = votes.get(match.playbook) ?? { playbook: match.playbook, count: 0, lastPosition: -1 };
+      vote.count += 1;
+      vote.lastPosition = Math.max(vote.lastPosition, item.position);
+      votes.set(match.playbook, vote);
+    }
+  }
+
+  const mostVotes = (a, b) => {
+    if (a.count !== b.count) return b.count - a.count;
+    if (a.lastPosition !== b.lastPosition) return b.lastPosition - a.lastPosition;
+    return a.playbook.localeCompare(b.playbook);
+  };
+  // The step in hand says which playbook the run is in. With nothing in hand, the last step the
+  // session wrote does, because a session appends the next playbook to its list rather than
+  // rewriting it. Only when neither is written does the count of votes decide.
+  const inHand = items.findLast(item => item.status === 'in_progress' && item.playbooks?.size);
+  const written = items.findLast(item => item.playbooks?.size);
+  const focus = inHand ?? written;
+  const winner = focus
+    ? [...focus.playbooks].map(id => votes.get(id)).toSorted(mostVotes)[0]
+    : [...votes.values()].toSorted(mostVotes)[0];
+
+  // The list is the session's own order, which is the order it wrote the steps in. A step it wrote
+  // in words no playbook uses still belongs to the run, so it stays; a step that points at another
+  // playbook is one it has moved on from, so it goes.
+  const list = winner
+    ? items.filter(item => !item.playbooks || item.playbooks.has(winner.playbook)).map(item => ({
+      id: String(tasks[item.position]?.id ?? ''),
+      title: item.title,
+      short: pillText(item.title),
+      status: item.status,
+      playbook: winner.playbook,
+    }))
+    : [];
   const runningIndex = list.findIndex(step => step.status === 'in_progress');
   const passed = list.filter(step => step.status === 'completed').length;
   // With nothing in hand, the run is on the next step it has not passed, so a fresh run reads
