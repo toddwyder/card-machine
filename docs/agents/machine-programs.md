@@ -41,7 +41,4 @@ of any size, not only a change to the sentence beside it.
 | `machine/flow/crash-stop.mjs` | Stops a run whose Studio died, and posts the cause on the card. | `cf1c590c3b86813b448131b273434f6bf6fe4152718405cb1a35330f4e515747` |
 | `machine/flow/interrupted.mjs` | At Studio boot, finds runs no living process is driving, names why Studio stopped, and stops them. | `518b3442a8ae7ed09d2322942608119bdf64f8d45cb3dbb744f52b31d79c55cb` |
 | `scripts/proof-run.mjs` | Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins. | `da96d2f9dad89f89ff78a772489bed64ae53dc40f2dff3f3c3f7fc65650ba167` |
-| `scripts/card-run.mjs` | Starts one Linear card as a single headless Mastra Code session in a fresh worktree of julia-next main, with goal mode and the card dollar ledger. | `fc6ef32d453baa669c85b70cc9cc825d150007fd23a15d77321c806c5a329a36` |
-| `scripts/card-check.mjs` | Starts a separate headless session as the independent verifier of one julia-next pull request and posts its PASS or FAIL comment. | `5f5bb09e77eb8e13b999638422d504d20906e1f85c8299bf6143f61520ae8c5c` |
-| `scripts/card-live.mjs` | Waits until the live site serves a merge commit, then runs e2e against it. | `94a9e66fdac6afef3d3812170e17b6f79f7d81c5abbf414ed75bbc2f891e2b95` |
 | `scripts/julia-agents.mjs` | Runs a machine command with the Julia keys it needs. | `b0e522f94f3c02926ddc6542e60b16f8e117dcac5509a84148b141c39dc985f6` |

@@ -15,7 +15,6 @@
     "check:lead": "node scripts/check-lead.mjs",
     "check:model-picker": "node scripts/check-model-picker.mjs",
     "check:julia-reach": "node scripts/check-no-julia-reach.mjs",
-    "test:card-session": "node --test scripts/card-session/*.test.mjs",
     "test:e2e": "e2e run"
   },
   "dependencies": {
