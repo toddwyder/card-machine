@@ -78,8 +78,10 @@ removes the folder; the card that moves its address does.
 
 ## Merging a dashboard pull request
 
-Merging is the whole step: `gh pr merge <number> --squash --delete-branch`. Nothing on the server
-needs a hand afterwards.
+Merging is the whole step: `gh pr merge <number> --squash`. GitHub deletes the branch itself when
+the pull request lands, because `delete_branch_on_merge` is on in this repository and in
+`julia-next`; that is what keeps `check-branch-pr` green on main. Nothing on the server needs a
+hand afterwards.
 
 The unit follows `origin/main`, and the updater moves the deploy checkout onto `origin/main`
 itself before it installs, builds and restarts. That includes a squash merge, where the new
