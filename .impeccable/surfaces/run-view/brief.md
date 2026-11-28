@@ -7,7 +7,7 @@ Replaces the parts of the 7 Nov brief (`.impeccable/surfaces/run-view/1-design-b
 1. **Home.** The Run view is mission control's first screen, in the machine's own repository (`toddwyder/card-machine`), not a tab on the model picker page. Its look becomes mission control's look (Todd, 19 Nov).
 2. **Stage names are pstack's.** Step names are plain English (Todd, 19 Nov).
 3. **The design covers every Shipping step and every state a step can be in, up front.** Each later Shipping slice adds only its own detail pieces (Todd, 19 Nov, late).
-4. **Helpers show actions; the stage shows steps** (Todd, 20 Nov, option 1, after trying a sample run). The 10 Nov choice of actions for helpers stands. Each stage shows its steps in a row; the current stage shows "step N of M".
+4. **The stage shows steps** (Todd, 20 Nov, option 1, after trying a sample run). Each stage shows its steps in a row; the current stage shows "step N of M". The helper cards the earlier brief drew are gone: the session's own to-do list is the whole picture of what it is doing.
 5. **Slimmed to what is needed to see a run and its problems** (Todd, 17 Nov). The Run view is where machine work is proven, so it must show a planted problem as Todd would see it.
 
 ## 1. Job and audience (unchanged)
@@ -17,8 +17,7 @@ Todd, alone, during a run; mostly laptop, sometimes phone. Not a programmer. Ope
 ## 2. Outcome and proof
 
 * At a glance: the stage (largest thing on the page), the step inside it, whether the run is running at all, tokens so far, each subscription against its quota, any active warning.
-* Each helper on its own card: what it is doing now and the actions it has taken, newest first, each marked done, now or stuck.
-* Warnings say what is wrong and nothing more. Starting rules, all Todd's: stopped (status stopped or failed); stuck (7 minutes with no activity, 28 Oct); quota low (20% or less left, 7 Nov); burning tokens fast (any one agent's model call over 100,000 tokens, naming the agent; starting value, to be reset from measured data).
+* Warnings say what is wrong and nothing more. Starting rules, all Todd's: stopped (status stopped or failed); stuck (7 minutes with no activity, 28 Oct); quota low (20% or less left, 7 Nov); burning tokens fast (the whole run's spend rate over 25,000 tokens a minute, measured against the run's own elapsed time; the JUL-419 run spent 492,000 tokens in 32 minutes, so the line sits well above a real run and is a starting value).
 * The machine stops for Todd at only two points: his UAT and anything irreversible (19 Nov). The Run view shows the UAT stop as "waiting for you".
 
 ## 3. Selected direction (unchanged): A2
@@ -55,12 +54,12 @@ Also shown: "waiting for you" (the UAT stop) and "finished". Nothing running: th
 
 ## 6. Ranges and layout (unchanged)
 
-Helpers at once 1 to 5 or more; tokens into the millions per card; quota 0 to 100% left. Top to bottom: warnings, run panel with stage and steps, helpers, quota. Updates on its own. Laptop first; on a phone the stage block and the helper cards stack.
+Tokens into the millions per card; quota 0 to 100% left. Top to bottom: warnings, run panel with stage and steps, quota. Updates on its own. Laptop first; on a phone the stage block and its steps stack.
 
 ## 7. Open decisions and facts a builder must not invent
 
 * Todd confirmed this brief, including the section 4 step names and showing stock steps 2, 5 and 6 as written, on 20 Nov at 06:22 PT, after trying a sample run. He may still correct a name after seeing the real screen.
-* The tokens-and-quota sources, per the 10 Nov technical check in `docs/advisor-notes/run-view-technical-checks-2026-11-10.md`: live tokens come from the trace and budget records; helper actions from the trace; each subscription has its own reading route and an unreadable one shows "unknown". Not re-verified in this session.
+* The tokens-and-quota sources, per the 10 Nov technical check in `docs/advisor-notes/run-view-technical-checks-2026-11-10.md`: live tokens come from the trace and budget records; each subscription has its own reading route and an unreadable one shows "unknown". Not re-verified in this session.
 * Dollars always say "estimate".
 * The model picker is not part of this screen (Todd, 19 Nov).
 * Impeccable's process: shape (this brief), then the confirmed direction (A2), then build through its Start stage with finish review against the direction contract.
@@ -75,7 +74,7 @@ OWN-WORLD: The larder. Bottle-green header and run panel (#1D3B27, #3D6B2C) on a
 
 STORY: Without clicking, Todd knows which stage and step the run is in, whether it is moving, what it has used against each subscription, and anything wrong, in plain words at the top.
 
-FIRST VIEWPORT: Warnings across the top when there are any. Under them the green run panel: card title, running time, tokens, dollars marked "estimate"; the current stage name is the largest text on the page, with its steps in a row and "step N of M". Then helper cards, then the three quota bars. Start shows when nothing is running, on the Ready cards listed there, and goes away once a card is running; the UAT stop reads "waiting for you". Signature motion: the marker moves along the stage's row as each step passes, and each new helper action slides in at the top of its card; nothing else moves. On a phone everything stacks.
+FIRST VIEWPORT: Warnings across the top when there are any. Under them the green run panel: card title, running time, tokens, dollars marked "estimate"; the current stage name is the largest text on the page, with its steps in a row and "step N of M". Then the quota bars. Start shows when nothing is running, on the Ready cards listed there, and goes away once a card is running; the UAT stop reads "waiting for you". Signature motion: the marker moves along the stage's row as each step passes; nothing else moves. On a phone everything stacks.
 
 FORM: Operate surface, code-led. Composition: the A2 board, chosen 7 Nov over A, A3 and B. seed: none (unavailable)
 
