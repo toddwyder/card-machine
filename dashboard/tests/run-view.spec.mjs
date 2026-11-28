@@ -202,14 +202,14 @@ test.describe('the Run view on a laptop', () => {
     await shot(page, 'stuck');
   });
 
-  test('draws one model call over the limit as a dotted warning that names the tokens', async ({ page }) => {
+  test('draws a run spending faster than the limit as a dotted warning that names the rate', async ({ page }) => {
     await prepare({ scene: 'burning' });
     await openRunView(page);
 
     const burning = warning(page, 'burning_fast');
     await expect(burning).toBeVisible();
     expect(await borderTopStyle(burning)).toBe('dotted');
-    await expect(burning).toContainText('One model call used 240,000 tokens.');
+    await expect(burning).toContainText('The run is using 37,714 tokens a minute.');
 
     await shot(page, 'burning-fast');
   });

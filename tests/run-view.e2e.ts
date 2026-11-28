@@ -151,7 +151,7 @@ describe('Mission control Run view', () => {
     await expect(warning).toBeVisible();
     expect(await styleOf(browser, '[data-kind="burning_fast"]', 'borderTopStyle')).toBe('dotted');
     await expect(warning).toContainText(read.warnings.find(w => w.kind === 'burning_fast').text);
-    await expect(warning).toContainText(/One model call used [\d,]+ tokens\./);
+    await expect(warning).toContainText(/The run is using [\d,]+ tokens a minute\./);
     await app.screenshot('burning-fast');
 
     await prepare({ scene: 'stopped' });
