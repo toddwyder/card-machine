@@ -1,11 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { foldRunView, playbookName, runSteps } from './run-view.mjs';
+import { foldRunView, playbookName, readPlaybooks, runSteps } from './run-view.mjs';
 
-const settings = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokens: 100000 };
+const settings = { stuckAfterMs: 420000, quotaLowPercent: 20, burningFastTokensPerMinute: 25000 };
 const now = Date.parse('2026-11-27T12:00:00Z');
 
-const step = (playbook, order, status, content = `Step ${order}`) => ({ id: `${playbook}-${order}`, content, status });
+// The steps are read from the skill itself, because that is what the screen compares a session's
+// to-do list against. A fixture that invented its own step text would prove nothing.
+const playbooks = readPlaybooks();
+const stepsOf = playbook => playbooks.find(candidate => candidate.id === playbook).steps.map(step => step.text);
+
+// A to-do list as a session writes it: a playbook's own steps, in order, with one status each.
+// The ids say nothing a playbook can be read from: what a session calls its own steps is not
+// something the screen can lean on.
+const listOf = (playbook, statuses, detail = () => '') => stepsOf(playbook).map((text, index) => ({
+  id: `step-${playbook}-${index + 1}`,
+  content: `${text}${detail(index)}`,
+  status: statuses[index] ?? 'pending',
+}));
+
+// One item, on one step of a playbook: `step('feature', 2, 'in_progress')`.
+const step = (playbook, order, status, content = stepsOf(playbook)[order - 1]) => ({ id: `step-${playbook}-${order}`, content, status });
 
 const session = (overrides = {}) => ({
   card: 'JUL-419',
@@ -16,84 +31,92 @@ const session = (overrides = {}) => ({
   threadId: 'thread-1',
   tasks: null,
   tokens: 0,
-  largestStepTokens: 0,
   lastActivityAt: now - 1000,
   ...overrides,
 });
 
 const fold = overrides => foldRunView({ session: session(overrides), subscriptions: [], settings, now });
 
+test('every playbook names itself as the stage when its own steps are on the list', () => {
+  assert.ok(playbooks.length >= 20, 'the playbooks were found');
+  for (const playbook of playbooks) {
+    const steps = runSteps(listOf(playbook.id, ['in_progress']));
+    assert.equal(steps.stage, playbookName(playbook.id), `${playbook.id} names itself`);
+    assert.equal(steps.total, playbook.steps.length, `${playbook.id} shows every step it has`);
+    assert.equal(steps.index, 1, `${playbook.id} starts on its first step`);
+    assert.equal(steps.current.title, playbook.steps[0].text);
+  }
+});
+
 test('the stage is the playbook of the step the run is on', () => {
-  const tasks = [step('feature', 1, 'completed'), step('feature', 2, 'in_progress'), step('feature', 3, 'pending')];
-  assert.deepEqual(runSteps(tasks).list.map(x => x.id), ['feature-1', 'feature-2', 'feature-3']);
+  const tasks = listOf('feature', []);
+  tasks[0].status = 'completed';
+  tasks[1].status = 'in_progress';
   const steps = runSteps(tasks);
   assert.equal(steps.stage, 'Feature');
   assert.equal(steps.index, 2);
-  assert.equal(steps.total, 3);
-  assert.equal(steps.current.title, 'Step 2');
+  assert.equal(steps.total, 8);
+  assert.equal(steps.current.title, stepsOf('feature')[1]);
 });
 
-test('the stage changes when the session moves to another playbook', () => {
-  const feature = [step('feature', 1, 'completed'), step('feature', 2, 'completed')];
-  assert.equal(fold({ tasks: feature }).run.stage, 'Feature');
-  const shipping = [...feature, step('shipping', 1, 'in_progress'), step('shipping', 2, 'pending')];
-  const steps = fold({ tasks: shipping }).run.steps;
-  assert.deepEqual(steps.list.map(x => x.id), ['shipping-1', 'shipping-2']);
-  assert.equal(steps.total, 2);
-  assert.equal(steps.index, 1);
-  assert.equal(steps.stage, 'Shipping');
-});
-
-test('a fresh playbook follows a fully completed playbook', () => {
-  const tasks = [
-    step('feature', 1, 'completed'),
-    step('feature', 2, 'completed'),
-    step('opening-a-pr', 1, 'pending'),
-    step('opening-a-pr', 2, 'pending'),
-  ];
+test('a session that writes its own detail after a step still lands on that step', () => {
+  // The real list from JUL-419: each item is the step's name, then the session's own detail.
+  const tasks = listOf('feature', Array(8).fill('pending'), index => `: the session's own detail for step ${index + 1}`);
+  tasks[4].status = 'in_progress';
   const steps = runSteps(tasks);
-  assert.equal(steps.stage, 'Opening a PR');
+  assert.equal(steps.stage, 'Feature');
+  assert.equal(steps.total, 8);
+  assert.equal(steps.index, 5);
+  assert.equal(steps.current.title, tasks[4].content);
+});
+
+test('the run follows the session into the playbook it appended after its own', () => {
+  const shipped = [...listOf('feature', Array(8).fill('completed')), ...listOf('shipping', ['in_progress'])];
+  const steps = runSteps(shipped);
+  assert.equal(steps.stage, 'Shipping');
   assert.equal(steps.index, 1);
-  assert.equal(steps.total, 2);
-  assert.deepEqual(steps.list.map(x => x.id), ['opening-a-pr-1', 'opening-a-pr-2']);
+  assert.equal(steps.total, 6);
+  assert.deepEqual(steps.list.map(step => step.playbook), Array(6).fill('shipping'));
 });
 
 test('an in-progress step in an earlier playbook wins', () => {
-  const tasks = [step('feature', 1, 'completed'), step('feature', 2, 'in_progress'), step('shipping', 1, 'pending')];
+  const tasks = [...listOf('feature', []), ...listOf('shipping', [])];
+  tasks[0].status = 'completed';
+  tasks[1].status = 'in_progress';
   const steps = runSteps(tasks);
   assert.equal(steps.stage, 'Feature');
-  assert.equal(steps.total, 2);
+  assert.equal(steps.total, 8);
   assert.equal(steps.index, 2);
-  assert.deepEqual(steps.list.map(x => x.id), ['feature-1', 'feature-2']);
 });
 
-test('steps read in playbook order, and Opening a PR is the last step of Feature', () => {
-  const tasks = [step('feature', 8, 'pending', 'Run Opening a PR'), step('feature', 2, 'completed')];
+test('a step the session wrote in its own words stays on the list', () => {
+  const tasks = listOf('feature', []);
+  tasks.splice(2, 0, { id: 'step-own', content: 'Ask Todd which card title to use', status: 'pending' });
   const steps = runSteps(tasks);
-  assert.deepEqual(steps.list.map(x => x.id), ['feature-2', 'feature-8']);
-  assert.equal(steps.list.at(-1).title, 'Run Opening a PR');
-  // Nothing in hand: the run is on the next step it has not passed.
-  assert.equal(steps.index, 2);
+  assert.equal(steps.stage, 'Feature');
+  assert.equal(steps.total, 9);
+  assert.equal(steps.list[2].title, 'Ask Todd which card title to use');
 });
 
-test('a finished list reads its last step, and no playbook steps reads nothing', () => {
-  const done = [step('babysit', 1, 'completed'), step('babysit', 2, 'completed')];
+test('a finished list reads its last step, and a list no playbook writes reads nothing', () => {
+  const done = listOf('babysit', Array(6).fill('completed'));
   const steps = runSteps(done);
-  assert.equal(steps.index, 2);
+  assert.equal(steps.index, 6);
   assert.equal(steps.stage, 'Babysit');
   assert.equal(runSteps([]).stage, '');
   assert.equal(runSteps(null).total, 0);
+  // One word is not enough to say which playbook an item is about, even when a playbook uses it.
   assert.deepEqual(runSteps([{ id: 'card-branch', content: 'Branch', status: 'pending' }]).list, []);
 });
 
 test('only a live session is drawn as a run', () => {
-  const run = fold({ tasks: [step('feature', 1, 'in_progress')] }).run;
+  const run = fold({ tasks: listOf('feature', ['in_progress']) }).run;
   assert.equal(run.status, 'running');
   assert.equal(run.card, 'JUL-419');
   assert.equal(run.runningMs, 60000);
   assert.equal(run.stage, 'Feature');
-  assert.equal(run.step, 'Step 1');
-  assert.equal(run.steps.total, 1);
+  assert.ok(stepsOf('feature')[0].startsWith(run.step), 'the step on screen names the step in hand');
+  assert.equal(run.steps.total, 8);
   assert.equal(run.usage.dollarsEstimate, null);
 });
 
@@ -108,19 +131,29 @@ test('an ended session leaves the quiet screen with its result', () => {
 });
 
 test('a session that has gone quiet is stuck, and a stopped one says where it stopped', () => {
-  const quiet = fold({ lastActivityAt: now - 8 * 60000, tasks: [step('feature', 2, 'in_progress', 'Build the slices')] });
+  const tasks = listOf('feature', []);
+  tasks[4].status = 'in_progress';
+  const quiet = fold({ lastActivityAt: now - 8 * 60000, tasks });
   assert.equal(quiet.run.status, 'stuck');
   assert.equal(quiet.warnings.find(x => x.kind === 'stuck').text, 'Nothing has happened in the run for 8 minutes.');
 
-  const stopped = fold({ status: 'stopped', endedAt: now - 1000, tasks: [step('feature', 2, 'in_progress', 'Build the slices')] });
-  assert.equal(stopped.warnings.find(x => x.kind === 'stopped').text, 'The run stopped at “Build the slices”.');
+  const stopped = fold({ status: 'stopped', endedAt: now - 1000, tasks });
+  const text = stopped.warnings.find(x => x.kind === 'stopped').text;
+  assert.ok(text.startsWith('The run stopped at “Verify on the matching surface'), text);
   assert.deepEqual(fold({ status: 'unknown', endedAt: now }).warnings.map(x => x.kind), ['ended_unknown']);
 });
 
-test('a single model call over the limit is a burning warning, naming the tokens', () => {
-  const warnings = fold({ largestStepTokens: 120000 }).warnings;
-  assert.equal(warnings.find(x => x.kind === 'burning_fast').text, 'One model call used 120,000 tokens.');
-  assert.equal(fold({ largestStepTokens: 100000 }).warnings.length, 0);
+test('a run that spends faster than the limit is a burning warning, naming the rate', () => {
+  // 300,000 tokens in ten minutes is 30,000 a minute.
+  const burning = fold({ startedAt: now - 10 * 60000, tokens: 300000 }).warnings;
+  assert.equal(burning.find(x => x.kind === 'burning_fast').text, 'The run is using 30,000 tokens a minute.');
+  assert.equal(fold({ startedAt: now - 10 * 60000, tokens: 200000 }).warnings.length, 0);
+});
+
+test('a run a minute old is measured against the minute it has had', () => {
+  // 10,000 tokens in twenty seconds would read as 30,000 a minute without the floor.
+  const warnings = fold({ startedAt: now - 20000, tokens: 10000 }).warnings;
+  assert.equal(warnings.length, 0);
 });
 
 test('a subscription under the limit names itself and its window', () => {

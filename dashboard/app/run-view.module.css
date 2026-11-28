@@ -234,115 +234,6 @@
   margin: 0 0 12px;
 }
 
-.helpers {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
-}
-
-.helper {
-  background: var(--ivory);
-  border: 3px solid var(--green);
-  border-radius: 16px;
-  padding: 16px 18px;
-  box-shadow: 0 10px 22px -18px rgb(29 59 39 / 55%);
-}
-
-.helper[data-state='stuck'] {
-  background: var(--amber-bg);
-  border: 3px dashed var(--amber);
-}
-
-.helper[data-state='failed'] {
-  border: 3px solid var(--red);
-}
-
-.helperName {
-  font-size: 1.25rem;
-}
-
-.helperLine {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 6px 0 0;
-  font-size: 0.88rem;
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-}
-
-.helperQuiet {
-  margin: 10px 0 0;
-  font-size: 0.9rem;
-  color: var(--ink-faint);
-}
-
-.actions {
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 15rem;
-  overflow-y: auto;
-  scrollbar-color: var(--sapling) transparent;
-}
-
-.action {
-  display: grid;
-  grid-template-columns: 15px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.92rem;
-}
-
-.action[data-state='started'] {
-  font-weight: 600;
-}
-
-.actionName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.actionTime {
-  font-size: 0.78rem;
-  color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-.tasks {
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 0.9rem;
-}
-
-.task {
-  display: grid;
-  grid-template-columns: 15px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  color: var(--ink-soft);
-}
-
-.task[data-state='in_progress'] {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.task[data-state='in_progress'] span:last-child {
-  background: var(--sage);
-  border-radius: 6px;
-  padding: 1px 7px;
-  margin-left: -7px;
-}
-
 .quota {
   background: var(--ivory);
   border-radius: 20px;
@@ -538,10 +429,6 @@
   color: rgb(246 241 228 / 55%);
 }
 
-.helperLine .dot {
-  color: var(--ink-faint);
-}
-
 /* The marks: one shape per state, readable without colour. */
 .mark {
   flex: none;
@@ -587,12 +474,6 @@
   stroke: var(--red-bg);
 }
 
-.helper[data-state='stuck'] .markFill,
-.helper[data-state='stuck'] .markRing {
-  fill: var(--amber);
-  stroke: var(--amber);
-}
-
 .panel .markFill {
   fill: var(--lime);
 }
@@ -603,24 +484,6 @@
 
 .panel .markRing {
   stroke: var(--lime);
-}
-
-/* The one deliberate motion: a new helper action settles at the top of its card. */
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes settleIn {
-    from {
-      opacity: 0;
-      transform: translateY(-6px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
-
-  .action:first-child {
-    animation: settleIn 320ms ease-out;
-  }
 }
 
 @media (width <= 720px) {

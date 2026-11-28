@@ -95,7 +95,8 @@ test.describe('the Run view on a laptop', () => {
     await expect(current).toHaveAttribute('data-state', 'in_progress');
     await expect(current).toHaveAttribute('data-number', '2');
     expect(await backgroundColour(current)).toBe('rgb(220, 235, 203)');
-    await expect(current).toContainText('Architect the shape');
+    // The pill carries the step's own first words, so the list and the step in hand cannot disagree.
+    await expect(current).toContainText(steps.list[1].short);
 
     // Feature's last step is the playbook's final act.
     await expect(row.getByRole('listitem').last()).toContainText('Opening a PR');
@@ -133,20 +134,19 @@ test.describe('the Run view on a laptop', () => {
     await page.reload();
     const panel = page.getByRole('region', { name: 'The running card' });
     await expect(panel.getByRole('heading', { name: 'Shipping', exact: true })).toBeVisible();
-    const current = panel.locator('[aria-current="step"]');
-    await expect(current).toHaveCount(1);
-    await expect(current).toContainText('Open the pull request');
-    const shippingNumber = Number(await current.getAttribute('data-number'));
-    expect(shippingNumber).toBeGreaterThan(featureNumber);
-
     const read = await snapshot(page);
     expect(read.run.stage).toBe('Shipping');
+    const current = panel.locator('[aria-current="step"]');
+    await expect(current).toHaveCount(1);
+    await expect(current).toContainText(read.run.step);
+    const shippingNumber = Number(await current.getAttribute('data-number'));
+    expect(shippingNumber).toBeGreaterThan(featureNumber);
     expect(read.run.steps.index).toBe(shippingNumber);
 
     await shot(page, 'shipping');
   });
 
-  test('shows every ended run as quiet, with its last result and no Start', async ({ page }) => {
+  test('shows every ended run as quiet, with its last result and its Ready cards back', async ({ page }) => {
     const scenes = [
       { scene: 'finished', sentence: 'The last run finished.' },
       { scene: 'stopped', sentence: 'The last run stopped.' },
@@ -160,15 +160,17 @@ test.describe('the Run view on a laptop', () => {
       await expect(page.getByText('Nothing is running right now')).toBeVisible();
       await expect(page.getByText(sentence)).toBeVisible();
       await expect(page.getByRole('region', { name: 'The running card' })).toHaveCount(0);
-      // A saved empty queue means there is no card to offer, so no Start can appear either.
-      await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(0);
+      // Nothing is running, so every Ready card offers its Start again.
+      const read = await snapshot(page);
+      expect(read.run).toBe(null);
+      await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(read.readyCards.cards.length);
 
       if (scene === 'stopped') {
         const stopped = warning(page, 'stopped');
         await expect(stopped).toBeVisible();
         expect(await borderTopStyle(stopped)).toBe('solid');
         expect(await borderTopColour(stopped)).toBe('rgb(163, 33, 45)');
-        await expect(stopped).toContainText('The run stopped at “Build the slices”.');
+        await expect(stopped).toContainText(read.warnings.find(warning => warning.kind === 'stopped').text);
         const struck = stopped.locator('p span').first();
         expect(await struck.evaluate(node => getComputedStyle(node).textDecorationLine)).toBe('line-through');
       }
@@ -200,14 +202,14 @@ test.describe('the Run view on a laptop', () => {
     await shot(page, 'stuck');
   });
 
-  test('draws one model call over the limit as a dotted warning that names the tokens', async ({ page }) => {
+  test('draws a run spending faster than the limit as a dotted warning that names the rate', async ({ page }) => {
     await prepare({ scene: 'burning' });
     await openRunView(page);
 
     const burning = warning(page, 'burning_fast');
     await expect(burning).toBeVisible();
     expect(await borderTopStyle(burning)).toBe('dotted');
-    await expect(burning).toContainText('One model call used 240,000 tokens.');
+    await expect(burning).toContainText('The run is using 37,714 tokens a minute.');
 
     await shot(page, 'burning-fast');
   });

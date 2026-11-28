@@ -46,7 +46,6 @@ function order(card) {
     '',
     card.description ?? '',
     '',
-    'Name every to-do id `<playbook>-<number>`, using the kebab-case name of the playbook this card is routed to and the step number, and copy that playbook\'s steps into the to-do list in order. Keep the list current as the work moves.',
     'You are running alone. Do not end your turn to wait for anything, and do not ask a question.',
   ].filter(line => line !== '').join('\n');
 }
@@ -114,7 +113,7 @@ export async function main() {
   // beat starts before the boot, because a boot can take longer than a reader is willing to wait.
   let record = {
     card: card.identifier, title: card.title, startedAt, endedAt: null, status: 'running',
-    threadId: null, tokens: 0, largestStepTokens: 0, lastActivityAt: startedAt, heartbeatAt: Date.now(),
+    threadId: null, tokens: 0, lastActivityAt: startedAt, heartbeatAt: Date.now(),
   };
   const beat = setInterval(() => {
     record.heartbeatAt = Date.now();
@@ -167,7 +166,6 @@ export async function main() {
     for await (const event of run) {
       if (event?.type === 'usage_update' && Number.isFinite(event.usage?.totalTokens)) {
         record.tokens += event.usage.totalTokens;
-        record.largestStepTokens = Math.max(record.largestStepTokens, event.usage.totalTokens);
       }
       if (event?.type === 'error') console.error('[card]', event.error?.message ?? 'session error');
       await keepCurrent();
@@ -183,7 +181,7 @@ export async function main() {
     const endedAt = Date.now();
     await writeRecord(dir, {
       ...current, card: card.identifier, title: card.title, startedAt, endedAt, status,
-      threadId: currentThreadId(), tokens: record.tokens, largestStepTokens: record.largestStepTokens,
+      threadId: currentThreadId(), tokens: record.tokens,
       lastActivityAt: endedAt, heartbeatAt: endedAt,
     });
   }
