@@ -89,7 +89,7 @@ export async function runShipping({ pr, sha, checkout, card, cardRecord = null, 
   if (!modelId) throw new Error('runShipping needs the Shipping pick saved on the Start screen; the machine carries no default.');
   const { z, createWorkflow, createStep } = await loadMastra();
   const traceFile = process.env.MASTRA_OBSERVABILITY_DB_PATH ?? null;
-  const { booted, session, mastra, requestContext, subagent } = await bootHarness({ cwd: checkout, storage });
+  const { booted, session, mastra, requestContext, subagent } = await bootHarness({ cwd: checkout, storage, model: modelId });
 
   const inputSchema = z.object({ pr: z.number(), sha: z.string(), checkout: z.string(), card: z.string() });
   const contextSchema = z.object({

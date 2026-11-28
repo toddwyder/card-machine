@@ -204,7 +204,7 @@ async function freshSession({ root = repoRoot, runDir, storeName = 'session', or
   const traceFile = path.join(runDir, `${storeName}.duckdb`);
   process.env.MASTRA_OBSERVABILITY_DB_PATH = traceFile;
   const storage = { backend: 'libsql', url: `file:${store}`, isRemote: false };
-  const { session, booted } = await bootHarness({ cwd: root, createInitialThread: true, storage });
+  const { session, booted } = await bootHarness({ cwd: root, createInitialThread: true, storage, model: modelId });
   let result;
   try {
     const threadId = session.thread.getId();
@@ -219,7 +219,7 @@ async function freshSession({ root = repoRoot, runDir, storeName = 'session', or
 }
 
 // The resumed thread keeps the model it was built on, so no model is chosen here.
-export async function handToBuilder({ root = repoRoot, card, pr, sha, determination, playbookText, log = console.log }) {
+export async function handToBuilder({ root = repoRoot, card, pr, sha, determination, playbookText, modelId, log = console.log }) {
   const tools = await loadMastra();
   const client = tools.createClient({ url: `file:${tools.databasePath()}` });
   let target;
@@ -241,7 +241,7 @@ export async function handToBuilder({ root = repoRoot, card, pr, sha, determinat
     client.close();
   }
 
-  const booted = await bootOnThread(tools, { root, threadId: target });
+  const booted = await bootOnThread(tools, { root, threadId: target, modelId });
   try {
     if (booted.session.thread.getId() !== target) await booted.session.thread.switch({ threadId: target });
     log(`Resumed the builder's own session ${target}.`);
@@ -256,7 +256,7 @@ export async function handToBuilder({ root = repoRoot, card, pr, sha, determinat
 
 // Another session can become the newest thread between the touch and the boot. A
 // second attempt re-touches, so the loop settles once no run is writing the store.
-async function bootOnThread(tools, { root, threadId, attempts = 3 }) {
+async function bootOnThread(tools, { root, threadId, modelId, attempts = 3 }) {
   for (let attempt = 1; ; attempt++) {
     const client = tools.createClient({ url: `file:${tools.databasePath()}` });
     try {
@@ -265,7 +265,7 @@ async function bootOnThread(tools, { root, threadId, attempts = 3 }) {
       client.close();
     }
     try {
-      return await bootHarness({ cwd: root, createInitialThread: false });
+      return await bootHarness({ cwd: root, createInitialThread: false, model: modelId });
     } catch (error) {
       if (error?.name !== 'ThreadLockError' || attempt >= attempts) throw error;
       await new Promise(resolve => setTimeout(resolve, 500 * attempt));

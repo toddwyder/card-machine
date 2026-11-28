@@ -125,7 +125,7 @@ export async function runRetro({
   const { LibSQLStore } = await loadMastra();
   const file = path.join(checkout, retroPath);
   const storage = new LibSQLStore({ id: storageName, url: `file:${path.join(root, '.artifacts', 'merge', `pr-${pr}`, `${storageName}.db`)}` });
-  const { booted, session, mastra, requestContext, subagent } = await bootHarness({ cwd: checkout, storage });
+  const { booted, session, mastra, requestContext, subagent } = await bootHarness({ cwd: checkout, storage, model: modelId });
   let result;
   try {
     const task = retroTask({ card, pr, title, mergeCommit, checkout, retroPath, determinations, changed, failed, metrics });
