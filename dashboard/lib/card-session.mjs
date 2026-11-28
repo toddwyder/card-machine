@@ -6,13 +6,17 @@
 // view, and to hand back a small record of when the run began and how it ended.
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '..', '..');
+
+// The skill reaches the session as standing instructions rather than as a file it is told to go
+// and read, so it holds from the first call to the last and cannot fall out of a compacted history.
+const POTETO_SKILL = join(REPO_ROOT, '.agents', 'skills', 'poteto-mode', 'SKILL.md');
 
 export const SESSION_DIR = process.env.RUN_VIEW_SESSION_DIR ?? join(REPO_ROOT, '.artifacts', 'run-view');
 
@@ -109,8 +113,6 @@ async function writeSessionSettings() {
 
 function order(card) {
   return [
-    'Read .agents/skills/poteto-mode/SKILL.md in full, including its Principles section, before any work. Follow it as written.',
-    '',
     `Follow pstack on ${card.identifier}: ${card.title}`,
     card.url ? card.url : '',
     '',
@@ -121,25 +123,37 @@ function order(card) {
   ].filter(line => line !== '').join('\n');
 }
 
+/**
+ * What the session is booted with. The skill is passed in whole, so the session follows pstack
+ * from its first call to its last without being told to go and read anything.
+ */
+export function sessionConfig({ settingsPath, subagents }) {
+  return {
+    cwd: REPO_ROOT,
+    settingsPath,
+    createInitialThread: true,
+    storage: { backend: 'libsql', url: `file:${join(SESSION_DIR, STATE)}`, isRemote: false },
+    subagents,
+    disableBuiltinTools: ['ask_user', 'submit_plan'],
+    plansDir: join(SESSION_DIR, 'plans'),
+    planApprovalStartsGoal: false,
+    hostInstructions: readFileSync(POTETO_SKILL, 'utf8'),
+    coAuthor: {
+      name: 'mastracode',
+      email: '284800079+mastra-platform[bot]@users.noreply.github.com',
+    },
+  };
+}
+
 async function bootSession() {
   const settings = await writeSessionSettings();
   process.env.MASTRA_DB_PATH = join(SESSION_DIR, STATE);
   process.env.MASTRA_OBSERVABILITY_DB_PATH = join(SESSION_DIR, 'observability.duckdb');
   const { bootLocalAgentController, builtinSubagents, runMC, autoApprovePolicy } = await import('@mastra/code-sdk');
-  const booted = await bootLocalAgentController({
-    cwd: REPO_ROOT,
+  const booted = await bootLocalAgentController(sessionConfig({
     settingsPath: settings,
-    createInitialThread: true,
-    storage: { backend: 'libsql', url: `file:${join(SESSION_DIR, STATE)}`, isRemote: false },
     subagents: builtinSubagents.map(definition => ({ ...definition, maxSteps: definition.maxSteps ?? 1000 })),
-    disableBuiltinTools: ['ask_user', 'submit_plan'],
-    plansDir: join(SESSION_DIR, 'plans'),
-    planApprovalStartsGoal: false,
-    coAuthor: {
-      name: 'mastracode',
-      email: '284800079+mastra-platform[bot]@users.noreply.github.com',
-    },
-  });
+  }));
   return { booted, runMC, autoApprovePolicy };
 }
 
