@@ -20,19 +20,6 @@ const STATE_WORDS = {
 const MARK_OF_STATE = { running: 'working', waiting_for_you: 'working', stuck: 'stuck', stopped: 'failed', ended_unknown: 'stuck' };
 const MARK_OF_WARNING = { stopped: 'failed', burning_fast: 'failed', stuck: 'stuck', ended_unknown: 'stuck' };
 
-const HELPER_WORDS = {
-  working: 'Working',
-  done: 'Finished',
-  failed: 'Stopped',
-  stuck: 'Stuck',
-};
-
-function underAMinute(seconds) {
-  if (seconds < 60) return 'just now';
-  const minutes = Math.round(seconds / 60);
-  return minutes === 1 ? 'a minute ago' : `${minutes} min ago`;
-}
-
 function duration(ms) {
   if (!Number.isFinite(ms) || ms === null) return 'time unknown';
   const minutes = Math.round(ms / 60000);
@@ -193,44 +180,6 @@ function ReadyCards({ ready, onStart, starting }) {
   );
 }
 
-function HelperCard({ helper, observedAt }) {
-  const status = HELPER_WORDS[helper.status] ?? helper.status;
-  return (
-    <article className={styles.helper} data-state={helper.status}>
-      <h3 className={styles.helperName}>{helper.name}</h3>
-      <p className={styles.helperLine}>
-        <Mark state={helper.status === 'working' ? 'working' : helper.status} />
-        <span>{status}</span>
-        <span className={styles.dot}>·</span>
-        <span>{tokenCount(helper.tokens)}</span>
-      </p>
-      {helper.actions.length ? (
-        <ul className={styles.actions}>
-          {helper.actions.map(action => (
-            <li key={action.id} className={styles.action} data-state={action.status}>
-              <Mark state={action.status === 'started' ? 'working' : action.status === 'failed' ? 'failed' : 'done'} />
-              <span className={styles.actionName}>{action.name}</span>
-              <span className={styles.actionTime}>{underAMinute(Math.max(0, (observedAt - action.at) / 1000))}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className={styles.helperQuiet}>No actions yet.</p>
-      )}
-      {helper.tasks.length ? (
-        <ol className={styles.tasks}>
-          {helper.tasks.map(task => (
-            <li key={task.id} className={styles.task} data-state={task.status}>
-              <Mark state={task.status} />
-              <span>{task.title}</span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-    </article>
-  );
-}
-
 const WINDOW_WORDS = { five_hour: '5-hour window', weekly: 'week' };
 
 // Why a subscription reads "unknown", in Todd's words. The reason is one of four short values
@@ -388,19 +337,6 @@ export function RunView({ initialSnapshot }) {
             ) : null}
           </section>
         )}
-
-        {run && run.helpers?.length ? (
-          <section aria-labelledby="helpers-heading">
-            <h2 id="helpers-heading" className={styles.sectionTitle}>
-              Helpers
-            </h2>
-            <div className={styles.helpers}>
-              {run.helpers.map(helper => (
-                <HelperCard key={helper.id} helper={helper} observedAt={snapshot.observedAt} />
-              ))}
-            </div>
-          </section>
-        ) : null}
 
         <section className={styles.quota} aria-labelledby="quota-heading">
           <h2 id="quota-heading" className={styles.sectionTitle}>

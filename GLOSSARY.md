@@ -234,14 +234,14 @@ added in the same pull request as the fix that showed the rule was needed.
 _Avoid_: Style guide, conventions, lint rules
 
 **Rehearsal copy**:
-A Julia website built for one proposed change, running on the test data. Todd follows the
-card's steps on it before he accepts. Real Julia is never involved.
+A Julia website built for one proposed change, running on the test data. The regression suite
+runs against it; Todd never uses it. Real Julia is never involved.
 _Avoid_: Preview, staging, test environment
 
 **UAT**:
-Todd testing the Vercel preview before merge the way a household member would, following the
-Linear card's steps, then accepting or sending it back. Only things a user would do: tap, type,
-read the screen.
+Todd testing the change after it lands, on what is live, the way a household member would,
+following the Linear card's steps, then accepting or sending it back. Only things a user would
+do: tap, type, read the screen.
 Never a console, log, terminal, developer tool, or copying between tools. Technical checking
 is the robot's job and happens before UAT.
 _Avoid_: QA, testing, verification (for Todd's part)

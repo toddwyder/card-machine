@@ -11,7 +11,7 @@ const CANDIDATES = ['settings/run-view.json', join('dashboard', 'settings', 'run
 const LIMITS = {
   stuckAfterMs: ms => Number.isFinite(ms) && ms > 0,
   quotaLowPercent: percent => Number.isFinite(percent) && percent >= 0 && percent <= 100,
-  burningFastTokens: tokens => Number.isFinite(tokens) && tokens > 0,
+  burningFastTokensPerMinute: tokens => Number.isFinite(tokens) && tokens > 0,
 };
 
 function defaultFile() {
@@ -30,6 +30,6 @@ export function readRunViewSettings(file = defaultFile()) {
   return Object.freeze({
     stuckAfterMs: Number(raw.stuckAfterMs),
     quotaLowPercent: Number(raw.quotaLowPercent),
-    burningFastTokens: Number(raw.burningFastTokens),
+    burningFastTokensPerMinute: Number(raw.burningFastTokensPerMinute),
   });
 }
