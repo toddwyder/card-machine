@@ -141,13 +141,12 @@ test.describe('the Run view on a laptop', () => {
     await expect(current).toContainText(read.run.step);
     const shippingNumber = Number(await current.getAttribute('data-number'));
     expect(shippingNumber).toBeGreaterThan(featureNumber);
-
     expect(read.run.steps.index).toBe(shippingNumber);
 
     await shot(page, 'shipping');
   });
 
-  test('shows every ended run as quiet, with its last result and no Start', async ({ page }) => {
+  test('shows every ended run as quiet, with its last result and its Ready cards back', async ({ page }) => {
     const scenes = [
       { scene: 'finished', sentence: 'The last run finished.' },
       { scene: 'stopped', sentence: 'The last run stopped.' },
@@ -161,15 +160,16 @@ test.describe('the Run view on a laptop', () => {
       await expect(page.getByText('Nothing is running right now')).toBeVisible();
       await expect(page.getByText(sentence)).toBeVisible();
       await expect(page.getByRole('region', { name: 'The running card' })).toHaveCount(0);
-      // A saved empty queue means there is no card to offer, so no Start can appear either.
-      await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(0);
+      // Nothing is running, so every Ready card offers its Start again.
+      const read = await snapshot(page);
+      expect(read.run).toBe(null);
+      await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(read.readyCards.cards.length);
 
       if (scene === 'stopped') {
         const stopped = warning(page, 'stopped');
         await expect(stopped).toBeVisible();
         expect(await borderTopStyle(stopped)).toBe('solid');
         expect(await borderTopColour(stopped)).toBe('rgb(163, 33, 45)');
-        const read = await snapshot(page);
         await expect(stopped).toContainText(read.warnings.find(warning => warning.kind === 'stopped').text);
         const struck = stopped.locator('p span').first();
         expect(await struck.evaluate(node => getComputedStyle(node).textDecorationLine)).toBe('line-through');

@@ -101,7 +101,7 @@ const SCENES = {
   shipping: now => ({ tasks: SHIPPING, record: liveRecord(now, { startedAt: now - 9 * minutes }) }),
   // A live session whose last activity is older than the quiet limit.
   stuck: now => ({ tasks: FEATURE, record: liveRecord(now, { startedAt: now - 12 * minutes, lastActivityAt: now - 8 * minutes }) }),
-  // One model call over the burning limit.
+  // A run whose spend rate is over the burning limit.
   burning: now => ({ tasks: FEATURE, record: liveRecord(now, { startedAt: now - 7 * minutes, tokens: 264000 }) }),
   // Ended runs: the record carries the end and the session's own result.
   finished: now => ({ tasks: FINISHED_FEATURE, record: endedRecord(now, 'finished') }),
