@@ -43,4 +43,4 @@ of any size, not only a change to the sentence beside it.
 | `scripts/proof-run.mjs` | Drives one card down the real workflow so the Run view can be read beside a real run, with only the model, review, check and shipping step as stand-ins. | `da96d2f9dad89f89ff78a772489bed64ae53dc40f2dff3f3c3f7fc65650ba167` |
 | `scripts/julia-agents.mjs` | Runs a machine command with the Julia keys it needs. | `b0e522f94f3c02926ddc6542e60b16f8e117dcac5509a84148b141c39dc985f6` |
 | `dashboard/lib/card-session.mjs` | The Start action: begins one card in one Mastra Code session following pstack, and reads that session's to-do list back for the Run view. | `e380e13b7f2b1742c0ac08feb18bde7d5514facc4fd88a30013a272f6a86284e` |
-| `machine/card-run.mjs` | The session that runs one card, in a process of its own so a mission control restart does not end the card with it. | `50b1d0a9e07604cfe8f1a416ee0ff748f40ff8d7b3d4ba72617810cdb40cf6b0` |
+| `machine/card-run.mjs` | The session that runs one card, in a process of its own so a mission control restart does not end the card with it. | `8a441a26bb2b6892e3c6a87bd2286e50aa9f0c4bd1d935ddb4341f07e57b6b1e` |

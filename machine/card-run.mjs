@@ -46,7 +46,6 @@ function order(card) {
     '',
     card.description ?? '',
     '',
-    'Name every to-do id `<playbook>-<number>`, using the kebab-case name of the playbook this card is routed to and the step number, and copy that playbook\'s steps into the to-do list in order. Keep the list current as the work moves.',
     'You are running alone. Do not end your turn to wait for anything, and do not ask a question.',
   ].filter(line => line !== '').join('\n');
 }

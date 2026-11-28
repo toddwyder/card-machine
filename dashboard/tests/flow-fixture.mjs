@@ -1,12 +1,15 @@
 // A session folder the Run view can be pointed at. Every scene writes the same files a real run
 // leaves behind: the record Start writes (`run.json`), the session's own to-do list (a real
 // `state.db`), the saved subscriptions, and the Ready-card list the idle screen offers. The app
-// reads them through its own readers, so no scene is faked by importing app internals.
+// reads them through its own readers, so no scene is faked by importing app internals. The one
+// import it takes is the playbook reader: a to-do list has to carry a playbook's own words for the
+// screen to name the stage, and copying those words here would let them drift from the skill.
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readPlaybooks } from '../lib/run-view.mjs';
 
 const here = new URL('.', import.meta.url);
 
@@ -66,34 +69,20 @@ const READINGS = {
   ],
 };
 
-// The session's own to-do list, named the way pstack names it: `<playbook>-<number>`.
-const task = (id, content, status) => ({ id, content, status });
+// The session's own to-do list. The screen names the stage from the steps' own text, so every
+// item here is a line of the playbook the session is following; the ids say nothing.
+const stepsOf = playbook => readPlaybooks().find(entry => entry.id === playbook).steps.map(step => step.text);
 
-const FEATURE = [
-  task('feature-1', 'Read the card and set the branch', 'completed'),
-  task('feature-2', 'Architect the shape', 'in_progress'),
-  task('feature-3', 'Write the failing test', 'pending'),
-  task('feature-4', 'Build the slices', 'pending'),
-  task('feature-5', 'Run the checks', 'pending'),
-  task('feature-6', 'Rebase into ordered commits', 'pending'),
-  task('feature-7', 'Interrogate the design', 'pending'),
-  task('feature-8', 'Opening a PR', 'pending'),
-];
+const tasks = (playbook, statuses) =>
+  stepsOf(playbook).map((content, index) => ({ id: `step-${index + 1}`, content, status: statuses[index] ?? 'pending' }));
 
-const SHIPPING = [
-  task('shipping-1', 'Check the branch is clean', 'completed'),
-  task('shipping-2', 'Push the branch', 'completed'),
-  task('shipping-3', 'Open the pull request', 'in_progress'),
-  task('shipping-4', 'Post the pull request link', 'pending'),
-];
+const FEATURE = tasks('feature', ['completed', 'in_progress']);
+
+const SHIPPING = tasks('shipping', ['completed', 'completed', 'in_progress']);
 
 const FINISHED_FEATURE = FEATURE.map(step => ({ ...step, status: 'completed' }));
 
-const STOPPED_FEATURE = FEATURE.map(step => {
-  if (step.id === 'feature-4') return { ...step, status: 'in_progress' };
-  if (step.id === 'feature-2') return { ...step, status: 'completed' };
-  return step;
-});
+const STOPPED_FEATURE = tasks('feature', ['completed', 'completed', 'completed', 'in_progress']);
 
 const READY_CARDS = [
   { id: 'card-1', identifier: 'JUL-407', title: 'Mission control shows the Run view', createdAt: '2026-11-23T08:00:00Z' },
@@ -205,6 +194,12 @@ export function prepare({ scene = 'running', readings = 'normal', now = NOW, rea
   writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(READINGS[readings](now), null, 2));
   writeReady(ready);
   return FLOW_DIR;
+}
+
+/** The spend of a live run as it goes: rewrite the record's tokens the way the next calls would. */
+export function recordSpend(tokens) {
+  const record = JSON.parse(readFileSync(RUN_FILE, 'utf8'));
+  writeFileSync(RUN_FILE, `${JSON.stringify({ ...record, tokens, heartbeatAt: Date.now() }, null, 2)}\n`);
 }
 
 export const buildFixture = (now = NOW) => prepare({ now });

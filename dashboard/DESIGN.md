@@ -80,11 +80,6 @@ components:
     textColor: "{colors.ivory}"
     rounded: "{rounded.chip}"
     padding: "6px 12px"
-  helper-card:
-    backgroundColor: "{colors.ivory}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.card}"
-    padding: "16px 18px"
   warning-banner:
     backgroundColor: "{colors.amber-wash}"
     textColor: "{colors.amber-ink}"
@@ -124,18 +119,18 @@ The palette is a larder: two greens, one warm paper, one red for trouble, one am
 ### Primary
 
 - **Bottle green** (#1D3B27): the header bar, the run panel, the focus ring, and body ink. It is the darkest and most used colour in the system.
-- **Leaf green** (#3D6B2C): helper card borders, quota bar fills, the tiny state marks inside lists, and the edge of the current-stage block.
+- **Leaf green** (#3D6B2C): the step marks, quota bar fills, the tiny state marks inside lists, and the edge of the current-stage block.
 - **Sapling** (#5E8A4C): quieter green for finished stage chips' edges and the scrollbar thumb.
 
 ### Secondary
 
-- **Madder red** (#A3212D): used only for problems. A stopped run's banner border and struck title, a failed helper's edge, a low window's fill and ring.
+- **Madder red** (#A3212D): used only for problems. A stopped run's banner border and struck title, a stopped step's mark, a low window's fill and ring.
 
 ### Neutral
 
 - **Sage** (#DCEBCB): the page ground, and the highlight behind an in-progress task.
 - **Ivory** (#F6F1E4): cards, the current-stage block, the header's text.
-- **Soft ink** (#4A4A3E): the step line, the helper's running time and action times.
+- **Soft ink** (#4A4A3E): the step line and the section captions.
 - **Faint ink** (#5B5A50): window names, refused reasons, quiet notes.
 - **Track** (#DAD4C4): the empty part of a quota bar.
 - **Lime** (#9FD06E): the 3px border on the current-stage block, the one edge that marks the stage happening now.
@@ -156,8 +151,8 @@ The palette is a larder: two greens, one warm paper, one red for trouble, one am
 ### Hierarchy
 
 - **Display** (600, `clamp(1.9rem, 4.2vw, 2.9rem)`, 1.05): the current stage's plain-English name, once per screen and the largest text on the page.
-- **Headline** (600, 1.5rem, 1.2): the card title in the run panel, the wordmark in the header, and the "Helpers" and "Against your subscriptions" section titles.
-- **Title** (600, 1.25rem, 1.3): each helper's name, and a warning's title in slab.
+- **Headline** (600, 1.5rem, 1.2): the card title in the run panel, the wordmark in the header, and the "Against your subscriptions" section title.
+- **Title** (600, 1.25rem, 1.3): a warning's title, in slab.
 - **Body** (400, 1rem, 1.5, 70ch max): the step line, warning text, and anything read as a sentence.
 - **Label** (700, 0.85rem, 0.04em, uppercase): the "5-hour window" and "week" names above a bar. It is the only uppercase in the system; no eyebrow sits above a heading.
 
@@ -167,19 +162,19 @@ The palette is a larder: two greens, one warm paper, one red for trouble, one am
 
 ## Layout
 
-A single column, `min-height: 100vh`, sage ground. The content column is capped at 1200px and padded `28px 32px 44px`, stacking warnings, then the run panel, then helper cards, then quota, with `24px` between sections.
+A single column, `min-height: 100vh`, sage ground. The content column is capped at 1200px and padded `28px 32px 44px`, stacking warnings, then the run panel, then quota, with `24px` between sections.
 
 Inside the run panel: the card title on the left and the token and dollar line on the right, wrapping at narrow widths; under them the stage rail, which wraps as a row of small chips each side of the current stage's ivory block, that block taking `flex: 1 1 320px` so it dominates the rail.
 
-Helper cards sit in a grid of `repeat(auto-fill, minmax(260px, 1fr))` with a `14px` gap, so a laptop shows two or three across and a phone shows one.
+The Ready cards sit in a grid of `repeat(auto-fill, minmax(260px, 1fr))` with a `14px` gap, so a laptop shows two or three across and a phone shows one.
 
 The quota block is a grid of two columns, a `9rem` name column and a fluid rest. Each window inside is `8.5rem | 1fr | 15rem`: name, bar, and percentage plus reset date.
 
-Below 640px every one of those grids collapses to one column, the page padding drops to `18px 16px 32px`, and the warnings stay above the panel, which stays above the helpers. Nothing scrolls sideways at 390px wide.
+Below 640px every one of those grids collapses to one column, the page padding drops to `18px 16px 32px`, and the warnings stay above the panel, which stays above the quota. Nothing scrolls sideways at 390px wide.
 
 ## Elevation & Depth
 
-Depth is tonal, not shadowed. The sage ground is the floor, ivory cards sit on it as paper, and the bottle-green panel reads as a board laid on top. Only two shadows exist, both tight and green-tinted, and both are contact shadows that stop a card from floating rather than lifting it: `0 10px 22px -18px rgb(29 59 39 / 55%)` under a helper card and `0 14px 30px -18px rgb(29 59 39 / 60%)` under the run panel.
+Depth is tonal, not shadowed. The sage ground is the floor, ivory cards sit on it as paper, and the bottle-green panel reads as a board laid on top. Only two shadows exist, both tight and green-tinted, and both are contact shadows that stop a card from floating rather than lifting it: `0 10px 22px -18px rgb(29 59 39 / 55%)` under a Ready card and `0 14px 30px -18px rgb(29 59 39 / 60%)` under the run panel.
 
 The current-stage block carries a 3px lime border rather than a halo, so its highlight is an edge like every other state and never a zero-offset shadow.
 
@@ -189,9 +184,9 @@ The current-stage block carries a 3px lime border rather than a halo, so its hig
 
 ## Shapes
 
-Two radii families. Panels and cards are generously round (20px for the run panel and quota block, 16px for helper cards and the current-stage block, 14px for a warning banner); bars and chips are rounder still (12px on a quota bar, 999px on a past-stage pill, a 6px tick behind an in-progress task, 8px on the unknown-reading tag).
+Two radii families. Panels and cards are generously round (20px for the run panel and quota block, 16px for the current-stage block, 14px for a warning banner); bars and chips are rounder still (12px on a quota bar, 999px on a past-stage pill, a 6px tick behind an in-progress task, 8px on the unknown-reading tag).
 
-Borders do the talking. Every card and banner has a 3px border whose style is a state: **solid** on a live helper or a stopped run's banner, **dashed** on the stuck banner, the ended-without-a-result banner, a stuck helper, a low-quota bar's ring, and the unknown-reading tag, **dotted** on a sent-back stage pill and on the burning-tokens banner. A given-up run's card title is struck through. No state is carried by colour alone.
+Borders do the talking. Every card and banner has a 3px border whose style is a state: **solid** on an in-hand step's mark or a stopped run's banner, **dashed** on the stuck banner, the ended-without-a-result banner, a stuck step, a low-quota bar's ring, and the unknown-reading tag, **dotted** on a sent-back stage pill and on the burning-tokens banner. A given-up run's card title is struck through. No state is carried by colour alone.
 
 ## Components
 
@@ -218,12 +213,6 @@ Borders do the talking. Every card and banner has a 3px border whose style is a 
 - **Shape:** 14px corners, `14px 18px` padding, 3px border, mono-free text; the title in 1.2rem slab sits above one or two sentences of what is wrong.
 - **Stuck and ended-without-a-result:** amber wash and text, dashed amber border. **Burning tokens fast:** the same wash, dotted border. **Stopped** and **Quota low:** madder wash and text, solid border. A stopped run's banner strikes its title through.
 - **Wording:** a banner says what is wrong and never suggests a fix; the numbers in it come from the settings file (7 minutes quiet, 20% left, 100,000 tokens in one call).
-
-### Helper card
-
-- **Shape:** 16px corners, 3px solid green border, ivory fill, `16px 18px` padding, contact shadow.
-- **Contents:** helper name as a 1.25rem title, a state line with running time and token count, then the actions newest first (15px mark, name, time right-aligned in tabular figures), then the helper's own task list; the action list scrolls inside `15rem` rather than growing the page.
-- **States:** live is solid green; stuck is amber wash with a dashed amber border; failed is a madder border; a quiet helper reads "No actions yet." in faint ink.
 
 ### Quota row
 

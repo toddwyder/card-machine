@@ -95,7 +95,8 @@ test.describe('the Run view on a laptop', () => {
     await expect(current).toHaveAttribute('data-state', 'in_progress');
     await expect(current).toHaveAttribute('data-number', '2');
     expect(await backgroundColour(current)).toBe('rgb(220, 235, 203)');
-    await expect(current).toContainText('Architect the shape');
+    // The pill carries the step's own first words, so the list and the step in hand cannot disagree.
+    await expect(current).toContainText(steps.list[1].short);
 
     // Feature's last step is the playbook's final act.
     await expect(row.getByRole('listitem').last()).toContainText('Opening a PR');
@@ -133,14 +134,14 @@ test.describe('the Run view on a laptop', () => {
     await page.reload();
     const panel = page.getByRole('region', { name: 'The running card' });
     await expect(panel.getByRole('heading', { name: 'Shipping', exact: true })).toBeVisible();
+    const read = await snapshot(page);
+    expect(read.run.stage).toBe('Shipping');
     const current = panel.locator('[aria-current="step"]');
     await expect(current).toHaveCount(1);
-    await expect(current).toContainText('Open the pull request');
+    await expect(current).toContainText(read.run.step);
     const shippingNumber = Number(await current.getAttribute('data-number'));
     expect(shippingNumber).toBeGreaterThan(featureNumber);
 
-    const read = await snapshot(page);
-    expect(read.run.stage).toBe('Shipping');
     expect(read.run.steps.index).toBe(shippingNumber);
 
     await shot(page, 'shipping');
@@ -168,7 +169,8 @@ test.describe('the Run view on a laptop', () => {
         await expect(stopped).toBeVisible();
         expect(await borderTopStyle(stopped)).toBe('solid');
         expect(await borderTopColour(stopped)).toBe('rgb(163, 33, 45)');
-        await expect(stopped).toContainText('The run stopped at “Build the slices”.');
+        const read = await snapshot(page);
+        await expect(stopped).toContainText(read.warnings.find(warning => warning.kind === 'stopped').text);
         const struck = stopped.locator('p span').first();
         expect(await struck.evaluate(node => getComputedStyle(node).textDecorationLine)).toBe('line-through');
       }

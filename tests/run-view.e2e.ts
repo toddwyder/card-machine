@@ -1,6 +1,6 @@
 import { describe, test } from '@e2e-dev/web';
 import { expect } from 'e2e';
-import { appendModelCall, NOW, prepare } from '../dashboard/tests/flow-fixture.mjs';
+import { NOW, prepare, recordSpend } from '../dashboard/tests/flow-fixture.mjs';
 
 const REASON_WORDS = {
   'no stored sign-in': 'No sign-in is stored for this subscription.',
@@ -32,6 +32,15 @@ async function styleOf(browser, selector, prop) {
   );
 }
 
+// The spend line in the panel reads like this, so a test can name the number it expects without
+// repeating the screen's own formatting rules.
+function spendText(tokens) {
+  if (!tokens) return 'no tokens yet';
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(2)} M tokens`;
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)} k tokens`;
+  return `${tokens} tokens`;
+}
+
 describe('Mission control Run view', () => {
   test('folds the screen at the pinned instant', async ({ app, screen, browser }) => {
     await prepare({ scene: 'running' });
@@ -40,50 +49,46 @@ describe('Mission control Run view', () => {
     expect(read.observedAt).toBe(NOW);
   });
 
-  test('shows stage, steps, tokens, estimate, and helper cards on a laptop', async ({ app, screen, browser }) => {
+  test('shows the stage, its steps, and the spend the session left behind on a laptop', async ({ app, screen, browser }) => {
     await prepare({ scene: 'running' });
     await browser.setViewport({ width: 1280, height: 720 });
     await openRunView(app, screen);
 
     const panel = screen.getByRole('region', { name: 'The running card' });
     await expect(panel).toBeVisible();
-    await expect(panel.getByRole('heading', { name: /Mission control's Run view/ })).toBeVisible();
+    const read = await snapshot(browser);
+    const { run } = read;
+    const { steps } = run;
+
+    await expect(panel.getByRole('heading', { name: run.title })).toBeVisible();
     await expect(panel.getByText(/Running · /)).toBeVisible();
 
-    const stage = panel.getByText('Build the slices', { exact: true });
-    await expect(stage).toBeVisible();
-    const { stageSize, titleSize } = await browser.evaluate(() => {
+    // The stage is a playbook's name, and the biggest text in the panel.
+    expect(run.stage).toBe('Feature');
+    await expect(panel.getByRole('heading', { name: run.stage })).toBeVisible();
+    const { stageSize, titleSize } = await browser.evaluate(stage => {
       const panelNode = document.querySelector('[aria-label="The running card"]');
-      const stageNode = Array.from(panelNode.querySelectorAll('*')).find(el => el.textContent === 'Build the slices' && el.children.length === 0);
-      const titleNode = panelNode.querySelector('h1, h2, h3');
+      const stageNode = Array.from(panelNode.querySelectorAll('*')).find(el => el.textContent === stage && el.children.length === 0);
+      const titleNode = panelNode.querySelector('h1');
       return {
         stageSize: parseFloat(getComputedStyle(stageNode).fontSize),
         titleSize: parseFloat(getComputedStyle(titleNode).fontSize),
       };
-    });
+    }, run.stage);
     expect(stageSize).toBeGreaterThan(24);
     expect(stageSize).toBeGreaterThan(titleSize);
 
-    await expect(panel.getByText(/\d+ k tokens/)).toBeVisible();
+    // The step in hand, in the session's own words.
+    await expect(panel.getByText(run.step, { exact: true }).first()).toBeVisible();
+    await expect(panel.getByText(new RegExp(spendText(run.usage.tokens).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeVisible();
     await expect(panel.getByText(/about \$|not priced yet/)).toBeVisible();
-    await expect(panel.getByText('Architect the shape').first()).toBeVisible();
 
-    const read = await snapshot(browser);
-    const helpers = browser.locator('article[data-state]');
-    await expect(helpers).toHaveCount(read.run.helpers.length);
-    for (const helper of read.run.helpers) {
-      await expect(screen.getByText(helper.name, { exact: true })).toBeVisible();
-      const shown = await browser.evaluate(name => {
-        const cards = Array.from(document.querySelectorAll('article[data-state]'));
-        const match = cards.find(c => c.textContent.includes(name));
-        if (!match) return null;
-        return Array.from(match.querySelectorAll('ul li[data-state] > span:first-of-type'), el => el.innerText);
-      }, helper.name);
-      expect(shown).toEqual(helper.actions.map(action => action.name));
-    }
+    // Helper cards are gone: the session's own steps are the whole picture of what it is doing.
+    expect(await browser.locator('article[data-state]').count()).toBe(0);
+    expect(await browser.evaluate(() => document.body.innerText.includes('Helpers'))).toBe(false);
 
-    const { steps } = read.run;
-    const row = browser.locator(`[aria-label="The running card"] ol[aria-label="The run's ${steps.total} steps"]`);
+    const rowSelector = `[aria-label="The running card"] ol[aria-label="The run's ${steps.total} steps"]`;
+    const row = browser.locator(rowSelector);
     await expect(row.getByRole('listitem')).toHaveCount(steps.total);
     await expect(panel.getByText(`step ${steps.index} of ${steps.total}`, { exact: true })).toBeVisible();
     const pillTexts = await browser.evaluate(label => {
@@ -92,59 +97,79 @@ describe('Mission control Run view', () => {
     }, `The run's ${steps.total} steps`);
     expect(pillTexts).toEqual(steps.list.map(step => step.short));
 
-    const current = browser.locator(`[aria-label="The running card"] ol[aria-label="The run's ${steps.total} steps"] [aria-current="step"]`);
+    const current = browser.locator(`${rowSelector} [aria-current="step"]`);
+    await expect(current).toHaveCount(1);
     await expect(current).toHaveAttribute('data-state', 'in_progress');
     expect(await styleOf(browser, '[aria-current="step"]', 'backgroundColor')).toBe('rgb(220, 235, 203)');
-    const skipped = browser.locator(`[aria-label="The running card"] ol[aria-label="The run's ${steps.total} steps"] li[data-state="skipped"]`);
+    const skipped = browser.locator(`${rowSelector} li[data-state="skipped"]`);
     await expect(skipped).toHaveCount(steps.list.filter(step => step.status === 'skipped').length);
-    if (await skipped.count()) {
-      expect(await styleOf(browser, 'li[data-state="skipped"]', 'borderTopStyle')).toBe('dotted');
-      expect(await styleOf(browser, 'li[data-state="skipped"] span', 'textDecorationLine')).toBe('line-through');
-    }
 
     await app.screenshot('laptop-running');
   });
 
-  test('renders waiting_for_you, stuck, burning_fast, stopped, and ended_unknown by shape', async ({ app, screen, browser }) => {
+  test('names the playbook the list has moved on to', async ({ app, screen, browser }) => {
     await browser.setViewport({ width: 1280, height: 720 });
 
-    await prepare({ scene: 'uat' });
+    await prepare({ scene: 'shipping' });
     await openRunView(app, screen);
-    const uatRead = await snapshot(browser);
-    expect(uatRead.run.status).toBe('waiting_for_you');
-    await expect(browser.locator('main')).toContainText('Waiting for you');
-    await app.screenshot('waiting-for-you');
+    const read = await snapshot(browser);
+    expect(read.run.stage).toBe('Shipping');
+    const panel = screen.getByRole('region', { name: 'The running card' });
+    await expect(panel.getByRole('heading', { name: 'Shipping' })).toBeVisible();
+    await expect(panel.getByText(`step ${read.run.steps.index} of ${read.run.steps.total}`, { exact: true })).toBeVisible();
+    await expect(
+      browser.locator(`[aria-label="The running card"] ol[aria-label="The run's ${read.run.steps.total} steps"]`).getByRole('listitem'),
+    ).toHaveCount(read.run.steps.total);
+    await app.screenshot('shipping');
+
+    // A session that has opened but has not written its to-do list yet gets no guessed stage.
+    await prepare({ scene: 'no-todo' });
+    await openRunView(app, screen);
+    await expect(screen.getByText('The session has not named its playbook yet.')).toBeVisible();
+    expect(await browser.locator('ol[aria-label^="The run\'s"]').count()).toBe(0);
+    await app.screenshot('no-steps-yet');
+  });
+
+  test('draws each warning state by its own shape', async ({ app, screen, browser }) => {
+    await browser.setViewport({ width: 1280, height: 720 });
 
     await prepare({ scene: 'stuck' });
     await openRunView(app, screen);
-    const stuck = browser.locator('[data-kind="stuck"]');
-    await expect(stuck).toBeVisible();
+    let read = await snapshot(browser);
+    let warning = browser.locator('[data-kind="stuck"]');
+    await expect(warning).toBeVisible();
     expect(await styleOf(browser, '[data-kind="stuck"]', 'borderTopStyle')).toBe('dashed');
-    await expect(stuck).toContainText(/Nothing has happened .* minutes/);
+    await expect(warning).toContainText(read.warnings.find(w => w.kind === 'stuck').text);
+    await expect(warning).toContainText(/Nothing has happened in the run for \d+ minutes\./);
     await expect(browser.locator('svg[data-state="stuck"]').first()).toBeVisible();
     await app.screenshot('stuck');
 
     await prepare({ scene: 'burning' });
     await openRunView(app, screen);
-    const burning = browser.locator('[data-kind="burning_fast"]');
-    await expect(burning).toBeVisible();
+    read = await snapshot(browser);
+    warning = browser.locator('[data-kind="burning_fast"]');
+    await expect(warning).toBeVisible();
     expect(await styleOf(browser, '[data-kind="burning_fast"]', 'borderTopStyle')).toBe('dotted');
-    await expect(burning).toContainText(/Feature Refactoring 1 used .* tokens in one model call\./);
+    await expect(warning).toContainText(read.warnings.find(w => w.kind === 'burning_fast').text);
+    await expect(warning).toContainText(/One model call used [\d,]+ tokens\./);
     await app.screenshot('burning-fast');
 
     await prepare({ scene: 'stopped' });
     await openRunView(app, screen);
-    const stopped = browser.locator('[data-kind="stopped"]');
-    await expect(stopped).toBeVisible();
+    read = await snapshot(browser);
+    warning = browser.locator('[data-kind="stopped"]');
+    await expect(warning).toBeVisible();
     expect(await styleOf(browser, '[data-kind="stopped"]', 'borderTopStyle')).toBe('solid');
     expect(await styleOf(browser, '[data-kind="stopped"]', 'borderTopColor')).toBe('rgb(163, 33, 45)');
+    // An ended run leaves the panel and keeps only its last result, so the warning carries the words.
+    await expect(warning).toContainText(read.warnings.find(w => w.kind === 'stopped').text);
+    await expect(warning).toContainText('The run stopped at “');
     expect(await styleOf(browser, '[data-kind="stopped"] p span', 'textDecorationLine')).toBe('line-through');
     await app.screenshot('stopped');
 
     await prepare({ scene: 'ended-unknown' });
     await openRunView(app, screen);
-    const ended = browser.locator('[data-kind="ended_unknown"]');
-    await expect(ended).toBeVisible();
+    await expect(browser.locator('[data-kind="ended_unknown"]')).toBeVisible();
     expect(await styleOf(browser, '[data-kind="ended_unknown"]', 'borderTopStyle')).toBe('dashed');
     await app.screenshot('ended-unknown');
   });
@@ -191,51 +216,56 @@ describe('Mission control Run view', () => {
     await expect(browser.locator('li[data-subscription="commandcode"]')).toContainText('No sign-in is stored for this subscription.');
   });
 
-  test('shows finished and quiet states and updates tokens live', async ({ app, screen, browser }) => {
+  test('shows a finished run, the idle screen, and the spend changing live', async ({ app, screen, browser }) => {
     await browser.setViewport({ width: 1280, height: 720 });
 
     await prepare({ scene: 'finished' });
     await openRunView(app, screen);
-    const panel = screen.getByRole('region', { name: 'The running card' });
-    await expect(panel.getByText(/Finished · /)).toBeVisible();
-    const sentBackOutline = await browser.evaluate(() => {
-      const panelNode = document.querySelector('[aria-label="The running card"]');
-      const sentBack = Array.from(panelNode.querySelectorAll('li')).find(li => li.textContent.includes('Send it back to the builder'));
-      return sentBack ? getComputedStyle(sentBack).borderTopStyle : null;
-    });
-    expect(sentBackOutline).toBe('dotted');
+    // A finished run leaves the panel behind and keeps its last result on the idle screen.
+    await expect(screen.getByRole('region', { name: 'Nothing running' })).toBeVisible();
+    await expect(screen.getByText('The last run finished.')).toBeVisible();
+    const finished = await snapshot(browser);
+    expect(finished.run).toBe(null);
+    expect(finished.lastResult.status).toBe('finished');
+    // Start shows again once nothing is running.
+    await expect(screen.getByRole('button', { name: 'Start', exact: true }))
+      .toHaveCount(finished.readyCards.cards.length);
     await app.screenshot('finished');
 
-    await prepare({ scene: 'quiet' });
+    await prepare({ scene: 'idle' });
     await openRunView(app, screen);
     await expect(screen.getByRole('region', { name: 'Nothing running' })).toBeVisible();
     await expect(screen.getByText('Nothing is running right now')).toBeVisible();
+    const idle = await snapshot(browser);
+    await expect(screen.getByRole('button', { name: 'Start', exact: true })).toHaveCount(idle.readyCards.cards.length);
     await app.screenshot('nothing-running');
 
     await prepare({ scene: 'running' });
     await openRunView(app, screen);
     const livePanel = screen.getByRole('region', { name: 'The running card' });
     const before = await livePanel.getByText(/\d+ k tokens/).textContent();
-    appendModelCall({ inputTokens: 240000 });
+    const live = await snapshot(browser);
+    recordSpend(live.run.usage.tokens + 96000);
     await expect(livePanel.getByText(/\d+ k tokens/)).not.toHaveText(before, { timeout: 15000 });
   });
 
-  test('stacks warnings, panel, helpers, and bars on a 390px phone with no overflow', async ({ app, screen, browser }) => {
+  test('stacks warnings, panel, and bars on a 390px phone with no overflow', async ({ app, screen, browser }) => {
     await browser.setViewport({ width: 390, height: 844 });
 
     await prepare({ scene: 'stuck' });
     await openRunView(app, screen);
 
-    await expect(screen.getByText('Build the slices', { exact: true })).toBeVisible();
-    const { stageSize, titleSize } = await browser.evaluate(() => {
+    const stuck = await snapshot(browser);
+    await expect(screen.getByText(stuck.run.stage, { exact: true })).toBeVisible();
+    const { stageSize, titleSize } = await browser.evaluate(stage => {
       const panelNode = document.querySelector('[aria-label="The running card"]');
-      const stageNode = Array.from(panelNode.querySelectorAll('*')).find(el => el.textContent === 'Build the slices' && el.children.length === 0);
-      const titleNode = panelNode.querySelector('h1, h2, h3');
+      const stageNode = Array.from(panelNode.querySelectorAll('*')).find(el => el.textContent === stage && el.children.length === 0);
+      const titleNode = panelNode.querySelector('h1');
       return {
         stageSize: parseFloat(getComputedStyle(stageNode).fontSize),
         titleSize: parseFloat(getComputedStyle(titleNode).fontSize),
       };
-    });
+    }, stuck.run.stage);
     expect(stageSize).toBeGreaterThan(titleSize);
 
     const boxes = await browser.evaluate(() => {
@@ -243,12 +273,12 @@ describe('Mission control Run view', () => {
       return {
         warning: box('[data-kind="stuck"]'),
         panel: box('[aria-label="The running card"]'),
-        helpers: box('article[data-state]'),
+        quota: box('[aria-labelledby="quota-heading"]'),
       };
     });
     expect(boxes.warning).toBeGreaterThan(-1);
     expect(boxes.warning).toBeLessThan(boxes.panel);
-    expect(boxes.panel).toBeLessThan(boxes.helpers);
+    expect(boxes.panel).toBeLessThan(boxes.quota);
 
     const overflow = await browser.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
@@ -259,7 +289,9 @@ describe('Mission control Run view', () => {
     const panel = screen.getByRole('region', { name: 'The running card' });
     await expect(panel).toBeVisible();
     const { steps } = await snapshot(browser).then(read => read.run);
-    await expect(browser.locator(`[aria-label="The running card"] ol[aria-label="The run's ${steps.total} steps"]`).getByRole('listitem')).toHaveCount(steps.total);
+    await expect(
+      browser.locator(`[aria-label="The running card"] ol[aria-label="The run's ${steps.total} steps"]`).getByRole('listitem'),
+    ).toHaveCount(steps.total);
     await expect(panel.getByText(`step ${steps.index} of ${steps.total}`, { exact: true })).toBeVisible();
     const narrow = await browser.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(narrow).toBeLessThanOrEqual(1);
