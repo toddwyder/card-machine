@@ -35,11 +35,8 @@ Todd gives every builder session pstack's full-autonomy grant. It pre-approves d
 - Before changing the server, read `docs/agents/server-runbook.md`. When a card uses a Julia word you don't know, read [GLOSSARY.md](GLOSSARY.md).
 - Linear holds cards and requirements. GitHub holds code.
 
-## Done means a record
-A build is done when a run produced a record, not when the builder says it passed. The builder never runs the machine that judges the work. When the build is ready the builder asks the runner for a run and reads the record, and that ends the build. A failed verdict is a result on the card, the same as a passing one: it is written down, it is not the builder's failure, and the builder does not go hunting for a PASS.
-
 ## Finish
-A card is finished when its PR is merged to main (after Todd's UAT yes when the card changes something he uses), main CI is green on the merge commit, and the card is Complete in Linear with that commit in a comment.
+A card is finished when its PR is merged to main, main CI is green on the merge commit, and the card is Complete in Linear with that commit in a comment.
 
 After a slice merges, run the retro skill on that slice's session and put its fixes in one PR, with a plain-English list of each fix for Todd to approve: the mistake it came from, what the check does, and what it would now block. Mastra's storage retention prunes old trace rows at the end of every card. The next slice does not wait for that PR.
 

@@ -28,10 +28,11 @@ Revised 30 Oct 2026; the details are in [30 October decisions](#30-october-decis
 | Settle | Todd reads the card and says "settled"; it moves to Ready | Todd |
 | Build | One pstack session builds, reviews code (`/interrogate`, whose adversaries must prove each finding by running it) and runs Prove It Works against the card's UAT steps, then opens the PR | Machine |
 | Shipping | Independent per-criterion verdict on the Prove It Works evidence; a FAIL goes to Remediation | Machine (Shipping model) |
-| Preview | The candidate runs where Todd can try it | Machine |
+| Preview | The candidate runs at its own address | Machine |
 | Smoke test | The whole regression suite runs on the preview | Machine |
-| UAT | Todd follows the card's UAT steps on the preview | Todd |
-| Merge | Shipping merges after Todd's yes; live check; card Complete | Machine |
+| Merge | Shipping merges once its PASS covers the current code; nothing waits on Todd | Machine |
+| Live check | The live address serves the merged commit and the regression suite passes there; the card goes Complete | Machine |
+| UAT | Todd follows the card's UAT steps on what is live | Todd |
 | Retro | Retro on every card; `/correct` when the card went wrong; metrics recorded; clean-up | Machine |
 
 ## Pre-plan retired (11:17)
@@ -65,13 +66,13 @@ Revised 30 Oct 2026; the details are in [30 October decisions](#30-october-decis
 
 ## UAT (11:40–12:13)
 - A card gets UAT **only if it changes something Todd uses directly**. Julia app cards always do. Machine cards usually don't, and they merge once the staging proof passes. The card says whether it has household or control-page steps for Todd to try; none = no UAT.
-- When staging and the smoke test pass, the machine moves the card to UAT and notifies Todd through Linear (reaches his phone) with: the preview link, the card's steps in household terms, a short plain explanation of what changed.
-- Accept → the machine merges. Send back → Todd writes what's wrong; the card returns to the build with his note; two send-backs stop the card (existing stop rule).
+- Once the change is live and the live check passes, the machine tells Todd through Linear (reaches his phone) with: the live address, the card's steps in household terms, a short plain explanation of what changed.
+- Accept → the card is done. Send back → Todd writes what's wrong; a new card returns to the build with his note; two send-backs stop that change (existing stop rule).
 
 ## Merge (12:14)
-- The machine merges on its own once every gate passes: CI green (GitHub merge protection), evidence review passed, staging and smoke test passed, UAT accepted when the card has UAT. Todd doesn't approve merges separately; the trial-era rulebook line "Todd decides the merge" goes.
+- The machine merges on its own once every gate passes: CI green (GitHub merge protection), evidence review passed, staging and smoke test passed. Nothing waits on Todd before a merge; he tries the change after it lands. The trial-era rulebook line "Todd decides the merge" goes.
 - After merge: **Julia app cards** — Vercel deploys to live Julia; the machine runs the smoke test against the live site; on failure it reverts the merge and tells Todd. **Machine cards** — the machine updates itself from main and checks itself through Todd's Tailscale address; on failure it rolls back to the previous commit.
-- The card moves to Complete only after that final check passes.
+- The card moves to Complete only after that final check passes. UAT follows on what is live; a send-back is a new card with Todd's note.
 
 ## Failures after Implementation and the board (12:15–12:16)
 | Failure | What happens | Stop rule |
@@ -79,12 +80,12 @@ Revised 30 Oct 2026; the details are in [30 October decisions](#30-october-decis
 | Evidence review: a criterion not proven | 1st: card to Remediation for one round of defect fixing, then a fresh review. 2nd: Investigation playbook for the root cause, then stop | 2nd review failure stops the card |
 | A checklist follows another playbook, or the work skips its steps | The evidence review marks every criterion unproven | Same as the evidence-review row above |
 | Staging or smoke test fails | Back to the build with the failing tests | 2nd proof failure stops the card |
-| UAT send-back | Back to the build with Todd's note | 2nd send-back stops the card |
+| UAT send-back | A new card back to the build with Todd's note | 2nd send-back stops that change |
 | Live check after merge fails | Revert (Julia) / roll back (machine), then back to the build | Counts |
 | Cap reached | Card stops where it is | Is the stop |
-- Every send-back reruns everything after the build (evidence review, staging/smoke, UAT if any): changed code voids earlier passes.
+- Every send-back reruns everything after the build (evidence review, staging/smoke, and UAT again on what is live): changed code voids earlier passes.
 - A stopped card stays in its column; Todd gets a Linear notification with a plain explanation, the root cause, and a restart plan for his OK (existing stop rule).
-- **Board:** the Linear board flow stands as written: Triage, Backlog → Ready → Implementation → Evidence review → Staging/smoke test → (UAT) → Complete; Canceled, Duplicate. **Remediation** is kept for sent-back cards so retries show at a glance. The Code review column stays (its removal is cut, 24 Oct). The dashboard is being built (Todd, 27 Oct 2026).
+- **Board:** the Linear board flow stands as written: Triage, Backlog → Ready → Implementation → Evidence review → Staging/smoke test → Merged → (UAT) → Complete; Canceled, Duplicate. **Remediation** is kept for sent-back cards so retries show at a glance. The Code review column stays (its removal is cut, 24 Oct). The dashboard is being built (Todd, 27 Oct 2026).
 
 ## Retro and learning (12:18–12:21)
 - **Automatic retro:** after every merge the machine starts a retro run (same trigger as the verification upkeep). It runs pstack's `/correct` on the card's history: evidence-review findings, failed checks, UAT send-backs, and Todd's corrections from the advisor's retro notes. Output: a PR of checks and code fixes, each as high in the pyramid as it will go, each shown failing on the real past mistake.
@@ -108,7 +109,7 @@ The agreed fixes from the JUL-231 retro are folded into the cards below.
 4. Clean-up: one pull request, no card (Todd, 24 Oct). Settled scope: the no-fakes CI check; the four writing-for-agents rules as one script, run by triage before showing Todd a brief; removal of live server-state descriptions from the setup notes; confirmation that Start's admission check accepts the current triage card shape by running it on JUL-263; this plan update. Cut: the pstack folder move, the framework-lint fix and the Code review column removal. GitHub merge protection moves to card 8.
 5. Evidence review (JUL-252) with the five-card checkpoint. The "evidence there" card is dropped: no index, the reviewer reads the proof folder. (Todd, 24 Oct)
 6. Per-task models: pstack's own role lines (main session, hardest tasks, everyday code, search, panels) replace the orchestrator/coder pair, set from JUL-252's actual spend by model and task. One pull request, no card.
-7. Julia cards start (Todd, 25 Oct). The machine builds and the evidence review checks the proof; Todd tries the Vercel preview and says yes; the advisor merges.
+7. Julia cards start (Todd, 25 Oct). The machine builds and the evidence review checks the proof; the advisor merges; Todd tries the change on live Julia and says yes.
 
 Deferred until doing it by hand gets in the way (Todd, 25 Oct):
 - Staging: regression suite against the Vercel preview; `verify-julia` rewritten for Linux and a given address.
@@ -131,7 +132,7 @@ The clean-up is built by the planner agent in a fresh session. From card 5 on, t
 - **Old machine removed.** Old machine removed from main on 26 Oct 2026, kept at tag `old-machine-final` (Todd, 26 Oct 2026), overriding the 25 Oct "untouched until milestone 1" line.
 - **Coordinator chat moves to the paid judgment model.** The coordinator chat moves to the paid judgment model in settings on 26 Oct 2026 because the default orchestrator used 34% of the weekly subscription quota (Todd, 26 Oct 2026). This overrides the 25 Oct coordinator line. The pstack role lines are unchanged.
 - **Plan and fast modes follow the chat to settings.** Mastra Code's `plan` and `fast` mode defaults move to paid models in settings for the same quota reason (JUL-274 run, 26 Oct 2026, under the coordinator decision above). See `docs/pstack-deviations.md` rows 7-9.
-- **Success is judged against Todd's UAT yes.** A card succeeds when no stop began before Todd's UAT yes on the preview; the wait that ends in the yes is exempt unless it also asked for something else (Todd, 26 Oct 2026, ruling JUL-272 a failure with two stops). Stop pings reach Todd as a Linear reminder, because he will not set up app credentials (Todd, 26 Oct 2026). *Removed 7 Nov 2026 (Todd): about 30 pings in one day were noise; the run view's warnings replace them.*
+- **Success is judged against Todd's UAT yes.** A card succeeds when no stop began before Todd's UAT yes on what is live; the wait that ends in the yes is exempt unless it also asked for something else (Todd, 26 Oct 2026, ruling JUL-272 a failure with two stops). Stop pings reach Todd as a Linear reminder, because he will not set up app credentials (Todd, 26 Oct 2026). *Removed 7 Nov 2026 (Todd): about 30 pings in one day were noise; the run view's warnings replace them.*
 - **The 15-minute stop and runaway pause leave AGENTS.md.** Both were enforced by the build machine removed in #354; nothing enforces them in Mastra Code, so AGENTS.md now names the scorecard instead (JUL-274 run, 26 Oct 2026). *The scorecard was removed on 7 Nov 2026 (Todd); cost comes from Studio's run trace.*
 
 ## 27 October decisions (Todd)
@@ -140,35 +141,23 @@ The clean-up is built by the planner agent in a fresh session. From card 5 on, t
 
 ## 30 October decisions (Todd): the connected path
 
-These override earlier lines in this file where they differ. Every step below starts by itself: a started card runs to UAT without stopping (Todd, 30 Oct 2026).
+These override earlier lines in this file where they differ. Every step below starts by itself: a started card runs to a landed change without stopping (Todd, 30 Oct 2026).
 
-- **Shipping** is the independent review (the old "evidence review"). The runner starts a fresh agent and gives it the card's criteria and UAT steps, the exact code and how to run it; never the builder's chat or evidence. It runs the PR itself the way Todd would and decides PASS or FAIL on every criterion, with what it saw. A FAIL gives clear reasons why, which go to Remediation. Its model is the Shipping pick on the Start screen (set in `dashboard/config/roles.json`), run by an agent other than the builder, whichever company made either agent.
+- **Shipping** is the independent review (the old "evidence review"). A fresh agent, never the builder, gets the card's criteria and UAT steps, the exact code and how to run it; never the builder's chat or evidence. It runs the PR itself the way Todd would and decides PASS or FAIL on every criterion, with what it saw. A FAIL gives clear reasons why, which go to Remediation. Its model is the Shipping pick on the Start screen (set in `dashboard/config/roles.json`), run by an agent other than the builder, whichever company made either agent.
 - **Remediation.** A first Shipping FAIL moves the card to Remediation; the fix starts by itself through poteto-mode's Bug fix playbook with Shipping's reasons, then a fresh Shipping runs. A second FAIL runs the Investigation playbook for the root cause, covering both the fault in the work and the fault in the process, and the card stops.
 - **Preview.** Julia cards: the PR's Vercel preview. Dashboard and machine cards: a second copy of the dashboard running the candidate on the server at its own Tailscale port; the live dashboard on 4313 stays on main.
 - **Smoke test.** The whole regression suite reruns on the preview: the `verify-julia` checks for Julia, `dashboard/scripts/lanes.mjs` for the dashboard. A failure goes back to the build.
-- **UAT steps live on the card**, in a third section after the criteria, written by triage and settled with the card, so the builder and Prove It Works aim at exactly what Todd will try. At UAT Todd gets a Linear notification carrying the preview address.
-- **Merge.** Shipping merges only after Todd's yes, and only while its PASS still covers the current code (the Shipping playbook's patch-id rule); changed code goes back through Shipping.
-- **Live check.** The live address serves the merged commit and the regression suite passes there. Pass: the card moves to Complete. Fail: the card stops and Todd is notified; nothing rolls back by itself.
+- **UAT steps live on the card**, in a third section after the criteria, written by triage and settled with the card, so the builder and Prove It Works aim at exactly what Todd will try. Once the change is live, Todd gets a Linear notification carrying the live address.
+- **Merge.** Shipping merges as soon as its PASS still covers the current code (the Shipping playbook's patch-id rule); changed code goes back through Shipping. Todd tries the change after it lands, and a send-back is a new card.
+- **Live check.** The live address serves the merged commit and the regression suite passes there. Pass: the card moves to Complete and Todd is told the change is live. Fail: the card stops and Todd is notified; nothing rolls back by itself.
 - **After merge.** The retro skill runs on every card; `/correct` runs whenever the card went through Remediation, a stop, a rubber stamp or a correction from Todd. `/reflect` is retired. The card's cost, tokens, time, rounds and stops are recorded for Decision support. Clean-up stops the preview copy, deletes the branch and clears the trace detail after the retro; cost rows stay.
 - **Every stop is diagnosed.** Each stop, failure, blocker or rubber stamp gets its cause: why it happened, what the process got wrong, and what keeps it from returning. The fix goes through pstack as high in [the inverse pyramid](../principles/inverse-pyramid.md) as it will go.
 - **Advisor.** The advisor sees a card only with a PASS and its evidence, after a second FAIL, or when the builder is blocked. It checks each PASS for a rubber stamp; a rubber stamp counts as a FAIL. A blocker's fix goes through pstack as a card.
 - **Every change has a card**, corrections included.
-- **The path runs as a Mastra workflow**, the way Factory ran. Mastra keeps each step's state, the FAIL count and the pause for Todd's yes; the workflow starts every session, Shipping included, and nothing is launched by hand. A homemade runner script is the wrong shape: PR #387's runner is closed unmerged (Todd, 30 Oct 2026).
-- **Built one step at a time.** Each step of the path is built and proven before the next is started: build, Shipping, Remediation, preview, smoke test, the wait for Todd's yes, merge, live check, retro.
+- **The path runs as a Mastra workflow**, the way Factory ran. Mastra keeps each step's state and the FAIL count; the card's own session moves to the next playbook, and nothing is launched by hand. A homemade runner script is the wrong shape: PR #387's runner is closed unmerged (Todd, 30 Oct 2026).
+- **Built one step at a time.** Each step of the path is built and proven before the next is started: build, Shipping, Remediation, preview, smoke test, merge, live check, UAT after landing, retro.
 - **Memory helpers run on Mastra's suggested free default model.** This lands before the workflow work.
 - **Tests of the machine run on free models only**, never on a real card while the machine change is unmerged.
-
-## Agents and runners (Todd, 30 Oct 2026)
-
-Agents use judgment; runners are machines.
-
-- **Agents** think: build, review, root cause, retro. Each works in its own folder, leaves its result there and stops. An agent starts no other agent and never touches Linear or GitHub.
-- **Runners** are Mastra workflows. They start every agent, pick up its result and do the rest by fixed rules: push, open pull requests, post, move cards, record each step's start, finish and cost. They sign what they post with their own identity; only signed posts count.
-- **Evidence.** When a build ends, the runner checks that every criterion has evidence, without judging it. Missing goes back to the builder; missing twice for the same criterion stops the card.
-- **Shipping.** Only the runner knows the Shipping model. It records each PASS and FAIL: a first FAIL goes to Remediation, a second stops the card for a root cause and reports to Todd.
-- **Agents write, runners post.** The builder writes its pull request's title and description following pstack's Opening a PR; Shipping writes its verdict. The runner opens the pull request and posts the verdict exactly as written.
-- **Until runners start every agent**, an agent started by hand ends by telling the runner its build is done, and the runner takes over. It never starts Shipping itself.
-- **Crash recovery.** The runner's saved state survives a crash, and it resumes at the step it was on.
 
 ## 14 November decisions (Todd)
 
