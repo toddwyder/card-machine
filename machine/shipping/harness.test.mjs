@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SUBAGENT_MAX_STEPS, subagentDefinitions, stopHarness } from './harness.mjs';
+import { SUBAGENT_MAX_STEPS, harnessConfig, subagentDefinitions, stopHarness } from './harness.mjs';
 
 // The controller stops a definition that names no limit at 50 steps
 // (`definition.maxSteps ?? 50` in the installed agent controller).
@@ -69,4 +69,19 @@ test('a boot that has no notification timer still tears down', async () => {
   await stopHarness(booted);
 
   assert.deepEqual(order, ['flush', 'shutdown', 'closeStorage']);
+});
+
+test('a boot gives every helper the model of the session it serves', () => {
+  const model = 'commandcode/deepseek/deepseek-v4.1-flash';
+  const config = harnessConfig({ cwd: '/tmp', model, subagents: [stock('execute', 'Execute')] });
+  assert.equal(
+    config.initialState?.subagentModelId,
+    model,
+    'without this a review, fix or retro helper falls back to the build mode default, which is another account and another bill',
+  );
+});
+
+test('a boot that names no model leaves the stock default alone', () => {
+  const config = harnessConfig({ cwd: '/tmp', subagents: [stock('execute', 'Execute')] });
+  assert.equal(config.initialState, undefined);
 });

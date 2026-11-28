@@ -117,7 +117,7 @@ async function main() {
       }),
     handToBuilder: async material => {
       process.env.MASTRA_OBSERVABILITY_DB_PATH = traceFor('remediation-builder');
-      return handToBuilder({ ...material, log: console.log });
+      return handToBuilder({ ...material, modelId: builderModel, log: console.log });
     },
     startFreshBuilder: async material => {
       process.env.MASTRA_OBSERVABILITY_DB_PATH = traceFor('remediation-fresh-builder');

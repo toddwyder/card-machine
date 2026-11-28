@@ -1,7 +1,7 @@
 // Start one card, and read back the run it began.
 //
 // Start does what stock pstack does: it opens one Mastra Code session and tells it to follow
-// pstack on the card. The session runs in a process of its own (see card-run.mjs), so a restart of
+// pstack on the card. The session runs in a process of its own (see machine/card-run.mjs), so a restart of
 // mission control does not end the card with it. This module's job is to decide when Start may
 // begin a card, to launch that process, and to read the record it writes back for the Run view.
 
@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DatabaseSync } from 'node:sqlite';
+import { buildLibSQLStore } from '@mastra/code-sdk/utils/storage-factory';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, '..', '..');
@@ -46,23 +46,21 @@ export async function writeRecord(dir, record) {
   await writeFile(recordPath(dir), `${JSON.stringify(record, null, 2)}\n`);
 }
 
-// The to-do list is stock Mastra thread state. Reading it beside the running session is a read of
-// the same file the session writes, so it is opened read-only and any row it cannot parse is
-// treated as no list at all rather than a broken screen.
-function readThreadTasks(threadId, dir) {
+// The to-do list is stock Mastra thread state, read through the store the session writes it
+// with. It lives in the session's own file, so this opens that file for the read and closes it
+// again; a store that cannot answer is treated as no list at all rather than a broken screen.
+async function readThreadTasks(threadId, dir) {
   const file = statePath(dir);
   if (!threadId || !existsSync(file)) return null;
-  let db;
+  const storage = buildLibSQLStore({ id: 'run-view-thread-state', url: `file:${file}` });
   try {
-    db = new DatabaseSync(file, { readOnly: true });
-    const row = db.prepare('select value from mastra_thread_state where threadId = ? and type = ?').get(threadId, 'task');
-    if (!row?.value) return null;
-    const parsed = JSON.parse(row.value);
-    return Array.isArray(parsed) ? parsed : null;
+    const store = await storage.getStore('threadState');
+    const value = await store?.getState({ threadId, type: 'task' });
+    return Array.isArray(value) ? value : null;
   } catch {
     return null;
   } finally {
-    db?.close();
+    await storage.close().catch(() => {});
   }
 }
 
@@ -85,7 +83,7 @@ export async function readCardSession({ dir = SESSION_DIR } = {}) {
     endedAt: shown.endedAt ?? null,
     status: shown.status,
     threadId: shown.threadId ?? null,
-    tasks: readThreadTasks(shown.threadId, dir),
+    tasks: await readThreadTasks(shown.threadId, dir),
     tokens: Number.isFinite(shown.tokens) ? shown.tokens : 0,
     largestStepTokens: Number.isFinite(shown.largestStepTokens) ? shown.largestStepTokens : 0,
     lastActivityAt: Number.isFinite(shown.lastActivityAt) ? shown.lastActivityAt : null,
@@ -119,7 +117,7 @@ export function detachedCommand({ unit, payload, repo = REPO_ROOT }) {
       join(repo, 'scripts', 'julia-agents.mjs'),
       '--',
       process.execPath,
-      join(repo, 'dashboard', 'lib', 'card-run.mjs'),
+      join(repo, 'machine', 'card-run.mjs'),
       '--payload',
       payload,
     ],

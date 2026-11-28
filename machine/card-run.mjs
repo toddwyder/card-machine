@@ -14,10 +14,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BEAT_MS, readJson, recordPath, writeRecord } from './card-session.mjs';
+import { BEAT_MS, readJson, recordPath, writeRecord } from '../dashboard/lib/card-session.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, '..', '..');
+const REPO_ROOT = resolve(HERE, '..');
 
 const STATE = 'state.db';
 const SETTINGS = 'settings.json';

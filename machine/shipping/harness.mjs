@@ -107,14 +107,25 @@ export async function loadMastra() {
 
 // A caller that supplies storage owns the database the harness reads and writes,
 // so a run can be given its own file instead of the one the store defaults to.
-export async function bootHarness({ cwd, storage, createInitialThread = true, modes }) {
+//
+// `model` is the model of the session this boot serves. It goes into the stock
+// setting that every helper subagent reads (`initialState.subagentModelId`), so
+// a review, fix or retro runs its helpers on the same model as the session that
+// asked for it rather than on the program's default.
+export function harnessConfig({ cwd, storage, createInitialThread = true, modes, model, subagents }) {
+  const config = { cwd, createInitialThread, subagents: subagentDefinitions(subagents) };
+  if (storage) config.storage = storage;
+  if (modes !== undefined) config.modes = modes;
+  if (model) config.initialState = { subagentModelId: model };
+  return config;
+}
+
+export async function bootHarness({ cwd, storage, createInitialThread = true, modes, model }) {
   const [mastraTools, subagents] = await Promise.all([
     loadMastra(),
     Promise.all(SUBAGENTS.map(async ([file, name]) => (await load(`@mastra/code-sdk/dist/agents/subagents/${file}.js`))[name])),
   ]);
-  const config = { cwd, createInitialThread, subagents: subagentDefinitions(subagents) };
-  if (storage) config.storage = storage;
-  if (modes !== undefined) config.modes = modes;
+  const config = harnessConfig({ cwd, storage, createInitialThread, modes, model, subagents });
   const booted = await mastraTools.bootLocalAgentController(config);
   const session = booted.session;
   const mastra = booted.controller.getMastra?.() ?? booted.mastra;

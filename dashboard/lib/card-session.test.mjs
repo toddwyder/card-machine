@@ -6,8 +6,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { detachedCommand, launcherEnv, launchDetached, readCardSession, startCard } from './card-session.mjs';
-import { sessionConfig, sessionSettings } from './card-run.mjs';
+import { buildLibSQLStore } from '@mastra/code-sdk/utils/storage-factory';
+
+import { detachedCommand, launcherEnv, launchDetached, readCardSession, startCard, writeRecord } from './card-session.mjs';
+import { sessionConfig, sessionSettings } from '../../machine/card-run.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILL = readFileSync(join(REPO_ROOT, '.agents', 'skills', 'poteto-mode', 'SKILL.md'), 'utf8');
@@ -55,7 +57,7 @@ test('a card runs outside the service that started it', () => {
   assert.ok(args.includes('--slice=card.slice'));
   // The keys the session needs, because `systemd-run --user` passes none of the caller's on.
   assert.ok(args.includes(join(REPO_ROOT, 'scripts', 'julia-agents.mjs')));
-  assert.ok(args.includes(join(REPO_ROOT, 'dashboard', 'lib', 'card-run.mjs')));
+  assert.ok(args.includes(join(REPO_ROOT, 'machine', 'card-run.mjs')));
   assert.deepEqual(args.slice(-2), ['--payload', '/tmp/payload.json']);
 });
 
@@ -127,4 +129,25 @@ test('Start launches the session for the card it was given, and refuses a second
     error => error.status === 409,
     'a second press while a card is running has to be refused, or two sessions run one card',
   );
+});
+
+test('the Run view reads the to-do list through Mastra\'s thread-state store', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'run-view-tasks-'));
+  const storage = buildLibSQLStore({ id: 'run-view-tasks-test', url: `file:${join(dir, 'state.db')}` });
+  const tasks = [
+    { id: 'bug-fix-1', content: 'Reproduce the bug', status: 'completed' },
+    { id: 'bug-fix-2', content: 'Fix the cause', status: 'in_progress' },
+  ];
+  try {
+    await storage.init();
+    const store = await storage.getStore('threadState');
+    await store.setState({ threadId: 'thread-1', type: 'task', value: tasks });
+  } finally {
+    await storage.close();
+  }
+  await writeRecord(dir, { card: 'JUL-419', title: 'A card', startedAt: Date.now(), endedAt: null, status: 'running', threadId: 'thread-1', heartbeatAt: Date.now() });
+
+  const record = await readCardSession({ dir });
+
+  assert.deepEqual(record.tasks, tasks, 'the list has to come back through the store the session writes it with, not a copy of its table');
 });
